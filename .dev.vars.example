@@ -1,0 +1,21 @@
+# Copy to .dev.vars for local development (never commit .dev.vars).
+# Every key below has a FREE tier with no credit card. Add as many as you like —
+# Huddle tries them in order and skips any that are rate-limited.
+
+# Fake AI for testing the UI without any keys:
+MOCK_AI=true
+
+# https://console.groq.com/keys          (fast open models: gpt-oss, Llama, Qwen)
+# GROQ_API_KEY=
+# https://cloud.cerebras.ai               (very fast open models)
+# CEREBRAS_API_KEY=
+# https://openrouter.ai/keys              (only ":free" models are used = $0)
+# OPENROUTER_API_KEY=
+
+# Web search — https://app.tavily.com (1,000 free searches/month)
+# TAVILY_API_KEY=
+# or https://jina.ai (free starter tokens)
+# JINA_API_KEY=
+
+# Password for the /admin feedback dashboard
+ADMIN_TOKEN=change-me

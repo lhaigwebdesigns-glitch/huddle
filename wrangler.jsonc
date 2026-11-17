@@ -1,0 +1,31 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "huddle",
+  "main": "src/server/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/parties/*"]
+  },
+  "durable_objects": {
+    "bindings": [
+      { "name": "Room", "class_name": "Room" },
+      { "name": "Doc", "class_name": "Doc" }
+    ]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Room", "Doc"] }],
+  // Free D1 database for feedback + usage. Create with: npx wrangler d1 create huddle
+  // then paste the database_id here.
+  "d1_databases": [
+    { "binding": "DB", "database_name": "huddle", "database_id": "00000000-0000-0000-0000-000000000000" }
+  ],
+  "vars": {
+    // Set to "true" to use a fake AI that echoes (handy for local testing with no keys).
+    "MOCK_AI": "false",
+    // Max AI replies per room per day (protects free quotas).
+    "ROOM_DAILY_AI_LIMIT": "300"
+  },
+  // Cloudflare Workers AI: free daily allowance of open-weight models (Llama, Qwen, gpt-oss…).
+  "ai": { "binding": "AI" }
+}
