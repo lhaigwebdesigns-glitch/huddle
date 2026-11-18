@@ -14,6 +14,8 @@ export interface Env {
    */
   OLLAMA_BASE_URL?: string;
   OLLAMA_MODEL?: string;
+  /** reasoning_effort for the self-hosted model (default "none" = fast, no hidden thinking). */
+  OLLAMA_REASONING?: string;
   /** Shared secret sent as a Bearer token; required in front of a public tunnel. */
   OLLAMA_API_KEY?: string;
   GROQ_API_KEY?: string;
@@ -23,6 +25,8 @@ export interface Env {
   JINA_API_KEY?: string;
   ADMIN_TOKEN?: string;
   MOCK_AI?: string;
+  /** Log every AI step and tool call to the server console. */
+  DEBUG_AI?: string;
   ROOM_DAILY_AI_LIMIT?: string;
   /** Cloud AI turns per day across the whole deployment (default 5000). */
   GLOBAL_DAILY_AI_LIMIT?: string;

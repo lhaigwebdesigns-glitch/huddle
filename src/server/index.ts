@@ -61,6 +61,26 @@ app.post("/api/rooms/:code/files/:id/versions", async (c) => {
   return c.json(res, res.ok ? 200 : 404);
 });
 
+// ---- Public forms: anyone with the link can fill one in, without joining the room ----
+
+app.get("/api/forms/:code/:id", async (c) => {
+  const code = normalizeCode(c.req.param("code"));
+  if (!isValidCode(code)) return c.json({ error: "not found" }, 404);
+  const form = await (await getServerByName(c.env.Room, code)).publicForm(c.req.param("id"));
+  return form ? c.json(form) : c.json({ error: "This form doesn't exist anymore." }, 404);
+});
+
+app.post("/api/forms/:code/:id", async (c) => {
+  const code = normalizeCode(c.req.param("code"));
+  if (!isValidCode(code)) return c.json({ ok: false, error: "not found" }, 404);
+  const id = c.req.param("id").slice(0, 40);
+  if (!(await hit(c.env.DB, `form:${code}:${id}:${clientIp(c.req.raw)}`, 20, 3600)))
+    return c.json({ ok: false, error: "Too many submissions from your network. Try again later." }, 429);
+  const body = await c.req.json<{ answers?: unknown }>().catch(() => ({}) as { answers?: unknown });
+  const res = await (await getServerByName(c.env.Room, code)).submitForm(id, body.answers);
+  return c.json(res, res.ok ? 200 : 400);
+});
+
 // ---- Feedback (stored in the free D1 database) ----
 
 app.post("/api/feedback", async (c) => {

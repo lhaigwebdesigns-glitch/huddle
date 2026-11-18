@@ -82,6 +82,8 @@ export type ClientMsg =
   | { t: "rename_file"; id: string; title: string }
   | { t: "delete_file"; id: string }
   | { t: "duplicate_file"; id: string }
+  /** Copy a form's responses into a new sheet. */
+  | { t: "form_to_sheet"; id: string }
   | { t: "kick"; uid: string }
   | { t: "local_delta"; id: string; delta: string }
   | { t: "local_done"; id: string; error?: string }

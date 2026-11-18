@@ -1,4 +1,4 @@
-import { Server, type Connection, type ConnectionContext, type WSMessage } from "partyserver";
+import { getServerByName, Server, type Connection, type ConnectionContext, type WSMessage } from "partyserver";
 import type { Env } from "./env";
 import type {
   ChatMessage,
@@ -13,8 +13,12 @@ import type {
 import { availableProviders, chatWithFallback, ProviderError, type LlmMessage } from "./ai/providers";
 import { compactDocArgs, withFreshNote } from "./ai/turn";
 import { aiTurnsToday, countAiTurn } from "./db";
-import { getServerByName } from "partyserver";
 import { FILE_INFO, isFileKind, type FileKind } from "../shared/files";
+import { colName } from "../shared/formula";
+import { SKILLS } from "./ai/skills";
+import { runTool, TOOL_DEFS } from "./ai/tools";
+import { collectUrls, stripUnverifiedLinks } from "./ai/citations";
+import { getProviders as getProvidersConfigured } from "./ai/models";
 
 const MAX_FILES = 100;
 
@@ -23,11 +27,9 @@ const FILE_GUIDE = [
   `- doc (create_doc/read_doc/edit_doc): writing, plans, reports, essays, notes. edit_doc mode "append" adds a section.`,
   `- sheet (create_sheet/read_sheet/edit_sheet): tables, budgets, trackers, numbers. Use formulas (=SUM, =AVERAGE, =IF…) for totals and add a chart when it helps.`,
   `- slides (create_slides/read_slides/edit_slides): presentations and pitches. 5–10 slides, short bullets (max ~6 words each), speaker notes for detail; load the slide-deck-design skill first.`,
+  `- form (create_form/read_form_responses): sign-ups, surveys, RSVPs, quizzes, feedback. It gets a public link anyone can fill in; summarize responses on request.`,
+  `- whiteboard (draw_whiteboard/read_whiteboard): diagrams, flows, mind maps, architectures, timelines, drawn from Mermaid (flowchart/sequenceDiagram/classDiagram). People can then rearrange the shapes.`,
 ];
-import { SKILLS } from "./ai/skills";
-import { runTool, TOOL_DEFS } from "./ai/tools";
-import { collectUrls, stripUnverifiedLinks } from "./ai/citations";
-import { getProviders as getProvidersConfigured } from "./ai/models";
 
 interface ConnState {
   uid: string;
@@ -112,6 +114,19 @@ export class Room extends Server<Env> {
     if (!f) return { ok: false, error: "No such file" };
     const stub = await getServerByName(this.env.Doc, `${this.name}--${f.id}`);
     return stub.restoreVersion(at, f.kind);
+  }
+
+  /** Public view of a form (questions only, never responses). */
+  async publicForm(fileId: string) {
+    const f = this.files().find((x) => x.id === fileId && x.kind === "form");
+    if (!f) return null;
+    return (await getServerByName(this.env.Doc, `${this.name}--${f.id}`)).getPublicForm(f.title);
+  }
+
+  async submitForm(fileId: string, answers: unknown) {
+    const f = this.files().find((x) => x.id === fileId && x.kind === "form");
+    if (!f) return { ok: false as const, error: "This form doesn't exist anymore." };
+    return (await getServerByName(this.env.Doc, `${this.name}--${f.id}`)).submitForm(f.title, answers);
   }
 
   // ---------- connections ----------
@@ -261,6 +276,21 @@ export class Room extends Server<Env> {
           await stub.slideOps([{ op: "insert", slide: { layout: "title", title: "", body: "" } }]);
         }
         this.send(conn, { t: "open_file", id: f.id });
+        return;
+      }
+      case "form_to_sheet": {
+        const form = this.files().find((x) => x.id === msg.id && x.kind === "form");
+        if (!form || this.files().length >= MAX_FILES) return;
+        const rows = await (await getServerByName(this.env.Doc, `${this.name}--${form.id}`)).formRows();
+        const sheet = this.createFile("sheet", `${form.title} — responses`.slice(0, 120), me.uid);
+        const width = Math.max(1, rows[0]?.length ?? 1);
+        await (await getServerByName(this.env.Doc, `${this.name}--${sheet.id}`)).sheetOps([
+          // Prefix answers that look like formulas so they stay plain text.
+          { op: "set_range", start: "A1", rows: rows.map((r) => r.map((v) => (/^[=+\-@]/.test(v) ? `'${v}` : v))) },
+          { op: "format", range: `A1:${colName(width - 1)}1`, bold: true, bg: "#eef2ff" },
+          { op: "col_width", col: "A", width: 140 },
+        ]);
+        this.send(conn, { t: "open_file", id: sheet.id });
         return;
       }
       case "duplicate_file": {
@@ -413,7 +443,9 @@ export class Room extends Server<Env> {
 
     let llm: LlmMessage[] = [];
     try {
+      const tBudget = Date.now();
       const budget = await this.dailyBudget();
+      if (this.env.DEBUG_AI) console.log(`[ai] budget check ${Date.now() - tBudget}ms`);
       // Everything saved up to now is part of this turn. Re-stamp the reply so it sorts
       // after the messages it answers (some may have landed during the await above).
       this.aiSeenUpTo = Date.now();
@@ -432,7 +464,10 @@ export class Room extends Server<Env> {
       } else {
         this.abort = new AbortController();
         llm = [{ role: "system", content: this.systemPrompt(true) }, ...withFreshNote(this.history())];
+        let emptyRetried = false;
         for (let i = 0; i < MAX_STEPS; i++) {
+          const tCall = Date.now();
+          if (this.env.DEBUG_AI) console.log(`[ai] step ${i} calling model at +${tCall - msg.createdAt}ms`);
           const res = await chatWithFallback(this.env, {
             messages: llm,
             tools: TOOL_DEFS,
@@ -440,6 +475,14 @@ export class Room extends Server<Env> {
             onDelta,
           });
           msg.meta!.model = `${res.provider} · ${res.model}`;
+          if (this.env.DEBUG_AI)
+            console.log(`[ai] step ${i} ${res.model} took ${Date.now() - tCall}ms: ${res.content.length} chars, tools: ${res.toolCalls.map((c) => `${c.function.name}(${c.function.arguments.slice(0, 400)})`).join(" | ") || "none"}`);
+          if (!res.toolCalls.length && !res.content.trim() && !emptyRetried) {
+            // Occasionally a model returns nothing at all; ask once more rather than showing "(no response)".
+            emptyRetried = true;
+            llm.push({ role: "user", content: "(Huddle: your last reply was empty. Please answer the request above, using a tool if needed.)" });
+            continue;
+          }
           if (!res.toolCalls.length) break;
           if (res.content && !/\s$/.test(msg.content)) onDelta("\n\n");
           llm.push({ role: "assistant", content: res.content || null, tool_calls: res.toolCalls });
@@ -454,10 +497,12 @@ export class Room extends Server<Env> {
               sources,
             });
             llm.push({ role: "tool", tool_call_id: call.id, content: output });
+            if (this.env.DEBUG_AI) console.log(`[ai] ${call.function.name} -> ${output.slice(0, 300)}`);
             compactDocArgs(call);
           }
           if (i === MAX_STEPS - 2) {
-            llm.push({ role: "system", content: "Tool budget reached. Write your final answer now without calling tools." });
+            // As a user-role note: gpt-oss/Qwen largely ignore system messages mid-conversation.
+            llm.push({ role: "user", content: "(Huddle: tool budget reached. Write your final answer now without calling tools.)" });
           }
         }
       }
@@ -506,6 +551,7 @@ export class Room extends Server<Env> {
       this.ctx.waitUntil(countAiTurn(this.env.DB, msg.meta!.model.split(" · ")[0]));
     this.saveMessage(msg);
     this.broadcastMsg({ t: "ai_done", message: msg });
+    if (this.env.DEBUG_AI) console.log(`[ai] turn done at +${Date.now() - msg.createdAt}ms`);
   }
 
   /** Local mode: the host's browser runs an open model with WebLLM; we relay its tokens to everyone. */
@@ -559,11 +605,15 @@ export class Room extends Server<Env> {
     const files = this.files();
     const skills = SKILLS.filter((k) => !s.disabledSkills.includes(k.name));
     const lines = [
-      `You are Huddle AI, a helpful, capable assistant inside a multiplayer workspace room called "${s.title}".`,
+      `You are Huddle AI, a helpful, capable assistant inside a multiplayer workspace room.`,
       `Several people can be in the chat at once. Each user message is prefixed with the speaker's name ("Name: message"). Address people by name when helpful, keep track of who asked what, and when several people talk at once, answer each of them.`,
       `Respond to the messages that arrived after your last reply. Earlier messages are context only: never redo or re-answer a request you already handled.`,
-      `People here now: ${people}. Today's date: ${new Date().toISOString().slice(0, 10)}.`,
       `Format with Markdown (headings, lists, tables, fenced code with language tags, LaTeX with $...$). Be concise by default and expand when asked.`,
+    ];
+    // Things that change between turns go last, so self-hosted models can reuse their cached
+    // prompt prefix (much faster replies on your own GPU).
+    const volatile = [
+      `This room is called "${s.title}". Today's date: ${new Date().toISOString().slice(0, 10)}. People here now: ${people}.`,
     ];
     if (withTools) {
       lines.push(
@@ -576,12 +626,14 @@ export class Room extends Server<Env> {
         `file_id values are internal; never show them to people, refer to files by title.`,
         `Before specialised tasks, call load_skill with the most relevant skill. Available skills:`,
         ...skills.map((k) => `- ${k.name}: ${k.description}`),
+      );
+      volatile.push(
         files.length
           ? `Files in this room:\n${files.map((f) => `- ${f.kind} "${f.title}" (file_id ${f.id})`).join("\n")}`
           : `There are no files in this room yet.`,
       );
     }
-    return lines.join("\n");
+    return [...lines, ...volatile].join("\n");
   }
 
   // ---------- storage helpers ----------

@@ -17,6 +17,8 @@ export interface ProviderConfig {
   binding?: Ai;
   /** Give up (and fall through to the next provider) if no response starts within this time. */
   responseTimeoutMs?: number;
+  /** OpenAI-style reasoning_effort for "thinking" models (none | low | medium | high). */
+  reasoningEffort?: string;
 }
 
 export function getProviders(env: Env): ProviderConfig[] {
@@ -38,6 +40,8 @@ export function getProviders(env: Env): ProviderConfig[] {
       supportsTools: true,
       // Covers loading the model into GPU memory on the first request after idle.
       responseTimeoutMs: 60_000,
+      // Qwen3 "thinks" by default; off, it answers in ~2s instead of ~20s and still uses tools well.
+      reasoningEffort: env.OLLAMA_REASONING || "none",
     });
   }
   if (env.GROQ_API_KEY) {

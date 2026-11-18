@@ -51,11 +51,14 @@ export const themeOf = (doc: Y.Doc): ThemeName => {
 
 const safeImage = (u: unknown) => (typeof u === "string" && /^https:\/\/[^\s"'<>]+$/i.test(u) ? u : "");
 
+/** Models sometimes send bullets as an array instead of lines of text; accept both. */
+const asText = (v: unknown) => (Array.isArray(v) ? v.map((x) => String(x)).join("\n") : String(v ?? "")).slice(0, 4000);
+
 export function makeSlide(d: SlideData): Y.Map<any> {
   const m = new Y.Map<any>();
   m.set("id", d.id ?? Math.random().toString(36).slice(2, 10));
   m.set("layout", LAYOUTS.includes(d.layout as Layout) ? d.layout : "bullets");
-  for (const f of TEXT_FIELDS) m.set(f, new Y.Text(String(d[f] ?? "").slice(0, 4000)));
+  for (const f of TEXT_FIELDS) m.set(f, new Y.Text(asText(d[f])));
   m.set("image", safeImage(d.image));
   return m;
 }
@@ -93,8 +96,8 @@ export function updateSlide(m: Y.Map<any>, d: SlideData) {
   for (const f of TEXT_FIELDS) {
     if (d[f] === undefined) continue;
     const t = m.get(f);
-    if (t instanceof Y.Text) setText(t, String(d[f]).slice(0, 4000));
-    else m.set(f, new Y.Text(String(d[f]).slice(0, 4000)));
+    if (t instanceof Y.Text) setText(t, asText(d[f]));
+    else m.set(f, new Y.Text(asText(d[f])));
   }
   if (d.image !== undefined) m.set("image", safeImage(d.image));
 }

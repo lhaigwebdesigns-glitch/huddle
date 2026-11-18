@@ -12,6 +12,7 @@ describe("formula engine", () => {
 
   it("parses literals", () => {
     expect([literal("42"), literal("$1,200.50"), literal("15%"), literal("true"), literal("hi"), literal("")]).toEqual([42, 1200.5, 0.15, true, "hi", null]);
+    expect([literal("'007"), literal("'=SUM(A1)")]).toEqual(["007", "=SUM(A1)"]); // apostrophe forces text
   });
 
   it("does arithmetic with precedence, refs and percentages", () => {

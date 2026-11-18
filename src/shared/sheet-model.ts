@@ -110,7 +110,8 @@ export function usedRange(doc: Y.Doc): string | null {
 /** Computed values of a range as CSV (what a person sees), plus the formulas behind them. */
 export function readSheet(doc: Y.Doc, range?: string) {
   const r = range || usedRange(doc);
-  if (!r) return { range: null, csv: "", formulas: [] as string[] };
+  const charts = ((metaOf(doc).get("charts") ?? []) as Chart[]).map((c) => `${c.type} of ${c.range}${c.title ? ` "${c.title}"` : ""}`).join(", ");
+  if (!r) return { range: null, csv: "", formulas: [] as string[], charts };
   const raw = rawValues(doc);
   const values = evaluateSheet(raw);
   const cells = cellsOf(doc);
@@ -118,7 +119,7 @@ export function readSheet(doc: Y.Doc, range?: string) {
   const formulas = expandRange(r)
     .filter((n) => raw[n]?.startsWith("="))
     .map((n) => `${n}: ${raw[n]}`);
-  return { range: r, csv: toCsv(rows), formulas };
+  return { range: r, csv: toCsv(rows), formulas, charts };
 }
 
 export type SheetOp =

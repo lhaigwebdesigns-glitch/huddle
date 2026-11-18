@@ -148,9 +148,9 @@ async function openAiCompatChat(p: ProviderConfig, args: ChatArgs): Promise<Chat
         stream: true,
         temperature: 0.6,
         max_tokens: 4096,
-        // gpt-oss "thinks" before answering; those hidden tokens count against free
-        // tokens-per-minute limits. Low effort keeps tool use reliable and quota usage small.
-        ...(/gpt-oss/.test(p.model) ? { reasoning_effort: "low" } : {}),
+        // Thinking models: gpt-oss's hidden reasoning counts against free tokens-per-minute
+        // limits, so it runs at "low"; a provider can set its own (e.g. Ollama's "none").
+        ...(p.reasoningEffort ? { reasoning_effort: p.reasoningEffort } : /gpt-oss/.test(p.model) ? { reasoning_effort: "low" } : {}),
       }),
     });
   } catch (err) {
@@ -175,7 +175,10 @@ async function openAiCompatChat(p: ProviderConfig, args: ChatArgs): Promise<Chat
   const calls: ToolCall[] = [];
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
   let buf = "";
-  for (;;) {
+  // Stop at the "[DONE]" marker rather than waiting for the connection to close: some servers
+  // (Ollama behind local dev) keep it open ~30s after the answer is complete.
+  let finished = false;
+  while (!finished) {
     const { value, done } = await reader.read();
     if (done) break;
     buf += value;
@@ -185,7 +188,10 @@ async function openAiCompatChat(p: ProviderConfig, args: ChatArgs): Promise<Chat
       const line = raw.trim();
       if (!line.startsWith("data:")) continue;
       const data = line.slice(5).trim();
-      if (data === "[DONE]") continue;
+      if (data === "[DONE]") {
+        finished = true;
+        break;
+      }
       let json: any;
       try {
         json = JSON.parse(data);
@@ -208,6 +214,7 @@ async function openAiCompatChat(p: ProviderConfig, args: ChatArgs): Promise<Chat
       }
     }
   }
+  if (finished) reader.cancel().catch(() => {});
   return { content, toolCalls: calls.filter(Boolean), provider: p.label, model: p.model };
 }
 
@@ -284,6 +291,24 @@ export const MOCK_TOOL_CALLS: { trigger: RegExp; name: string; args: Record<stri
         { layout: "title", title: "Mock deck", body: "Made by the mock AI" },
         { layout: "bullets", title: "Agenda", body: "- Why\n- How\n- When", notes: "Keep it short" },
         { layout: "quote", title: "Done is better than perfect" },
+      ],
+    },
+  },
+  {
+    trigger: /make a whiteboard/i,
+    name: "draw_whiteboard",
+    args: { title: "Mock flow", mermaid: "flowchart LR\n  A[Idea] --> B[Plan] --> C[Launch]" },
+  },
+  {
+    trigger: /make a form/i,
+    name: "create_form",
+    args: {
+      title: "Mock signup",
+      description: "Sign up to help at the bake sale.",
+      questions: [
+        { type: "short", title: "Your name", required: true },
+        { type: "choice", title: "Which shift?", options: ["Morning", "Afternoon"], required: true },
+        { type: "scale", title: "How excited are you?", max: 5 },
       ],
     },
   },

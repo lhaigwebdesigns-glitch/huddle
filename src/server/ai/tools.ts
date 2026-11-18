@@ -104,7 +104,7 @@ export const TOOL_DEFS: ToolDef[] = [
     function: {
       name: "create_sheet",
       description:
-        "Create a live spreadsheet. Give the data as CSV (first row = headers). Cells may be formulas like =SUM(B2:B9). Optionally pass ops to format or chart it.",
+        "Create a live spreadsheet. Give the data as CSV (first row = headers). Put totals and calculations in the CSV itself as formula cells, e.g. a last row 'Total,=SUM(B2:B5)'. Optionally pass ops to format or chart it.",
       parameters: {
         type: "object",
         properties: {
@@ -175,6 +175,48 @@ export const TOOL_DEFS: ToolDef[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "draw_whiteboard",
+      description:
+        "Draw a diagram on a live whiteboard (Excalidraw) from Mermaid: flowchart, sequenceDiagram or classDiagram (e.g. 'flowchart LR\\n A[Idea] --> B[Plan]'). Pass file_id to add to an existing board, or title to make a new one.",
+      parameters: {
+        type: "object",
+        properties: { title: { type: "string" }, file_id: { type: "string" }, mermaid: { type: "string" } },
+        required: ["mermaid"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "create_form",
+      description:
+        "Create a form (like Google Forms) with a public link anyone can fill in. Question: {type: short|long|choice|checkbox|scale|date, title, required, options (for choice/checkbox), max (for scale, default 5)}.",
+      parameters: {
+        type: "object",
+        properties: { title: { type: "string" }, description: { type: "string" }, questions: { type: "array", items: { type: "object" } } },
+        required: ["title", "questions"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_form_responses",
+      description: "Summarize a form's responses: counts per option, scale averages, and recent text answers.",
+      parameters: { type: "object", properties: { file_id: { type: "string" } }, required: ["file_id"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_whiteboard",
+      description: "List the shapes and text on a whiteboard.",
+      parameters: { type: "object", properties: { file_id: { type: "string" } }, required: ["file_id"] },
+    },
+  },
 ];
 
 /** Find a room file of the expected kind, with a helpful error for the model otherwise. */
@@ -186,6 +228,18 @@ function fileOf(ctx: ToolContext, id: unknown, kind: FileKind): RoomFile | strin
 }
 
 const fileStub = (ctx: ToolContext, file: RoomFile) => getServerByName(ctx.env.Doc, `${ctx.roomCode}--${file.id}`);
+
+/**
+ * What the sheet now shows, so the model can check its own work (models sometimes claim a
+ * total row or chart they forgot to add).
+ */
+async function sheetPreview(stub: Awaited<ReturnType<typeof fileStub>>) {
+  const out = await stub.readSheet();
+  if (!out.range) return "The sheet is empty.";
+  const lines = out.csv.split("\n");
+  const shown = lines.slice(0, 25).join("\n") + (lines.length > 25 ? `\n…(${lines.length - 25} more rows)` : "");
+  return `Sheet now shows (${out.range}):\n${shown}${out.formulas.length ? `\nFormulas: ${out.formulas.slice(0, 20).join("; ")}` : "\nNo formulas."}${out.charts ? `\nCharts: ${out.charts}` : "\nNo charts."}\nIf anything you meant to add is missing, fix it with edit_sheet before replying.`;
+}
 
 const MAX_TOOL_OUTPUT = 12_000;
 
@@ -278,7 +332,7 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
         note = ` (Some extra ops failed: ${String(err).slice(0, 150)})`;
       }
       ctx.openFile(file.id);
-      return `Created sheet "${title}" with file_id ${file.id}: ${rows.length} rows. It is open for everyone.${note}`;
+      return `Created sheet "${title}" with file_id ${file.id}. It is open for everyone.${note}\n${await sheetPreview(stub)}`;
     }
     case "read_sheet": {
       const file = fileOf(ctx, args.file_id, "sheet");
@@ -293,9 +347,10 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
       if (typeof file === "string") return file;
       if (!Array.isArray(args.ops) || !args.ops.length) return "Error: ops must be a non-empty array.";
       ctx.step({ kind: "doc", label: `Editing “${file.title}”` });
-      const done = await (await fileStub(ctx, file)).sheetOps(args.ops as SheetOp[], true);
+      const stub = await fileStub(ctx, file);
+      const done = await stub.sheetOps(args.ops as SheetOp[], true);
       ctx.openFile(file.id);
-      return `Updated "${file.title}": ${done.join("; ")}.`;
+      return `Updated "${file.title}": ${done.join("; ")}.\n${await sheetPreview(stub)}`;
     }
     case "create_slides": {
       const title = String(args.title ?? "Untitled deck").slice(0, 120);
@@ -329,6 +384,45 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
       const done = await (await fileStub(ctx, file)).slideOps(args.ops as SlideOp[], true);
       ctx.openFile(file.id);
       return `Updated "${file.title}": ${done.join("; ")}.`;
+    }
+    case "draw_whiteboard": {
+      const mermaid = String(args.mermaid ?? "").trim().slice(0, 8000);
+      if (!/^(flowchart|graph|sequenceDiagram|classDiagram)\b/.test(mermaid))
+        return "Error: mermaid must start with flowchart (or graph), sequenceDiagram or classDiagram.";
+      let file: RoomFile;
+      if (args.file_id) {
+        const f = fileOf(ctx, args.file_id, "whiteboard");
+        if (typeof f === "string") return f;
+        file = f;
+      } else {
+        file = ctx.createFile("whiteboard", String(args.title ?? "Whiteboard").slice(0, 120));
+      }
+      ctx.step({ kind: "doc", label: `Sketching on “${file.title}”` });
+      await (await fileStub(ctx, file)).queueDrawing({ mermaid });
+      ctx.openFile(file.id);
+      return `Drew the diagram on whiteboard "${file.title}" (file_id ${file.id}). It's open for everyone; they can move and edit every shape.`;
+    }
+    case "create_form": {
+      const title = String(args.title ?? "Untitled form").slice(0, 120);
+      const questions = Array.isArray(args.questions) ? args.questions : [];
+      if (!questions.length) return "Error: questions must be a non-empty array.";
+      const file = ctx.createFile("form", title);
+      ctx.step({ kind: "doc", label: `Building form “${title}”` });
+      const n = await (await fileStub(ctx, file)).setupForm(String(args.description ?? ""), questions);
+      ctx.openFile(file.id);
+      return `Created form "${title}" (file_id ${file.id}) with ${n} questions. It is open for everyone; the "Share link" button gives a public link anyone can fill in, and responses appear live.`;
+    }
+    case "read_form_responses": {
+      const file = fileOf(ctx, args.file_id, "form");
+      if (typeof file === "string") return file;
+      ctx.step({ kind: "doc", label: `Reading responses to “${file.title}”` });
+      return (await fileStub(ctx, file)).formSummary();
+    }
+    case "read_whiteboard": {
+      const file = fileOf(ctx, args.file_id, "whiteboard");
+      if (typeof file === "string") return file;
+      ctx.step({ kind: "doc", label: `Looking at “${file.title}”` });
+      return (await fileStub(ctx, file)).readBoard();
     }
     default:
       return `Unknown tool ${name}`;

@@ -8,7 +8,7 @@ MOCK_AI=true
 # Your own GPU via Ollama (https://ollama.com): free, no rate or token limits, tried first.
 # Setup: install Ollama, then `ollama pull qwen3:14b` and `ollama create huddle -f ollama/Modelfile`.
 # A deployed Worker can't reach localhost: point this at a Cloudflare Tunnel URL and set a secret.
-# OLLAMA_BASE_URL=http://localhost:11434
+# OLLAMA_BASE_URL=http://127.0.0.1:11434   (use 127.0.0.1, not localhost: IPv6 lookups stall ~30s)
 # OLLAMA_MODEL=huddle
 # OLLAMA_API_KEY=            (shared secret; required when exposed through a tunnel)
 

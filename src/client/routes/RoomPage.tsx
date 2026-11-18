@@ -6,6 +6,7 @@ import { useRoom } from "../lib/useRoom";
 import { Chat } from "../components/Chat";
 import { FilePanel } from "../components/FilePanel";
 import { Drive } from "../components/Drive";
+import { setEditorSender } from "../lib/editorBridge";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { FeedbackDialog } from "../components/FeedbackDialog";
 
@@ -62,6 +63,10 @@ function Room({ code, me }: { code: string; me: Identity }) {
   useEffect(() => {
     if (state.openFileId) setOpenFile(state.openFileId);
   }, [state.openFileId, state.openFileNonce]);
+  useEffect(() => {
+    setEditorSender(send);
+    return () => setEditorSender(null);
+  }, [send]);
   useEffect(() => {
     if (state.settings) rememberRoom(code, state.settings.title);
   }, [code, state.settings?.title]);

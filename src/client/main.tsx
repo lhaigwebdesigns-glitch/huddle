@@ -7,6 +7,7 @@ import "./editors";
 import Home from "./routes/Home";
 import RoomPage from "./routes/RoomPage";
 import Admin from "./routes/Admin";
+import PublicForm from "./routes/PublicForm";
 
 function JoinRedirect() {
   const { code = "" } = useParams();
@@ -27,6 +28,7 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/j/:code" element={<JoinRedirect />} />
         <Route path="/r/:code" element={<RoomPage />} />
         <Route path="/admin" element={<Admin />} />
+        <Route path="/f/:code/:id" element={<PublicForm />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

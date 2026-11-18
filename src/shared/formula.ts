@@ -348,6 +348,8 @@ function criterion(c: Value): (v: Value) => boolean {
 
 /** Turn a raw cell input into a literal value (numbers, booleans, percentages, text). */
 export function literal(raw: string): Value {
+  // A leading apostrophe forces text (as in Excel/Sheets): '007 or '=not a formula.
+  if (raw.startsWith("'")) return raw.slice(1);
   const s = raw.trim();
   if (s === "") return null;
   if (/^[-+]?(\d+\.?\d*|\.\d+)(e[+-]?\d+)?$/i.test(s)) return Number(s);

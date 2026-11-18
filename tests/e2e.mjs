@@ -205,6 +205,56 @@ try {
   await alice.keyboard.press("Escape");
   await alice.getByTestId("present").waitFor({ state: "detached" });
 
+  // Whiteboard: AI Mermaid sketch converts once (no duplicates with two browsers open), and
+  // shapes Alice draws appear for Bob.
+  await bob.getByTestId("composer").fill("make a whiteboard of our launch flow");
+  await bob.getByTestId("composer").press("Enter");
+  await alice.getByTestId("whiteboard-editor").waitFor({ timeout: 15000 });
+  await bob.getByTestId("whiteboard-editor").waitFor();
+  const wbCount = (p) => p.getByTestId("wb-count").textContent().then(Number);
+  await alice.waitForFunction(() => Number(document.querySelector("[data-testid=wb-count]")?.textContent) > 0, null, { timeout: 30000 });
+  await bob.waitForTimeout(2500); // let both browsers finish converting
+  const aiShapes = await wbCount(alice);
+  ok(aiShapes > 0 && aiShapes === (await wbCount(bob)), `AI diagram drawn once for both (${aiShapes} shapes, no duplicates)`);
+  const canvas = alice.locator("canvas.interactive");
+  const box = await canvas.boundingBox();
+  // An open spot left of centre, clear of the top and bottom toolbars.
+  const y0 = box.y + box.height * 0.3;
+  await alice.mouse.click(box.x + 80, y0);
+  await alice.keyboard.press("r");
+  await alice.mouse.move(box.x + 80, y0);
+  await alice.mouse.down();
+  await alice.mouse.move(box.x + 180, y0 + 70, { steps: 6 });
+  await alice.mouse.up();
+  await bob.waitForFunction((n) => Number(document.querySelector("[data-testid=wb-count]")?.textContent) === n + 1, aiShapes, { timeout: 10000 });
+  ok(true, "a rectangle Alice draws appears on Bob's board");
+
+  // Forms: AI builds one, a stranger fills the public link, responses appear live.
+  await bob.getByTestId("composer").fill("make a form for volunteers");
+  await bob.getByTestId("composer").press("Enter");
+  await alice.getByTestId("form-editor").waitFor({ timeout: 15000 });
+  ok((await alice.getByTestId("form-question").count()) === 3, "AI form has 3 questions");
+  const formLink = await alice.getByTestId("form-share").getAttribute("data-link");
+  const dave = await (await browser.newContext()).newPage();
+  await dave.goto(formLink);
+  await dave.getByTestId("public-form-title").getByText("Mock signup").waitFor();
+  await dave.getByTestId("form-submit").click(); // name is required → blocked
+  ok((await dave.getByTestId("form-thanks").count()) === 0, "required questions are enforced");
+  await dave.getByLabel(/Your name/).fill("Dave");
+  await dave.getByLabel("Afternoon").check();
+  await dave.getByText("4", { exact: true }).click();
+  await dave.getByTestId("form-submit").click();
+  await dave.getByTestId("form-thanks").waitFor();
+  ok(true, "a stranger submits the public form");
+  await alice.getByTestId("form-tab-responses").getByText("Responses (1)").waitFor({ timeout: 10000 });
+  await alice.getByTestId("form-tab-responses").click();
+  await alice.getByTestId("form-responses").getByText("Afternoon").waitFor();
+  ok(true, "the response shows up live for the room");
+  await alice.getByTestId("form-to-sheet").click();
+  await alice.getByTestId("sheet-editor").waitFor({ timeout: 10000 });
+  await alice.locator('[data-cell="B2"]').getByText("Dave").waitFor();
+  ok(true, "responses copy into a new sheet");
+
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
   const statuses = await alice.evaluate(async () => {
     const ip = `e2e-${Math.random()}`;

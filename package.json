@@ -13,6 +13,8 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@excalidraw/excalidraw": "^0.18.1",
+    "@excalidraw/mermaid-to-excalidraw": "^3.6.0",
     "@mlc-ai/web-llm": "^0.2.89",
     "@tiptap/core": "^3.34.0",
     "@tiptap/extension-collaboration": "^3.34.0",

@@ -36,7 +36,10 @@ export const FILE_SCHEMA: Record<FileKind, { name: string; type: "xml" | "map" |
     { name: "slides", type: "array" }, // Y.Map per slide
     { name: "deck", type: "map" }, // theme
   ],
-  whiteboard: [{ name: "elements", type: "map" }], // Excalidraw element id -> element JSON
+  whiteboard: [
+    { name: "elements", type: "map" }, // Excalidraw element id -> element JSON
+    { name: "pending", type: "array" }, // AI drawings waiting for a browser to lay them out
+  ],
   form: [
     { name: "questions", type: "array" }, // Y.Map per question
     { name: "formMeta", type: "map" }, // description, accepting

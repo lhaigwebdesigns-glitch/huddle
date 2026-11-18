@@ -6,6 +6,19 @@ import { readMarkdown, writeMarkdown } from "./markdown-yjs";
 import { chunk, docFromState, replaceContent, unchunk } from "./yjs-files";
 import { applySheetOps, cellsOf, readSheet, type SheetOp } from "../shared/sheet-model";
 import { applySlideOps, deckOutline, slidesOf, type SlideOp } from "../shared/slides-model";
+import { boardSummary, queueDrawing } from "../shared/whiteboard-model";
+import {
+  addResponse,
+  formMetaOf,
+  makeQuestion,
+  publicForm,
+  questionsOf,
+  responseRows,
+  summarize,
+  validateAnswers,
+  type PublicForm,
+  type Question,
+} from "../shared/forms-model";
 
 /** Take a version-history snapshot at most this often while people edit. */
 const SNAPSHOT_EVERY_MS = 10 * 60_000;
@@ -151,5 +164,52 @@ export class Doc extends YServer<Env> {
 
   async readDeck() {
     return deckOutline(this.document);
+  }
+
+  // ---------- RPC: whiteboards ----------
+
+  async queueDrawing(d: { mermaid?: string; shapes?: unknown[] }) {
+    const id = queueDrawing(this.document, d);
+    await this.onSave();
+    return id;
+  }
+
+  async readBoard() {
+    return boardSummary(this.document);
+  }
+
+  // ---------- RPC: forms ----------
+
+  async setupForm(description: string, questions: Partial<Question>[]) {
+    this.document.transact(() => {
+      if (description) formMetaOf(this.document).set("description", description.slice(0, 2000));
+      formMetaOf(this.document).set("accepting", true);
+      questionsOf(this.document).push(questions.slice(0, 50).map(makeQuestion));
+    }, "ai");
+    await this.onSave();
+    return questionsOf(this.document).length;
+  }
+
+  async getPublicForm(title: string): Promise<PublicForm> {
+    return publicForm(this.document, title);
+  }
+
+  async submitForm(title: string, input: unknown) {
+    const form = publicForm(this.document, title);
+    if (!form.accepting) return { ok: false as const, error: "This form is no longer accepting responses." };
+    if (!form.questions.length) return { ok: false as const, error: "This form has no questions yet." };
+    const v = validateAnswers(form.questions, input);
+    if (!v.ok) return v;
+    addResponse(this.document, v.answers);
+    await this.onSave();
+    return { ok: true as const };
+  }
+
+  async formSummary() {
+    return summarize(this.document);
+  }
+
+  async formRows() {
+    return responseRows(this.document);
   }
 }

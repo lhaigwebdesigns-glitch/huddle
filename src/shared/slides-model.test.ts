@@ -19,6 +19,12 @@ describe("slides model", () => {
     expect(deckOutline(doc)).toContain("Slide 3 [bullets] Plan");
   });
 
+  it("accepts bullets sent as an array (some models do this)", () => {
+    const doc = new Y.Doc();
+    slidesOf(doc).push([makeSlide({ title: "Why", body: ["Raise funds", "Have fun"] as unknown as string })]);
+    expect(bullets(readSlide(slidesOf(doc).get(0)).body)).toEqual(["Raise funds", "Have fun"]);
+  });
+
   it("rejects bad indexes and unsafe image URLs", () => {
     const doc = new Y.Doc();
     expect(() => applySlideOps(doc, [{ op: "delete", index: 1 }])).toThrow(/no slide 1/);

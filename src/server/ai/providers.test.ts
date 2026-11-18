@@ -59,6 +59,24 @@ describe("free provider router", () => {
     expect(res.content).toBe("ok");
   });
 
+  it("returns at the [DONE] marker even if the connection stays open", async () => {
+    vi.stubGlobal("fetch", async () => {
+      const enc = new TextEncoder();
+      const body = new ReadableStream({
+        start(c) {
+          c.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: "fast" } }] })}\n\ndata: [DONE]\n\n`));
+          // never closes
+        },
+      });
+      return new Response(body);
+    });
+    const res = await Promise.race([
+      chatWithFallback({ OPENROUTER_API_KEY: "k" } as any, { messages: [], onDelta: () => {} }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("hung waiting for close")), 1000)),
+    ]);
+    expect((res as any).content).toBe("fast");
+  });
+
   it("parses Groq/OpenAI-style retry hints", () => {
     expect(parseRetryAfter("Please try again in 4.125s.")).toBe(4.125);
     expect(parseRetryAfter("Please try again in 1m30s.")).toBe(90);
