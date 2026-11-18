@@ -38,7 +38,7 @@ function Field({ q, value, onChange }: { q: Question; value: Answers[string] | u
       return (
         <div className="mt-2 flex flex-wrap items-center gap-2" role="radiogroup" aria-labelledby={`${id}-label`}>
           {Array.from({ length: q.max ?? 5 }, (_, i) => i + 1).map((n) => (
-            <label key={n} className={`flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border ${value === n ? "border-indigo-600 bg-indigo-600 text-white" : "border-zinc-300 dark:border-zinc-700"}`}>
+            <label key={n} className={`flex h-10 w-10 cursor-pointer items-center justify-center rounded-full border ${value === n ? "border-fg bg-primary text-primary-fg" : "border-zinc-300 dark:border-zinc-700"}`}>
               <input type="radio" name={id} className="sr-only" checked={value === n} onChange={() => onChange(n)} required={q.required} />
               {n}
             </label>
@@ -82,13 +82,13 @@ export default function PublicForm() {
   };
 
   return (
-    <div className="min-h-full bg-indigo-50/60 px-4 py-10 dark:bg-zinc-950">
+    <div className="min-h-full bg-surface-2 px-4 py-10 dark:bg-zinc-950">
       <main className="mx-auto max-w-xl">
         {!form && !err && <p className="text-center text-zinc-500">Loading form…</p>}
         {!form && err && <p className="rounded-xl bg-white p-6 text-center shadow-sm dark:bg-zinc-900">{err}</p>}
         {form && (
           <>
-            <header className="rounded-2xl border-t-8 border-indigo-600 bg-white p-6 shadow-sm dark:bg-zinc-900">
+            <header className="rounded-2xl border border-line bg-white p-6 shadow-sm dark:bg-zinc-900">
               <h1 className="text-2xl font-bold" data-testid="public-form-title">{form.title}</h1>
               {form.description && <p className="mt-2 whitespace-pre-wrap text-zinc-600 dark:text-zinc-400">{form.description}</p>}
               {!form.accepting && <p className="mt-3 rounded-lg bg-amber-50 p-2 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">This form isn't accepting responses right now.</p>}
@@ -102,7 +102,7 @@ export default function PublicForm() {
                     setAnswers({});
                     setSent(false);
                   }}
-                  className="mt-4 text-sm text-indigo-600 hover:underline dark:text-indigo-400"
+                  className="mt-4 text-sm text-fg hover:underline "
                 >
                   Submit another response
                 </button>
@@ -124,7 +124,7 @@ export default function PublicForm() {
                 {err && <p className="text-sm text-red-600" role="alert">{err}</p>}
                 <button
                   disabled={busy || !form.accepting}
-                  className="rounded-lg bg-indigo-600 px-5 py-2 font-semibold text-white hover:bg-indigo-500 disabled:opacity-50"
+                  className="rounded-lg bg-primary px-5 py-2 font-semibold text-primary-fg hover:bg-primary-hover disabled:opacity-50"
                   data-testid="form-submit"
                 >
                   {busy ? "Sending…" : "Submit"}

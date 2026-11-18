@@ -307,7 +307,7 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
         role="gridcell"
         aria-selected={inSel}
         data-cell={name}
-        className={`absolute truncate border-b border-r border-zinc-200 px-1.5 text-sm leading-[27px] dark:border-zinc-800 ${isError(v) ? "text-red-600" : ""} ${inSel && !isActive ? "bg-indigo-50 dark:bg-indigo-950/40" : ""}`}
+        className={`absolute truncate border-b border-r border-zinc-200 px-1.5 text-sm leading-[27px] dark:border-zinc-800 ${isError(v) ? "text-red-600" : ""} ${inSel && !isActive ? "bg-surface-2 " : ""}`}
         style={{
           top: r * ROW_H,
           left: colLeft[c],
@@ -319,7 +319,7 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
           background: inSel && !isActive ? undefined : cell?.bg || undefined,
           // Fills are light pastels, so keep text dark on them in dark mode too.
           color: cell?.bg && !(inSel && !isActive) && !isError(v) ? "#18181b" : undefined,
-          outline: isActive ? "2px solid #6366f1" : peer ? `2px solid ${peer.color}` : undefined,
+          outline: isActive ? "2px solid var(--fg)" : peer ? `2px solid ${peer.color}` : undefined,
           outlineOffset: -1,
           zIndex: isActive || peer ? 2 : undefined,
         }}
@@ -457,7 +457,7 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
             {Array.from({ length: cols }, (_, c) => (
               <div
                 key={c}
-                className={`absolute top-0 select-none border-b border-r border-zinc-200 bg-zinc-100 text-center text-xs leading-[27px] text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 ${c >= n.c0 && c <= n.c1 ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" : ""}`}
+                className={`absolute top-0 select-none border-b border-r border-zinc-200 bg-zinc-100 text-center text-xs leading-[27px] text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 ${c >= n.c0 && c <= n.c1 ? "bg-surface-2 text-fg  " : ""}`}
                 style={{ left: colLeft[c], width: widthOf(c), height: ROW_H }}
                 onMouseDown={() => setSel({ c, r: 0, c2: c, r2: rows - 1 })}
               >
@@ -471,7 +471,7 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
             {Array.from({ length: lastRow - firstRow + 1 }, (_, i) => firstRow + i).map((r) => (
               <div key={r}>
                 <div
-                  className={`sticky left-0 z-10 select-none border-b border-r border-zinc-200 bg-zinc-100 text-center text-xs leading-[27px] text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 ${r >= n.r0 && r <= n.r1 ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300" : ""}`}
+                  className={`sticky left-0 z-10 select-none border-b border-r border-zinc-200 bg-zinc-100 text-center text-xs leading-[27px] text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 ${r >= n.r0 && r <= n.r1 ? "bg-surface-2 text-fg  " : ""}`}
                   style={{ position: "absolute", top: r * ROW_H, width: HEAD_W, height: ROW_H }}
                   onMouseDown={() => setSel({ c: 0, r, c2: cols - 1, r2: r })}
                 >

@@ -4,6 +4,31 @@ import { Markdown } from "./Markdown";
 import { expandSlash, matchSlash, parsePoll } from "../lib/slash";
 import type { Attachment } from "../../shared/protocol";
 import { uploadFile } from "../lib/uploads";
+import {
+  ArrowUp,
+  BookOpen,
+  Brain,
+  Check,
+  Copy,
+  FileText,
+  Globe,
+  Image as ImageIcon,
+  Lightbulb,
+  Mic,
+  Paperclip,
+  Pencil,
+  RotateCcw,
+  Search,
+  SmilePlus,
+  Sparkles,
+  Square,
+  Table2,
+  ThumbsDown,
+  ThumbsUp,
+  Volume2,
+  Wrench,
+  X,
+} from "lucide-react";
 
 function Attachments({ items, send }: { items: Attachment[]; send: (m: ClientMsg) => void }) {
   if (!items.length) return null;
@@ -14,20 +39,20 @@ function Attachments({ items, send }: { items: Attachment[]; send: (m: ClientMsg
       {!!images.length && (
         <div className="flex flex-wrap gap-2">
           {images.map((a) => (
-            <a key={a.id} href={a.url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+            <a key={a.id} href={a.url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-2xl border border-line">
               <img src={a.url} alt={a.name} loading="lazy" className="max-h-56 max-w-[16rem] object-cover" />
             </a>
           ))}
         </div>
       )}
       {files.map((a) => (
-        <div key={a.id} className="flex max-w-md items-center gap-2 rounded-lg border border-zinc-200 px-2 py-1.5 text-sm dark:border-zinc-800" data-testid="file-chip">
-          <span aria-hidden>{a.type === "application/pdf" ? "📕" : a.type === "text/csv" ? "📊" : "📄"}</span>
+        <div key={a.id} className="flex max-w-md items-center gap-2.5 rounded-xl border border-line px-3 py-2 text-sm" data-testid="file-chip">
+          {a.type === "text/csv" ? <Table2 className="h-4 w-4 shrink-0 text-fg-muted" /> : <FileText className="h-4 w-4 shrink-0 text-fg-muted" />}
           <a href={a.url} className="min-w-0 flex-1 truncate hover:underline" title={a.name}>{a.name}</a>
-          <span className="text-xs text-zinc-400">{Math.max(1, Math.round(a.size / 1024))} KB{a.indexed ? " · searchable" : ""}</span>
+          <span className="text-xs text-fg-subtle tabular">{Math.max(1, Math.round(a.size / 1024))} KB{a.indexed ? " · searchable" : ""}</span>
           {a.type === "text/csv" && (
             <button
-              className="rounded bg-indigo-600 px-1.5 py-0.5 text-xs font-medium text-white"
+              className="press rounded-full bg-primary px-2.5 py-0.5 text-xs font-medium text-primary-fg hover:bg-primary-hover"
               onClick={async () => send({ t: "import_csv", title: a.name.replace(/\.csv$/i, ""), csv: await (await fetch(a.url)).text() })}
               data-testid="open-as-sheet"
             >
@@ -57,7 +82,7 @@ function PollCard({ id, poll, me, members, send }: { id: string; poll: Poll; me:
   const total = Object.values(poll.votes).reduce((n, v) => n + v.length, 0);
   const nameOf = (uid: string) => members.find((m) => m.uid === uid)?.name ?? "someone";
   return (
-    <div className="mt-2 max-w-md rounded-xl border border-zinc-200 p-3 dark:border-zinc-800" data-testid="poll">
+    <div className="mt-2 max-w-md rounded-2xl border border-line p-4" data-testid="poll">
       <div className="font-medium">{poll.question}</div>
       <div className="mt-2 space-y-1.5">
         {poll.options.map((o, i) => {
@@ -68,21 +93,21 @@ function PollCard({ id, poll, me, members, send }: { id: string; poll: Poll; me:
             <button
               key={i}
               onClick={() => send({ t: "vote", id, option: i })}
-              className={`relative block w-full overflow-hidden rounded-lg border px-3 py-1.5 text-left text-sm ${mine ? "border-indigo-500" : "border-zinc-200 hover:border-indigo-300 dark:border-zinc-700"}`}
+              className={`press relative block w-full overflow-hidden rounded-xl border px-3 py-2 text-left text-sm ${mine ? "border-fg" : "border-line hover:border-line-strong"}`}
               aria-pressed={mine}
               title={voters.map(nameOf).join(", ") || "No votes yet"}
               data-testid="poll-option"
             >
-              <span className="absolute inset-y-0 left-0 bg-indigo-100 dark:bg-indigo-950/60" style={{ width: `${pct}%` }} aria-hidden />
+              <span className="absolute inset-y-0 left-0 bg-surface-2 transition-[width] duration-500 ease-out" style={{ width: `${pct}%` }} aria-hidden />
               <span className="relative flex justify-between gap-2">
                 <span>{mine ? "✓ " : ""}{o}</span>
-                <span className="text-xs text-zinc-500">{voters.length} · {pct}%</span>
+                <span className="text-xs text-fg-muted tabular">{voters.length} · {pct}%</span>
               </span>
             </button>
           );
         })}
       </div>
-      <div className="mt-1.5 text-xs text-zinc-500">{total} vote{total === 1 ? "" : "s"} · click again to take your vote back</div>
+      <div className="mt-2 text-xs text-fg-subtle">{total} vote{total === 1 ? "" : "s"} · click again to take your vote back</div>
     </div>
   );
 }
@@ -97,7 +122,7 @@ function Reactions({ m, me, members, send }: { m: ChatMessage; me: Member; membe
         <button
           key={emoji}
           onClick={() => send({ t: "react", id: m.id, emoji })}
-          className={`rounded-full border px-1.5 text-xs ${uids.includes(me.uid) ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-950/50" : "border-zinc-200 dark:border-zinc-700"}`}
+          className={`press rounded-full border px-2 py-0.5 text-xs tabular ${uids.includes(me.uid) ? "border-fg/40 bg-surface-2" : "border-line hover:border-line-strong"}`}
           title={uids.map(nameOf).join(", ")}
           aria-label={`${emoji} ${uids.length}, react`}
           data-testid="reaction"
@@ -108,17 +133,17 @@ function Reactions({ m, me, members, send }: { m: ChatMessage; me: Member; membe
       <span className="relative">
         <button
           onClick={() => setOpen((o) => !o)}
-          className={`rounded-full px-1.5 text-xs text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 ${entries.length ? "" : "opacity-0 focus:opacity-100 group-hover:opacity-100"}`}
+          className={`press flex h-6 w-6 items-center justify-center rounded-full text-fg-subtle hover:bg-surface-2 hover:text-fg ${entries.length ? "" : "opacity-0 focus:opacity-100 group-hover:opacity-100"}`}
           aria-label="Add reaction"
           aria-expanded={open}
           data-testid="add-reaction"
         >
-          ☺+
+          <SmilePlus className="h-3.5 w-3.5" />
         </button>
         {open && (
-          <span className="absolute bottom-full left-0 z-10 mb-1 flex gap-0.5 rounded-full border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900" onMouseLeave={() => setOpen(false)}>
+          <span className="pop absolute bottom-full left-0 z-10 mb-1.5 flex gap-0.5 rounded-full border border-line bg-surface p-1 shadow-[0_12px_32px_-10px_rgba(0,0,0,0.3)] [--origin:bottom_left]" onMouseLeave={() => setOpen(false)}>
             {REACTIONS.map((e) => (
-              <button key={e} onClick={() => (send({ t: "react", id: m.id, emoji: e }), setOpen(false))} className="rounded-full px-1 text-base hover:bg-zinc-100 dark:hover:bg-zinc-800" aria-label={`React ${e}`}>
+              <button key={e} onClick={() => (send({ t: "react", id: m.id, emoji: e }), setOpen(false))} className="press rounded-full px-1.5 py-0.5 text-base hover:bg-surface-2" aria-label={`React ${e}`}>
                 {e}
               </button>
             ))}
@@ -129,26 +154,28 @@ function Reactions({ m, me, members, send }: { m: ChatMessage; me: Member; membe
   );
 }
 
-const STEP_ICON: Record<string, string> = { search: "🔎", fetch: "📖", skill: "🧠", doc: "📄", other: "⚙️" };
+const STEP_ICON: Record<string, typeof Search> = { search: Globe, fetch: BookOpen, skill: Brain, doc: FileText, other: Wrench };
 
 /** Messages from the same person within this window are grouped under one header. */
 const GROUP_MS = 5 * 60_000;
 
 const SUGGESTIONS = [
-  { label: "🔎 Search the news", text: "Search the web for this week's top science news and summarize 3 stories with sources." },
-  { label: "📄 Write a plan doc", text: "Write a project plan doc for our group project with goals, tasks and a timeline." },
-  { label: "🧠 Brainstorm ideas", text: "Help us brainstorm 10 creative ideas for a weekend project, then pick the best 3." },
-  { label: "🧮 Explain step by step", text: "Explain how compound interest works, step by step, with a small example." },
+  { label: "Search the news", Icon: Globe, text: "Search the web for this week's top science news and summarize 3 stories with sources." },
+  { label: "Write a plan doc", Icon: FileText, text: "Write a project plan doc for our group project with goals, tasks and a timeline." },
+  { label: "Brainstorm ideas", Icon: Lightbulb, text: "Help us brainstorm 10 creative ideas for a weekend project, then pick the best 3." },
+  { label: "Explain step by step", Icon: Brain, text: "Explain how compound interest works, step by step, with a small example." },
 ];
 
 function Avatar({ name, color, ai }: { name: string; color: string; ai?: boolean }) {
+  if (ai)
+    return (
+      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-fg" aria-hidden>
+        <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
+      </div>
+    );
   return (
-    <div
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-semibold text-white"
-      style={{ background: ai ? "linear-gradient(135deg,#6366f1,#a855f7)" : color }}
-      aria-hidden
-    >
-      {ai ? "✦" : name.slice(0, 1).toUpperCase()}
+    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold text-white" style={{ background: color }} aria-hidden>
+      {name.slice(0, 1).toUpperCase()}
     </div>
   );
 }
@@ -177,54 +204,58 @@ function Feedback({ msg, room, me, canRegenerate, onRegenerate }: { msg: ChatMes
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ room, uid: me.uid, name: me.name, messageId: msg.id, rating, comment: text, excerpt: msg.content.slice(0, 400) }),
     });
-  const btn = "rounded px-1 hover:text-zinc-700 dark:hover:text-zinc-200";
+  const btn = "press flex h-7 items-center gap-1 rounded-lg px-1.5 text-fg-subtle hover:bg-surface-2 hover:text-fg";
+  const ic = "h-3.5 w-3.5";
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-      <button className={`${btn} ${sent === 1 ? "text-green-600" : ""}`} title="Good response" aria-label="Good response" onClick={() => (setSent(1), submit(1))}>
-        👍
+    <div className="-ml-1.5 mt-1.5 flex flex-wrap items-center gap-0.5 text-xs text-fg-subtle">
+      <button className={`${btn} ${sent === 1 ? "text-fg" : ""}`} title="Good response" aria-label="Good response" onClick={() => (setSent(1), submit(1))}>
+        <ThumbsUp className={ic} fill={sent === 1 ? "currentColor" : "none"} />
       </button>
-      <button className={`${btn} ${sent === -1 ? "text-red-600" : ""}`} title="Bad response" aria-label="Bad response" onClick={() => (setSent(-1), setAsking(true))}>
-        👎
+      <button className={`${btn} ${sent === -1 ? "text-fg" : ""}`} title="Bad response" aria-label="Bad response" onClick={() => (setSent(-1), setAsking(true))}>
+        <ThumbsDown className={ic} fill={sent === -1 ? "currentColor" : "none"} />
       </button>
       <button
         className={btn}
+        title="Copy"
+        aria-label={copied ? "Copied" : "Copy"}
         onClick={() => {
           navigator.clipboard.writeText(msg.content);
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
         }}
       >
-        {copied ? "Copied" : "Copy"}
+        {copied ? <Check className={ic} /> : <Copy className={ic} />}
       </button>
       {canRegenerate && (
-        <button className={btn} onClick={onRegenerate} title="Ask the AI to answer again" data-testid="regenerate">
-          ↻ Regenerate
+        <button className={btn} onClick={onRegenerate} title="Ask the AI to answer again" aria-label="Regenerate" data-testid="regenerate">
+          <RotateCcw className={ic} />
         </button>
       )}
       {"speechSynthesis" in window && (
         <button
           className={btn}
           title="Read this reply aloud"
+          aria-label="Read aloud"
           onClick={() => {
             speechSynthesis.cancel();
             speechSynthesis.speak(new SpeechSynthesisUtterance(speakable(msg.content)));
           }}
         >
-          🔊
+          <Volume2 className={ic} />
         </button>
       )}
-      {msg.meta?.model && <span className="truncate">· {msg.meta.model}</span>}
+      {msg.meta?.model && <span className="ml-1.5 truncate">{msg.meta.model}</span>}
       {asking && (
-        <form className="flex w-full gap-2" onSubmit={(e) => (e.preventDefault(), submit(-1, comment), setAsking(false))}>
+        <form className="mt-1 flex w-full gap-2" onSubmit={(e) => (e.preventDefault(), submit(-1, comment), setAsking(false))}>
           <input
             autoFocus
-            className="flex-1 rounded border border-zinc-300 bg-transparent px-2 py-1 text-zinc-700 dark:border-zinc-700 dark:text-zinc-200"
+            className="h-8 flex-1 rounded-lg border border-line-strong bg-bg px-2.5 text-sm text-fg outline-none focus:border-fg"
             placeholder="What went wrong? (optional)"
             aria-label="What went wrong?"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
           />
-          <button className="rounded bg-zinc-800 px-2 text-white">Send</button>
+          <button className="press h-8 rounded-lg bg-primary px-3 text-sm font-medium text-primary-fg hover:bg-primary-hover">Send</button>
         </form>
       )}
     </div>
@@ -244,7 +275,7 @@ function EditBox({ initial, onSave, onCancel }: { initial: string; onSave: (t: s
       <textarea
         autoFocus
         rows={Math.min(8, t.split("\n").length + 1)}
-        className="w-full resize-none rounded-lg border border-indigo-300 bg-white p-2 text-[15px] outline-none dark:border-indigo-700 dark:bg-zinc-900"
+        className="w-full resize-none rounded-2xl border border-line-strong bg-bg p-3 text-[15px] outline-none focus:border-fg"
         value={t}
         aria-label="Edit message"
         onChange={(e) => setT(e.target.value)}
@@ -256,11 +287,11 @@ function EditBox({ initial, onSave, onCancel }: { initial: string; onSave: (t: s
           }
         }}
       />
-      <div className="mt-1 flex gap-2 text-xs">
-        <button className="rounded bg-indigo-600 px-2 py-1 font-medium text-white">Save & resend</button>
-        <button type="button" onClick={onCancel} className="rounded px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800">
+      <div className="mt-1.5 flex justify-end gap-2 text-sm">
+        <button type="button" onClick={onCancel} className="press rounded-full px-3 py-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg">
           Cancel
         </button>
+        <button className="press rounded-full bg-primary px-3.5 py-1.5 font-medium text-primary-fg hover:bg-primary-hover">Save & resend</button>
       </div>
     </form>
   );
@@ -291,40 +322,43 @@ function MessageView({
   const color = author?.color ?? "#71717a";
   return (
     <div
-      className={`group flex gap-3 px-4 ${grouped ? "py-0.5" : "pt-3 pb-0.5"}`}
+      className={`group flex gap-3 px-4 sm:px-6 ${grouped ? "py-0.5" : "pt-5 pb-0.5"}`}
       data-testid={isAi ? "ai-message" : "user-message"}
     >
       {grouped ? (
-        <div className="w-8 shrink-0 pt-1 text-right text-[10px] text-zinc-400 opacity-0 group-hover:opacity-100">{timeOf(m.createdAt)}</div>
+        <div className="w-7 shrink-0 pt-1 text-right text-[10px] text-fg-subtle opacity-0 tabular group-hover:opacity-100">{timeOf(m.createdAt)}</div>
       ) : (
         <Avatar name={m.authorName} color={color} ai={isAi} />
       )}
       <div className="min-w-0 flex-1">
         {!grouped && (
-          <div className="flex items-baseline gap-2">
-            <span className="font-semibold">{m.authorName}</span>
-            <span className="text-xs text-zinc-400">{timeOf(m.createdAt)}</span>
+          <div className="flex h-7 items-baseline gap-2 pt-1">
+            <span className="text-[14px] font-semibold">{m.authorName}</span>
+            <span className="text-xs text-fg-subtle tabular">{timeOf(m.createdAt)}</span>
           </div>
         )}
         {isAi && !!m.meta?.steps?.length && (
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {m.meta.steps.map((s, i) => (
-              <span key={i} className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
-                {STEP_ICON[s.kind] ?? "⚙️"} {s.label}
-              </span>
-            ))}
+          <div className="mb-1 mt-1 flex flex-wrap gap-1.5">
+            {m.meta.steps.map((s, i) => {
+              const I = STEP_ICON[s.kind] ?? Wrench;
+              return (
+                <span key={i} className="inline-flex items-center gap-1.5 rounded-full border border-line px-2.5 py-0.5 text-xs text-fg-muted">
+                  <I className="h-3 w-3" /> {s.label}
+                </span>
+              );
+            })}
           </div>
         )}
         {isAi ? (
           m.content ? (
-            <div className={m.meta?.error ? "text-amber-700 dark:text-amber-400" : ""}>
+            <div className={`text-[15px] leading-[1.65] ${m.meta?.error ? "text-amber-700 dark:text-amber-400" : ""}`}>
               <Markdown text={m.content} />
             </div>
           ) : (
-            <div className="mt-2 flex gap-1 text-zinc-400" aria-label="AI is thinking">
-              <span className="typing-dot">●</span>
-              <span className="typing-dot">●</span>
-              <span className="typing-dot">●</span>
+            <div className="mt-2 flex gap-1" aria-label="AI is thinking">
+              <span className="typing-dot h-1.5 w-1.5 rounded-full bg-fg-subtle" />
+              <span className="typing-dot h-1.5 w-1.5 rounded-full bg-fg-subtle" />
+              <span className="typing-dot h-1.5 w-1.5 rounded-full bg-fg-subtle" />
             </div>
           )
         ) : editing ? (
@@ -338,18 +372,22 @@ function MessageView({
           />
         ) : (
           <div className="flex items-start gap-2">
-            <div className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[15px]">
-              {m.meta?.poll ? null : m.content}
-              {m.meta?.edited && <span className="ml-1 text-xs text-zinc-400">(edited)</span>}
-            </div>
+            {(m.content || m.meta?.edited) && !m.meta?.poll ? (
+              <div className="w-fit min-w-0 max-w-full whitespace-pre-wrap break-words rounded-2xl rounded-tl-md bg-surface-2 px-3.5 py-2 text-[15px] leading-relaxed">
+                {m.content}
+                {m.meta?.edited && <span className="ml-1 text-xs text-fg-subtle">(edited)</span>}
+              </div>
+            ) : (
+              <div className="min-w-0 flex-1" />
+            )}
             {canEdit && (
               <button
                 onClick={() => setEditing(true)}
-                className="shrink-0 rounded px-1.5 text-xs text-zinc-400 opacity-0 hover:bg-zinc-100 hover:text-zinc-700 focus:opacity-100 group-hover:opacity-100 dark:hover:bg-zinc-800 dark:hover:text-zinc-200"
+                className="press mt-1 flex shrink-0 items-center gap-1 rounded-lg px-1.5 py-1 text-xs text-fg-subtle opacity-0 hover:bg-surface-2 hover:text-fg focus:opacity-100 group-hover:opacity-100"
                 title="Edit message"
                 data-testid="edit-message"
               >
-                ✎ Edit
+                <Pencil className="h-3 w-3" /> Edit
               </button>
             )}
           </div>
@@ -362,7 +400,7 @@ function MessageView({
                 href={s.url}
                 target="_blank"
                 rel="noreferrer noopener"
-                className="max-w-[16rem] truncate rounded-md border border-zinc-200 px-2 py-0.5 text-xs text-zinc-600 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                className="press max-w-[16rem] truncate rounded-full border border-line px-2.5 py-0.5 text-xs text-fg-muted hover:border-line-strong hover:text-fg"
                 title={s.url}
               >
                 {i + 1}. {safeHost(s.url)}
@@ -522,24 +560,25 @@ export function Chat({
         }}
       >
         {messages.length === 0 && (
-          <div className="mx-auto mt-14 max-w-lg px-6 text-center text-zinc-500">
-            <div className="text-4xl">👋</div>
-            <p className="mt-3 font-medium text-zinc-700 dark:text-zinc-300">This room is ready.</p>
-            <p className="mt-1 text-sm">Share the party code so friends can join, then ask the AI anything. Try one of these:</p>
-            <div className="mt-4 grid gap-2 sm:grid-cols-2" data-testid="suggestions">
+          <div className="rise mx-auto mt-[12vh] max-w-xl px-6 text-center">
+            <h2 className="text-[28px] font-semibold tracking-[-0.025em]">What are we working on?</h2>
+            <p className="mx-auto mt-2 max-w-md text-[15px] text-fg-muted">Share the party code so friends can join, then ask the AI anything.</p>
+            <div className="mt-8 grid gap-2 text-left sm:grid-cols-2" data-testid="suggestions">
               {SUGGESTIONS.map((s) => (
                 <button
                   key={s.label}
                   onClick={() => submit(s.text)}
-                  className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-left text-sm text-zinc-700 hover:border-indigo-300 hover:bg-indigo-50 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-indigo-800 dark:hover:bg-indigo-950/40"
+                  className="press group rounded-2xl border border-line px-4 py-3 hover:border-line-strong hover:bg-sidebar"
                 >
-                  <div className="font-medium">{s.label}</div>
-                  <div className="mt-0.5 line-clamp-2 text-xs text-zinc-500">{s.text}</div>
+                  <div className="flex items-center gap-2 text-[14px] font-medium text-fg">
+                    <s.Icon className="h-4 w-4 text-fg-muted group-hover:text-fg" /> {s.label}
+                  </div>
+                  <div className="mt-1 line-clamp-2 text-[13px] leading-snug text-fg-subtle">{s.text}</div>
                 </button>
               ))}
             </div>
-            <p className="mt-4 text-xs">
-              Tip: type <kbd className="rounded border border-zinc-300 px-1 dark:border-zinc-700">/</kbd> for shortcuts like /doc and /search.
+            <p className="mt-6 text-xs text-fg-subtle">
+              Type <kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono">/</kbd> for shortcuts like /doc and /search.
             </p>
           </div>
         )}
@@ -552,10 +591,8 @@ export function Chat({
             return (
               <div key={m.id}>
                 {newDay && (
-                  <div className="my-3 flex items-center gap-3 px-4 text-xs text-zinc-400" role="separator">
-                    <div className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
+                  <div className="mb-1 mt-6 text-center text-xs font-medium text-fg-subtle" role="separator">
                     {dayLabel(m.createdAt)}
-                    <div className="h-px flex-1 bg-zinc-200 dark:bg-zinc-800" />
                   </div>
                 )}
                 <MessageView
@@ -574,11 +611,11 @@ export function Chat({
         </div>
       </div>
 
-      <div className="border-t border-zinc-200 bg-white/80 px-3 pb-3 pt-2 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80">
+      <div className="px-3 pb-3 sm:px-4 sm:pb-4">
         <div className="relative mx-auto max-w-3xl">
           {menu.length > 0 && (
             <ul
-              className="absolute bottom-full left-0 mb-2 w-full max-w-md overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+              className="pop absolute bottom-full left-0 mb-2 w-full max-w-md overflow-hidden rounded-2xl border border-line bg-surface p-1 shadow-[0_16px_40px_-12px_rgba(0,0,0,0.25)] [--origin:bottom_left]"
               role="listbox"
               aria-label="Slash commands"
               data-testid="slash-menu"
@@ -588,17 +625,17 @@ export function Chat({
                   <button
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => pickCommand(c.name)}
-                    className={`flex w-full items-baseline gap-2 px-3 py-2 text-left text-sm ${i === menuIndex ? "bg-indigo-50 dark:bg-indigo-950/40" : "hover:bg-zinc-50 dark:hover:bg-zinc-800"}`}
+                    className={`flex w-full items-baseline gap-2 rounded-xl px-3 py-2 text-left text-sm ${i === menuIndex ? "bg-surface-2" : "hover:bg-surface-2"}`}
                   >
                     <span className="font-mono font-medium">/{c.name}</span>
-                    <span className="text-xs text-zinc-400">{c.hint}</span>
-                    <span className="ml-auto text-xs text-zinc-500">{c.description}</span>
+                    <span className="text-xs text-fg-subtle">{c.hint}</span>
+                    <span className="ml-auto text-xs text-fg-muted">{c.description}</span>
                   </button>
                 </li>
               ))}
             </ul>
           )}
-          <div className="h-5 text-xs text-zinc-500" aria-live="polite">
+          <div className="h-6 px-2 text-xs text-fg-subtle" aria-live="polite">
             {localProgress
               ? `Loading local model on your device… ${Math.round(localProgress.pct * 100)}%`
               : typers.length > 0
@@ -608,18 +645,21 @@ export function Chat({
                   : ""}
           </div>
           {(pending.length > 0 || uploading > 0 || uploadErr) && (
-            <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-xs" data-testid="pending-uploads">
+            <div className="mb-2 flex flex-wrap items-center gap-1.5 text-xs" data-testid="pending-uploads">
               {pending.map((a) => (
-                <span key={a.id} className="flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-2 py-0.5 dark:border-zinc-700 dark:bg-zinc-900">
-                  {a.type.startsWith("image/") ? "🖼️" : "📎"} <span className="max-w-[10rem] truncate">{a.name}</span>
-                  <button onClick={() => setPending((p) => p.filter((x) => x.id !== a.id))} aria-label={`Remove ${a.name}`} className="text-zinc-400 hover:text-red-600">✕</button>
+                <span key={a.id} className="flex items-center gap-1.5 rounded-full border border-line bg-surface py-1 pl-2.5 pr-1">
+                  {a.type.startsWith("image/") ? <ImageIcon className="h-3.5 w-3.5 text-fg-muted" /> : <Paperclip className="h-3.5 w-3.5 text-fg-muted" />}
+                  <span className="max-w-[10rem] truncate">{a.name}</span>
+                  <button onClick={() => setPending((p) => p.filter((x) => x.id !== a.id))} aria-label={`Remove ${a.name}`} className="rounded-full p-0.5 text-fg-subtle hover:bg-surface-2 hover:text-fg">
+                    <X className="h-3 w-3" />
+                  </button>
                 </span>
               ))}
-              {uploading > 0 && <span className="text-zinc-500">Uploading {uploading}…</span>}
-              {uploadErr && <span className="text-red-600" role="alert">{uploadErr}</span>}
+              {uploading > 0 && <span className="text-fg-subtle">Uploading {uploading}…</span>}
+              {uploadErr && <span className="text-red-600 dark:text-red-400" role="alert">{uploadErr}</span>}
             </div>
           )}
-          <div className="flex items-end gap-2 rounded-2xl border border-zinc-300 bg-white p-2 shadow-sm focus-within:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-900">
+          <div className="rounded-[24px] border border-line-strong bg-surface p-2 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.12)] transition-[border-color,box-shadow] duration-200 focus-within:border-fg/40 focus-within:shadow-[0_10px_30px_-12px_rgba(0,0,0,0.2)]">
             <input
               ref={fileRef}
               type="file"
@@ -632,25 +672,6 @@ export function Chat({
               }}
               data-testid="file-input"
             />
-            <button
-              onClick={() => fileRef.current?.click()}
-              className="rounded-xl px-2 py-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
-              title="Attach images, PDFs, CSV or text (or drop files here)"
-              aria-label="Attach files"
-            >
-              📎
-            </button>
-            {SpeechRecognitionCtor && (
-              <button
-                onClick={toggleMic}
-                className={`rounded-xl px-2 py-2 ${listening ? "animate-pulse bg-red-100 text-red-600 dark:bg-red-950/50" : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
-                title={listening ? "Stop listening" : "Speak your message"}
-                aria-label={listening ? "Stop voice input" : "Voice input"}
-                aria-pressed={listening}
-              >
-                🎤
-              </button>
-            )}
             <textarea
               ref={inputRef}
               data-testid="composer"
@@ -658,7 +679,7 @@ export function Chat({
               value={text}
               aria-label="Message"
               placeholder={`Message the room${settings.aiMode === "mention" ? " (use @ai for the AI)" : " and the AI"}… (type / for shortcuts)`}
-              className="max-h-48 min-h-[2.25rem] flex-1 resize-none bg-transparent px-2 py-1.5 outline-none"
+              className="block max-h-48 min-h-[2.75rem] w-full resize-none bg-transparent px-2.5 py-2 text-[15px] leading-relaxed outline-none focus-visible:outline-none"
               onChange={(e) => {
                 setText(e.target.value);
                 resize(e.target);
@@ -685,21 +706,46 @@ export function Chat({
                 }
               }}
             />
-            {streaming ? (
+            <div className="flex items-center gap-1">
               <button
-                onClick={() => send({ t: "stop" })}
-                className="rounded-xl bg-zinc-200 px-3 py-2 text-sm font-medium hover:bg-zinc-300 dark:bg-zinc-800 dark:hover:bg-zinc-700"
+                onClick={() => fileRef.current?.click()}
+                className="press flex h-8 w-8 items-center justify-center rounded-full text-fg-muted hover:bg-surface-2 hover:text-fg"
+                title="Attach images, PDFs, CSV or text (or drop files here)"
+                aria-label="Attach files"
               >
-                ■ Stop
+                <Paperclip className="h-4 w-4" />
               </button>
-            ) : null}
-            <button
-              onClick={() => submit()}
-              disabled={(!text.trim() && !pending.length) || uploading > 0}
-              className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
-            >
-              Send
-            </button>
+              {SpeechRecognitionCtor && (
+                <button
+                  onClick={toggleMic}
+                  className={`press flex h-8 w-8 items-center justify-center rounded-full ${listening ? "animate-pulse bg-red-100 text-red-600 dark:bg-red-950/50 dark:text-red-400" : "text-fg-muted hover:bg-surface-2 hover:text-fg"}`}
+                  title={listening ? "Stop listening" : "Speak your message"}
+                  aria-label={listening ? "Stop voice input" : "Voice input"}
+                  aria-pressed={listening}
+                >
+                  <Mic className="h-4 w-4" />
+                </button>
+              )}
+              <span className="flex-1" />
+              {streaming ? (
+                <button
+                  onClick={() => send({ t: "stop" })}
+                  className="press flex h-8 items-center gap-1.5 rounded-full border border-line-strong px-3 text-[13px] font-medium hover:bg-surface-2"
+                  aria-label="Stop"
+                >
+                  <Square className="h-3 w-3" fill="currentColor" /> Stop
+                </button>
+              ) : null}
+              <button
+                onClick={() => submit()}
+                disabled={(!text.trim() && !pending.length) || uploading > 0}
+                className="press flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-fg hover:bg-primary-hover disabled:bg-line-strong disabled:text-bg"
+                aria-label="Send"
+                title="Send"
+              >
+                <ArrowUp className="h-4 w-4" strokeWidth={2.25} />
+              </button>
+            </div>
           </div>
         </div>
       </div>

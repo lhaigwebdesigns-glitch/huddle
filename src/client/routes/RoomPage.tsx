@@ -9,29 +9,29 @@ import { Drive } from "../components/Drive";
 import { setEditorSender } from "../lib/editorBridge";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { FeedbackDialog } from "../components/FeedbackDialog";
+import { ArrowLeft, ArrowRight, Check, Cloud, Copy, Cpu, Link2, Menu, MessageSquare, Settings, X } from "lucide-react";
+import { Button, Input, Logo, ThemeToggle } from "../components/ui";
+
+const ROW = "press flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13.5px] text-fg-muted hover:bg-accent-soft hover:text-fg";
 
 function NamePrompt({ onDone }: { onDone: (n: string) => void }) {
   const [n, setN] = useState("");
   return (
-    <div className="flex min-h-full items-center justify-center p-4">
+    <div className="flex min-h-full items-center justify-center bg-sidebar p-4">
       <form
-        className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900"
+        className="rise w-full max-w-sm rounded-[24px] border border-line bg-bg p-7 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.18)]"
         onSubmit={(e) => {
           e.preventDefault();
           if (n.trim()) onDone(n.trim());
         }}
       >
-        <h1 className="text-xl font-semibold">You're invited to a Huddle 👋</h1>
-        <p className="mt-1 text-sm text-zinc-500">Pick a name so others know who you are.</p>
-        <input
-          autoFocus
-          maxLength={32}
-          value={n}
-          onChange={(e) => setN(e.target.value)}
-          placeholder="Your name"
-          className="mt-4 w-full rounded-lg border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"
-        />
-        <button className="mt-3 w-full rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white">Join room</button>
+        <Logo className="h-9 w-9" />
+        <h1 className="mt-5 text-2xl font-semibold tracking-tight">You're invited to a Huddle</h1>
+        <p className="mt-1.5 text-[15px] text-fg-muted">Pick a name so others know who you are.</p>
+        <Input autoFocus maxLength={32} value={n} onChange={(e) => setN(e.target.value)} placeholder="Your name" className="mt-5 h-11" />
+        <Button className="mt-3 w-full" size="lg">
+          Join room <ArrowRight className="h-4 w-4" />
+        </Button>
       </form>
     </div>
   );
@@ -92,37 +92,45 @@ function Room({ code, me }: { code: string; me: Identity }) {
 
   if (state.status === "closed")
     return (
-      <div className="flex min-h-full flex-col items-center justify-center gap-3 p-6 text-center">
-        <div className="text-4xl">🚪</div>
+      <div className="flex min-h-full flex-col items-center justify-center gap-4 p-6 text-center">
+        <Logo className="h-10 w-10" />
         <p className="text-lg font-medium">{state.closeReason ?? "Disconnected"}</p>
-        <Link to="/" className="rounded-lg bg-indigo-600 px-4 py-2 text-white">Back home</Link>
+        <Link to="/" className="press inline-flex h-10 items-center gap-2 rounded-full bg-primary px-5 text-sm font-medium text-primary-fg hover:bg-primary-hover">
+          <ArrowLeft className="h-4 w-4" /> Back home
+        </Link>
       </div>
     );
 
   if (!state.you || !state.settings)
-    return <div className="flex min-h-full items-center justify-center text-zinc-500">Joining {formatCode(code)}…</div>;
+    return (
+      <div className="flex min-h-full items-center justify-center gap-2 text-fg-muted">
+        <span className="flex gap-1">
+          <span className="typing-dot h-1.5 w-1.5 rounded-full bg-fg-subtle" />
+          <span className="typing-dot h-1.5 w-1.5 rounded-full bg-fg-subtle" />
+          <span className="typing-dot h-1.5 w-1.5 rounded-full bg-fg-subtle" />
+        </span>
+        Joining <span className="font-mono">{formatCode(code)}</span>
+      </div>
+    );
 
   const isHost = state.you.uid === state.settings.hostId;
   const invite = `${location.origin}/j/${code}`;
+  const copyInvite = () => {
+    navigator.clipboard.writeText(invite);
+    setCopied(true);
+    showToast("Invite link copied. Paste it to a friend.");
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   const sidebar = (
-    <aside className="flex h-full w-64 shrink-0 flex-col border-r border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="p-3">
-        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Party code</div>
-        <button
-          onClick={() => {
-            navigator.clipboard.writeText(invite);
-            setCopied(true);
-            showToast("🔗 Invite link copied — paste it to a friend");
-            setTimeout(() => setCopied(false), 1500);
-          }}
-          className="mt-1 w-full rounded-xl border-2 border-dashed border-indigo-300 py-2 font-mono text-2xl font-bold tracking-widest text-indigo-600 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
-          title="Copy invite link"
-          data-testid="party-code"
-        >
-          {formatCode(code)}
+    <aside className="flex h-full w-[264px] shrink-0 flex-col bg-sidebar">
+      <div className="flex h-12 items-center gap-2 px-3">
+        <Link to="/" className="press flex items-center gap-2 rounded-lg px-1.5 py-1 text-[15px] font-semibold tracking-tight hover:bg-accent-soft" title="Huddle home">
+          <Logo className="h-6 w-6" /> Huddle
+        </Link>
+        <button onClick={() => setShowSidebar(false)} className="press ml-auto rounded-lg p-1.5 text-fg-muted hover:bg-accent-soft md:hidden" aria-label="Close menu">
+          <X className="h-4 w-4" />
         </button>
-        <div className="mt-1 text-center text-xs text-zinc-500">{copied ? "Invite link copied!" : "Click to copy invite link"}</div>
       </div>
 
       <Drive
@@ -137,23 +145,40 @@ function Room({ code, me }: { code: string; me: Identity }) {
         }}
       />
 
-      <div className="mt-4 min-h-0 flex-1 overflow-y-auto px-3">
-        <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">In the room · {state.members.length}</div>
-        <ul className="mt-1 space-y-1" data-testid="members">
+      <div className="mt-5 min-h-0 flex-1 overflow-y-auto px-3">
+        <div className="px-2.5 text-xs font-medium text-fg-subtle">In the room · {state.members.length}</div>
+        <ul className="mt-1.5 space-y-0.5" data-testid="members">
           {state.members.map((m) => (
-            <li key={m.uid} className="flex items-center gap-2 text-sm">
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: m.color }} />
-              <span className="truncate">{m.name}{m.uid === me.uid ? " (you)" : ""}</span>
-              {m.isHost && <span className="rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">HOST</span>}
-              {m.typing && <span className="text-xs text-zinc-400">typing…</span>}
+            <li key={m.uid} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1 text-[13.5px] text-fg">
+              <span className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white" style={{ background: m.color }}>
+                {m.name.slice(0, 1).toUpperCase()}
+              </span>
+              <span className="truncate">
+                {m.name}
+                {m.uid === me.uid && <span className="text-fg-subtle"> (you)</span>}
+              </span>
+              {m.isHost && <span className="rounded-md border border-line-strong px-1 text-[10px] font-medium text-fg-muted">Host</span>}
+              {m.typing && <span className="ml-auto text-xs text-fg-subtle">typing…</span>}
             </li>
           ))}
         </ul>
       </div>
 
-      <div className="space-y-1 border-t border-zinc-200 p-3 text-sm dark:border-zinc-800">
-        <button onClick={() => setShowSettings(true)} className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800">
-          ⚙️ Room settings
+      <div className="space-y-0.5 p-3">
+        <button
+          onClick={copyInvite}
+          className="press group mb-2 flex w-full items-center justify-between rounded-xl border border-line bg-bg px-3 py-2 hover:border-line-strong"
+          title="Copy invite link"
+          data-testid="party-code"
+        >
+          <span className="text-left">
+            <span className="block text-[11px] text-fg-subtle">{copied ? "Invite link copied" : "Party code"}</span>
+            <span className="font-mono text-[17px] font-semibold tracking-[0.18em] text-fg">{formatCode(code)}</span>
+          </span>
+          {copied ? <Check className="h-4 w-4 text-fg" /> : <Copy className="h-4 w-4 text-fg-subtle group-hover:text-fg" />}
+        </button>
+        <button onClick={() => setShowSettings(true)} className={ROW}>
+          <Settings className="h-4 w-4" /> Room settings
         </button>
         {isHost && (
           <button
@@ -168,68 +193,81 @@ function Room({ code, me }: { code: string; me: Identity }) {
               if (!d.url) return showToast(d.error ?? "Couldn't create a share link.");
               const link = `${location.origin}${d.url}`;
               await navigator.clipboard.writeText(link).catch(() => {});
-              showToast("🔗 Read-only link copied");
+              showToast("Read-only link copied");
               window.open(link, "_blank", "noopener");
             }}
-            className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            className={ROW}
             data-testid="share-chat"
           >
-            🔗 Share chat (read-only)
+            <Link2 className="h-4 w-4" /> Share chat (read-only)
           </button>
         )}
-        <button onClick={() => setShowFeedback(true)} className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800">
-          💬 Send feedback
+        <button onClick={() => setShowFeedback(true)} className={ROW}>
+          <MessageSquare className="h-4 w-4" /> Send feedback
         </button>
-        <Link to="/" className="block rounded px-2 py-1 hover:bg-zinc-100 dark:hover:bg-zinc-800">← Leave room</Link>
+        <div className="flex items-center gap-2 pt-1">
+          <Link to="/" className={`${ROW} flex-1`}>
+            <ArrowLeft className="h-4 w-4" /> Leave room
+          </Link>
+          <ThemeToggle />
+        </div>
       </div>
     </aside>
   );
 
   return (
-    <div className="flex h-full min-h-0">
-      <div className="hidden md:flex">{sidebar}</div>
+    <div className="flex h-full min-h-0 bg-bg">
+      <div className="hidden border-r border-line md:flex">{sidebar}</div>
       {showSidebar && (
         <div className="fixed inset-0 z-40 flex md:hidden" onClick={() => setShowSidebar(false)}>
-          <div onClick={(e) => e.stopPropagation()}>{sidebar}</div>
+          <div onClick={(e) => e.stopPropagation()} className="h-full shadow-2xl [animation:rise_240ms_var(--ease-drawer)_both]">
+            {sidebar}
+          </div>
           <div className="flex-1 bg-black/30" />
         </div>
       )}
 
       <main className={`flex min-h-0 min-w-0 flex-1 flex-col ${file ? "hidden lg:flex" : ""}`}>
-        <header className="flex items-center gap-2 border-b border-zinc-200 px-3 py-2 dark:border-zinc-800">
-          <button onClick={() => setShowSidebar(true)} className="rounded px-2 py-1 md:hidden" aria-label="Open menu">☰</button>
-          <div className="min-w-0 flex-1">
-            <div className="truncate font-semibold">{state.settings.title}</div>
-            <div className="text-xs text-zinc-500">
-              {state.settings.engine === "local" ? "💻 Local mode" : "☁️ Free open models"} ·{" "}
+        <header className="flex h-12 shrink-0 items-center gap-2 px-3">
+          <button onClick={() => setShowSidebar(true)} className="press rounded-lg p-1.5 text-fg-muted hover:bg-surface-2 md:hidden" aria-label="Open menu">
+            <Menu className="h-5 w-5" />
+          </button>
+          <div className="flex min-w-0 flex-1 items-baseline gap-3">
+            <div className="truncate text-[15px] font-semibold tracking-tight">{state.settings.title}</div>
+            <div className="hidden min-w-0 items-center gap-1.5 truncate text-xs text-fg-subtle sm:flex">
+              {state.settings.engine === "local" ? <Cpu className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}
+              {state.settings.engine === "local" ? "Local mode" : "Free open models"}
+              <span aria-hidden="true">·</span>
               {state.settings.aiMode === "always" ? "AI replies to every message" : "AI replies on @ai"}
-              {state.settings.deepResearch && " · 🔬 Deep Research"}
-              {state.settings.memory && " · 🧠 Memory on"}
-              {state.status !== "open" && <span className="ml-2 text-amber-600">reconnecting…</span>}
+              {state.settings.deepResearch && " · Deep Research"}
+              {state.settings.memory && " · Memory on"}
             </div>
+            {state.status !== "open" && <span className="text-xs text-amber-600 dark:text-amber-400">reconnecting…</span>}
           </div>
-          <span className="font-mono text-sm text-indigo-600 md:hidden dark:text-indigo-400">{formatCode(code)}</span>
+          <button onClick={copyInvite} className="press rounded-lg px-2 py-1 font-mono text-sm font-medium tracking-[0.12em] text-fg hover:bg-surface-2 md:hidden" aria-label="Copy invite link">
+            {formatCode(code)}
+          </button>
         </header>
         {state.notice && state.settings.engine !== "local" && (
           <div
             role="status"
             data-testid="ai-notice"
-            className="flex flex-wrap items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-200"
+            className="mx-auto mt-1 flex w-[calc(100%-1.5rem)] max-w-3xl flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200"
           >
             <span className="min-w-0 flex-1">
-              ⚠️ {state.notice}{" "}
+              {state.notice}{" "}
               {isHost ? "Local mode runs the AI on your device instead: free and unlimited." : "The host can switch the room to Local mode."}
             </span>
             {isHost && (
               <button
                 onClick={() => send({ t: "settings", patch: { engine: "local" } })}
-                className="rounded-lg bg-amber-600 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-500"
+                className="press rounded-lg bg-amber-900 px-3 py-1 text-xs font-semibold text-amber-50 hover:bg-amber-800 dark:bg-amber-200 dark:text-amber-950"
               >
                 Switch to Local mode
               </button>
             )}
-            <button onClick={dismissNotice} className="rounded px-2 py-1 text-xs hover:bg-amber-100 dark:hover:bg-amber-900/40" aria-label="Dismiss">
-              ✕
+            <button onClick={dismissNotice} className="rounded-lg p-1 hover:bg-amber-100 dark:hover:bg-amber-900/40" aria-label="Dismiss">
+              <X className="h-3.5 w-3.5" />
             </button>
           </div>
         )}
@@ -245,14 +283,8 @@ function Room({ code, me }: { code: string; me: Identity }) {
       </main>
 
       {file && (
-        <section className="flex min-h-0 w-full flex-col border-l border-zinc-200 lg:w-[48%] dark:border-zinc-800">
-          <FilePanel
-            room={code}
-            file={file}
-            me={me}
-            onClose={closeFile}
-            onRename={renameFile}
-          />
+        <section className="flex min-h-0 w-full flex-col border-l border-line lg:w-[48%]">
+          <FilePanel room={code} file={file} me={me} onClose={closeFile} onRename={renameFile} />
         </section>
       )}
 
@@ -274,7 +306,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
         <div
           role="status"
           data-testid="toast"
-          className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-zinc-100 dark:text-zinc-900"
+          className="rise fixed bottom-28 left-1/2 z-50 -translate-x-1/2 rounded-full bg-primary px-4 py-2 text-sm font-medium text-primary-fg shadow-[0_12px_32px_-8px_rgba(0,0,0,0.35)]"
         >
           {state.toast}
         </div>

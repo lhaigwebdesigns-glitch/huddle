@@ -2,23 +2,133 @@
 @plugin "@tailwindcss/typography";
 @custom-variant dark (&:where(.dark, .dark *));
 
-:root { color-scheme: light dark; }
+/*
+ * Huddle design tokens. Black and white, ChatGPT-like neutrals (no blue cast), Apple-style type.
+ * The zinc scale is re-pointed at true neutrals so every existing zinc-* class follows the palette.
+ * Semantic tokens (bg, surface, fg, primary…) flip under .dark.
+ */
+@theme {
+  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Inter Variable", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  --color-zinc-50: #f9f9f9;
+  --color-zinc-100: #f2f2f2;
+  --color-zinc-200: #e6e6e6;
+  --color-zinc-300: #d4d4d4;
+  --color-zinc-400: #9b9b9b;
+  --color-zinc-500: #6e6e6e;
+  --color-zinc-600: #5c5c5c;
+  --color-zinc-700: #3d3d3d;
+  --color-zinc-800: #2a2a2a;
+  --color-zinc-900: #1f1f1f;
+  --color-zinc-950: #141414;
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-sidebar: var(--sidebar);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-fg: var(--primary-fg);
+  --color-accent-soft: var(--accent-soft);
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+:root {
+  color-scheme: light;
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f4f4f4;
+  --sidebar: #f9f9f9;
+  --line: #e8e8e8;
+  --line-strong: #d4d4d4;
+  --fg: #0d0d0d;
+  --fg-muted: #5d5d5d;
+  --fg-subtle: #6b6b6b;
+  --primary: #0d0d0d;
+  --primary-hover: #2f2f2f;
+  --primary-fg: #ffffff;
+  --accent-soft: #f0f0f0;
+  --ring: #0d0d0d;
+}
+.dark {
+  color-scheme: dark;
+  --bg: #212121;
+  --surface: #2a2a2a;
+  --surface-2: #303030;
+  --sidebar: #181818;
+  --line: #343434;
+  --line-strong: #474747;
+  --fg: #ececec;
+  --fg-muted: #b4b4b4;
+  --fg-subtle: #9d9d9d;
+  --primary: #f5f5f5;
+  --primary-hover: #d9d9d9;
+  --primary-fg: #0d0d0d;
+  --accent-soft: #2f2f2f;
+  --ring: #f5f5f5;
+}
+
 html, body, #root { height: 100%; }
-body { @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100; }
+html { -webkit-text-size-adjust: 100%; text-rendering: optimizeLegibility; }
+body {
+  @apply bg-bg text-fg antialiased;
+  font-family: var(--font-sans);
+  font-optical-sizing: auto;
+  font-feature-settings: "cv11", "ss01";
+  transition: background-color 200ms ease, color 200ms ease;
+}
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; }
+p, li, dd { text-wrap: pretty; }
+::selection { background: color-mix(in oklab, var(--fg) 18%, transparent); }
+input, textarea { caret-color: var(--fg); }
+::placeholder { color: var(--fg-subtle); opacity: 1; }
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Quiet scrollbars that match the palette. */
+* { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; border: 3px solid transparent; background-clip: content-box; }
 
 /* Visible keyboard focus everywhere (mouse clicks don't show it). */
 :where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
-  outline: 2px solid #6366f1; outline-offset: 2px; border-radius: 6px;
+  outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 8px;
 }
 .tiptap:focus-visible { outline: none; }
+
+/* Pressable things answer on press (Emil/Apple): subtle scale, fast ease-out. */
+.press { transition: transform 160ms var(--ease-out), background-color 150ms ease, color 150ms ease, border-color 150ms ease, opacity 150ms ease; }
+.press:active:not(:disabled) { transform: scale(0.97); }
+
+/* One entrance moment for marketing sections: rise + unblur, from already-visible. */
+@keyframes rise { from { opacity: 0; transform: translateY(12px); filter: blur(6px); } to { opacity: 1; transform: none; filter: none; } }
+.rise { animation: rise 700ms var(--ease-out) both; }
+.rise-1 { animation-delay: 60ms; } .rise-2 { animation-delay: 140ms; } .rise-3 { animation-delay: 220ms; }
+
+/* Popovers scale from their trigger. */
+@keyframes pop { from { opacity: 0; transform: scale(0.97) translateY(-2px); } to { opacity: 1; transform: none; } }
+.pop { animation: pop 160ms var(--ease-out) both; transform-origin: var(--origin, top right); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  .glass { backdrop-filter: none !important; background: var(--bg) !important; }
 }
 
 /* Tiptap editor */
 .tiptap { outline: none; min-height: 60vh; }
 .tiptap p.is-editor-empty:first-child::before {
-  content: attr(data-placeholder); float: left; height: 0; pointer-events: none; @apply text-zinc-400;
+  content: attr(data-placeholder); float: left; height: 0; pointer-events: none; color: var(--fg-subtle);
 }
 .collaboration-carets__caret {
   border-left: 1px solid; border-right: 1px solid; margin-left: -1px; margin-right: -1px;

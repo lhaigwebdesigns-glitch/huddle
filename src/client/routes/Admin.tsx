@@ -62,7 +62,7 @@ export default function Admin() {
             onChange={(e) => setToken(e.target.value)}
             className="rounded-lg border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"
           />
-          <button className="rounded-lg bg-indigo-600 px-4 py-2 text-white">Open</button>
+          <button className="rounded-lg bg-primary px-4 py-2 text-primary-fg">Open</button>
         </form>
       )}
       {err && <p className="mt-2 text-red-600">{err}</p>}
@@ -76,7 +76,7 @@ export default function Admin() {
               {[...byDay].map(([day, d]) => (
                 <li key={day} className="flex items-center gap-3">
                   <span className="w-24 font-mono text-xs">{day}</span>
-                  <span className="h-2 rounded bg-indigo-500" style={{ width: `${Math.max(2, Math.min(100, (d.total / usage.limit) * 100))}%`, maxWidth: "40%" }} />
+                  <span className="h-2 rounded bg-primary" style={{ width: `${Math.max(2, Math.min(100, (d.total / usage.limit) * 100))}%`, maxWidth: "40%" }} />
                   <span className="font-medium">{d.total}</span>
                   <span className="truncate text-xs text-zinc-500">{d.parts.join(" · ")}</span>
                 </li>

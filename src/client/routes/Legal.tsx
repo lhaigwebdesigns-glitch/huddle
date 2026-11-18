@@ -6,7 +6,7 @@ function Page({ title, children }: { title: string; children: React.ReactNode })
   return (
     <div className="min-h-screen bg-white text-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">
       <div className="mx-auto max-w-2xl px-4 py-10 sm:py-14">
-        <Link to="/" className="text-sm text-indigo-600 hover:underline dark:text-indigo-400">
+        <Link to="/" className="text-sm text-fg hover:underline ">
           ← Huddle
         </Link>
         <h1 className="mt-4 text-3xl font-bold text-zinc-900 dark:text-white">{title}</h1>
