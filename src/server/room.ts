@@ -12,6 +12,7 @@ import type {
 } from "../shared/protocol";
 import { availableProviders, chatWithFallback, ProviderError, type LlmMessage } from "./ai/providers";
 import { compactDocArgs, withFreshNote } from "./ai/turn";
+import { aiTurnsToday, countAiTurn } from "./db";
 import { SKILLS } from "./ai/skills";
 import { runTool, TOOL_DEFS } from "./ai/tools";
 import { collectUrls, stripUnverifiedLinks } from "./ai/citations";
@@ -171,6 +172,37 @@ export class Room extends Server<Env> {
         this.abort?.abort();
         this.localWaiter?.resolve("Stopped.");
         return;
+      case "edit": {
+        const text = String(msg.text ?? "").trim().slice(0, 8000);
+        const recent = this.loadMessages(200);
+        const idx = recent.findIndex((m) => m.id === msg.id);
+        const original = recent[idx];
+        if (!text || !original || original.role !== "user" || original.authorId !== me.uid) return;
+        if (text === original.content) return;
+        const edited: ChatMessage = { ...original, content: text, meta: { ...original.meta, edited: true } };
+        this.saveMessage(edited);
+        this.broadcastMsg({ t: "msg", message: edited });
+        // If this was the last thing anyone said, swap the AI's answer to it for a new one.
+        const after = recent.slice(idx + 1);
+        if (this.aiBusy || after.some((m) => m.role === "user")) return;
+        const wantsAi = this.settings.aiMode === "always" || /@ai\b/i.test(text);
+        if (!wantsAi) return;
+        if (!this.allowAi(me.uid))
+          return this.send(conn, { t: "error", message: "You've hit the hourly AI limit for the free beta. Try again soon." });
+        this.removeMessages(after.map((m) => m.id));
+        this.queueAi();
+        return;
+      }
+      case "regenerate": {
+        if (this.aiBusy) return this.send(conn, { t: "error", message: "The AI is still answering — try again when it's done." });
+        const [last] = this.loadMessages(1);
+        if (!last || last.role !== "assistant") return;
+        if (!this.allowAi(me.uid))
+          return this.send(conn, { t: "error", message: "You've hit the hourly AI limit for the free beta. Try again soon." });
+        this.removeMessages([last.id]);
+        this.queueAi();
+        return;
+      }
       case "settings": {
         if (!isHost) return this.send(conn, { t: "error", message: "Only the host can change room settings." });
         const p = msg.patch ?? {};
@@ -274,12 +306,22 @@ export class Room extends Server<Env> {
     return (row?.n ?? 0) > 0;
   }
 
-  private async dailyBudgetOk() {
+  /** "ok", or which free allowance is used up today: this room's, or the whole site's. */
+  private async dailyBudget(): Promise<"ok" | "room" | "global"> {
     const day = new Date().toISOString().slice(0, 10);
     const key = `ai-count:${day}`;
     const n = ((await this.ctx.storage.get<number>(key)) ?? 0) + 1;
     await this.ctx.storage.put(key, n);
-    return n <= Number(this.env.ROOM_DAILY_AI_LIMIT || 300);
+    if (n > Number(this.env.ROOM_DAILY_AI_LIMIT || 300)) return "room";
+    // Local mode runs on the host's device, so it doesn't spend shared cloud quota.
+    if (this.settings?.engine !== "local" && (await aiTurnsToday(this.env.DB)) >= Number(this.env.GLOBAL_DAILY_AI_LIMIT || 5000))
+      return "global";
+    return "ok";
+  }
+
+  /** Banner for everyone in the room when the shared cloud AI can't answer. */
+  private noticeAiUnavailable(text: string) {
+    this.broadcastMsg({ t: "notice", kind: "ai_unavailable", text });
   }
 
   private async aiTurn() {
@@ -318,15 +360,20 @@ export class Room extends Server<Env> {
 
     let llm: LlmMessage[] = [];
     try {
-      const budgetOk = await this.dailyBudgetOk();
+      const budget = await this.dailyBudget();
       // Everything saved up to now is part of this turn. Re-stamp the reply so it sorts
       // after the messages it answers (some may have landed during the await above).
       this.aiSeenUpTo = Date.now();
       msg.createdAt = this.aiSeenUpTo + 1;
-      if (!budgetOk) {
+      if (budget !== "ok") {
         msg.content =
-          "This room has used today's free AI allowance. 💤 The host can switch to **Local mode** (runs on their own device, unlimited) in Room settings, or try again tomorrow.";
+          budget === "room"
+            ? "This room has used today's free AI allowance. 💤 The host can switch to **Local mode** (runs on their own device, unlimited) in Room settings, or try again tomorrow."
+            : "Huddle has used today's shared free AI allowance across all rooms. 💤 The host can switch to **Local mode** (runs on their own device, unlimited) in Room settings, or try again tomorrow.";
         msg.meta!.error = true;
+        this.noticeAiUnavailable(
+          budget === "room" ? "This room used today's free cloud AI allowance." : "Today's shared free cloud AI allowance is used up.",
+        );
       } else if (s.engine === "local") {
         await this.localTurn(msg);
       } else {
@@ -376,6 +423,7 @@ export class Room extends Server<Env> {
           (msg.content.trim() ? msg.content + "\n\n" : "") +
           `⚠️ ${outOfQuota} ${did}Try again in a minute, or the host can switch this room to **Local mode** (the AI runs in their browser, free and unlimited) from Room settings.`;
         msg.meta!.error = true;
+        this.noticeAiUnavailable(outOfQuota);
       } else {
         console.error("AI turn failed", err);
         msg.content += `\n\n⚠️ The AI hit an error: ${String(err).slice(0, 200)}`;
@@ -400,6 +448,9 @@ export class Room extends Server<Env> {
       msg.content = text;
     }
     if (!msg.content.trim()) msg.content = "_(no response)_";
+    // Count cloud turns site-wide (shown in /admin; enforces GLOBAL_DAILY_AI_LIMIT).
+    if (llm.length && msg.meta!.model && !msg.meta!.error)
+      this.ctx.waitUntil(countAiTurn(this.env.DB, msg.meta!.model.split(" · ")[0]));
     this.saveMessage(msg);
     this.broadcastMsg({ t: "ai_done", message: msg });
   }
@@ -497,6 +548,12 @@ export class Room extends Server<Env> {
   private saveMessage(m: ChatMessage) {
     this.sql`INSERT OR REPLACE INTO messages (id, role, author_id, author_name, content, created_at, meta)
       VALUES (${m.id}, ${m.role}, ${m.authorId}, ${m.authorName}, ${m.content}, ${m.createdAt}, ${m.meta ? JSON.stringify(m.meta) : null})`;
+  }
+
+  private removeMessages(ids: string[]) {
+    if (!ids.length) return;
+    for (const id of ids) this.sql`DELETE FROM messages WHERE id = ${id}`;
+    this.broadcastMsg({ t: "remove", ids });
   }
 
   private files(): RoomFile[] {

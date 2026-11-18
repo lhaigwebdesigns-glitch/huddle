@@ -4,6 +4,7 @@ import type { Env } from "./env";
 import { isValidCode, makeCode, normalizeCode } from "../shared/code";
 import { availableProviders } from "./ai/providers";
 import { SKILLS } from "./ai/skills";
+import { clientIp, ensureTables, hit, usageByDay } from "./db";
 
 export { Room } from "./room";
 export { Doc } from "./doc";
@@ -20,6 +21,8 @@ app.get("/api/health", (c) =>
 );
 
 app.post("/api/rooms", async (c) => {
+  if (!(await hit(c.env.DB, `rooms:${clientIp(c.req.raw)}`, Number(c.env.ROOMS_PER_IP_HOUR || 20), 3600)))
+    return c.json({ error: "You've created a lot of rooms in the last hour. Please wait a bit and try again." }, 429);
   const body = await c.req.json<{ uid?: string; title?: string }>().catch(() => ({}) as any);
   const uid = String(body.uid ?? "").slice(0, 64);
   if (!uid) return c.json({ error: "uid required" }, 400);
@@ -42,20 +45,12 @@ app.get("/api/rooms/:code", async (c) => {
 
 // ---- Feedback (stored in the free D1 database) ----
 
-async function ensureFeedbackTable(db: D1Database) {
-  await db
-    .prepare(
-      `CREATE TABLE IF NOT EXISTS feedback (
-        id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER, room TEXT, uid TEXT, name TEXT,
-        message_id TEXT, rating INTEGER, comment TEXT, excerpt TEXT, page TEXT)`,
-    )
-    .run();
-}
-
 app.post("/api/feedback", async (c) => {
   if (!c.env.DB) return c.json({ ok: false, error: "No database bound" }, 500);
+  if (!(await hit(c.env.DB, `feedback:${clientIp(c.req.raw)}`, 30, 3600)))
+    return c.json({ ok: false, error: "Too much feedback from this network in the last hour — thank you though!" }, 429);
   const b = await c.req.json<any>().catch(() => ({}));
-  await ensureFeedbackTable(c.env.DB);
+  await ensureTables(c.env.DB);
   await c.env.DB.prepare(
     `INSERT INTO feedback (created_at, room, uid, name, message_id, rating, comment, excerpt, page)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -79,9 +74,16 @@ app.get("/api/admin/feedback", async (c) => {
   const token = c.req.header("x-admin-token") ?? "";
   if (!c.env.ADMIN_TOKEN || token !== c.env.ADMIN_TOKEN) return c.json({ error: "unauthorized" }, 401);
   if (!c.env.DB) return c.json({ items: [] });
-  await ensureFeedbackTable(c.env.DB);
+  await ensureTables(c.env.DB);
   const { results } = await c.env.DB.prepare(`SELECT * FROM feedback ORDER BY id DESC LIMIT 500`).all();
   return c.json({ items: results });
+});
+
+app.get("/api/admin/usage", async (c) => {
+  const token = c.req.header("x-admin-token") ?? "";
+  if (!c.env.ADMIN_TOKEN || token !== c.env.ADMIN_TOKEN) return c.json({ error: "unauthorized" }, 401);
+  if (!c.env.DB) return c.json({ rows: [], limit: 0 });
+  return c.json({ rows: await usageByDay(c.env.DB), limit: Number(c.env.GLOBAL_DAILY_AI_LIMIT || 5000) });
 });
 
 app.all("/api/*", (c) => c.json({ error: "not found" }, 404));

@@ -23,7 +23,17 @@ export default function Admin() {
     if (!res.ok) return setErr("Wrong admin token (set ADMIN_TOKEN as a secret on the server).");
     sessionStorage.setItem("huddle.admin", t);
     setRows(((await res.json()) as { items: Row[] }).items);
+    const u = await fetch("/api/admin/usage", { headers: { "x-admin-token": t } });
+    if (u.ok) setUsage(await u.json());
   };
+  const [usage, setUsage] = useState<{ rows: { day: string; provider: string; turns: number }[]; limit: number } | null>(null);
+  const byDay = new Map<string, { total: number; parts: string[] }>();
+  for (const r of usage?.rows ?? []) {
+    const d = byDay.get(r.day) ?? { total: 0, parts: [] };
+    d.total += r.turns;
+    d.parts.push(`${r.provider} ${r.turns}`);
+    byDay.set(r.day, d);
+  }
   useEffect(() => {
     fetch("/api/health").then((r) => r.json()).then(setHealth);
     if (token) load();
@@ -56,6 +66,25 @@ export default function Admin() {
         </form>
       )}
       {err && <p className="mt-2 text-red-600">{err}</p>}
+      {usage && (
+        <div className="mt-4 rounded-lg border border-zinc-200 p-3 text-sm dark:border-zinc-800" data-testid="usage">
+          <b>Cloud AI turns per day</b> <span className="text-zinc-500">(site-wide limit {usage.limit}/day; Local mode isn't counted)</span>
+          {byDay.size === 0 ? (
+            <p className="mt-1 text-zinc-500">No AI turns recorded yet.</p>
+          ) : (
+            <ul className="mt-2 space-y-1">
+              {[...byDay].map(([day, d]) => (
+                <li key={day} className="flex items-center gap-3">
+                  <span className="w-24 font-mono text-xs">{day}</span>
+                  <span className="h-2 rounded bg-indigo-500" style={{ width: `${Math.max(2, Math.min(100, (d.total / usage.limit) * 100))}%`, maxWidth: "40%" }} />
+                  <span className="font-medium">{d.total}</span>
+                  <span className="truncate text-xs text-zinc-500">{d.parts.join(" · ")}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {rows && (
         <>
           <p className="mt-4 text-sm text-zinc-500">

@@ -25,6 +25,8 @@ export interface ChatMessage {
     sources?: Source[];
     streaming?: boolean;
     error?: boolean;
+    /** The author changed this message after sending it. */
+    edited?: boolean;
   };
 }
 
@@ -74,7 +76,11 @@ export type ClientMsg =
   | { t: "delete_file"; id: string }
   | { t: "kick"; uid: string }
   | { t: "local_delta"; id: string; delta: string }
-  | { t: "local_done"; id: string; error?: string };
+  | { t: "local_done"; id: string; error?: string }
+  /** Change your own message; the AI re-answers if it was the latest thing it replied to. */
+  | { t: "edit"; id: string; text: string }
+  /** Replace the latest AI reply with a fresh one. */
+  | { t: "regenerate" };
 
 export type ServerMsg =
   | {
@@ -96,5 +102,8 @@ export type ServerMsg =
   | { t: "files"; files: RoomFile[] }
   | { t: "open_file"; id: string }
   | { t: "local_request"; id: string; model: string; messages: { role: string; content: string }[] }
+  | { t: "remove"; ids: string[] }
+  /** Room-wide banner, e.g. when the free cloud AI is unavailable. */
+  | { t: "notice"; kind: "ai_unavailable"; text: string }
   | { t: "kicked" }
   | { t: "error"; message: string };

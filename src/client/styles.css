@@ -6,6 +6,15 @@
 html, body, #root { height: 100%; }
 body { @apply bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100; }
 
+/* Visible keyboard focus everywhere (mouse clicks don't show it). */
+:where(a, button, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid #6366f1; outline-offset: 2px; border-radius: 6px;
+}
+.tiptap:focus-visible { outline: none; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
 /* Tiptap editor */
 .tiptap { outline: none; min-height: 60vh; }
 .tiptap p.is-editor-empty:first-child::before {

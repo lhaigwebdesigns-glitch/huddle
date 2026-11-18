@@ -81,6 +81,73 @@ try {
   const bad = await alice.evaluate(async () => (await fetch("/api/rooms/ZZZZZZ")).status);
   ok(bad === 404, "unknown party code is rejected");
 
+  // Edit & resend: the AI's answer to the edited message is replaced, not duplicated.
+  const aiCount = async (p) => p.getByTestId("ai-message").count();
+  const waitAiCount = async (p, n) => {
+    for (let i = 0; i < 60 && (await aiCount(p)) !== n; i++) await p.waitForTimeout(250);
+    return aiCount(p);
+  };
+  await alice.getByTestId("composer").fill("first draft question");
+  await alice.getByTestId("composer").press("Enter");
+  await alice.getByTestId("ai-message").last().getByText(/first draft question/).waitFor();
+  await alice.getByTestId("regenerate").waitFor();
+  const before = await aiCount(alice);
+  await alice.getByTestId("user-message").last().hover();
+  await alice.getByTestId("edit-message").click();
+  await alice.getByLabel("Edit message").fill("second draft question");
+  await alice.getByRole("button", { name: "Save & resend" }).click();
+  await bob.getByText("second draft question").waitFor();
+  await alice.getByTestId("ai-message").last().getByText(/second draft question/).waitFor({ timeout: 10000 });
+  ok((await waitAiCount(alice, before)) === before, "editing the last message replaces the AI's answer for everyone");
+  ok((await bob.getByText("(edited)").count()) > 0, "Bob sees the (edited) marker");
+
+  // Regenerate swaps the last AI reply rather than adding another one.
+  await alice.getByTestId("regenerate").click();
+  await alice.waitForTimeout(400);
+  await alice.getByTestId("regenerate").waitFor({ timeout: 10000 });
+  ok((await waitAiCount(alice, before)) === before, "Regenerate replaces the last AI reply");
+
+  // Slash command menu
+  await alice.getByTestId("composer").fill("/do");
+  await alice.getByTestId("slash-menu").waitFor();
+  await alice.getByTestId("composer").press("Enter");
+  ok((await alice.getByTestId("composer").inputValue()) === "/doc ", "slash menu completes /doc");
+  await alice.getByTestId("composer").pressSequentially("road trip checklist");
+  await alice.getByTestId("composer").press("Enter");
+  await bob.getByText("@ai Create a doc: road trip checklist").waitFor();
+  ok(true, "/doc expands into an AI request");
+
+  // Invite link toast
+  await alice.getByTestId("party-code").click();
+  await alice.getByTestId("toast").getByText(/Invite link copied/).waitFor();
+  ok(true, "copy invite link shows a toast");
+
+  // Empty room shows clickable suggestions
+  const carol = await (await browser.newContext()).newPage();
+  await carol.goto(BASE);
+  await carol.getByPlaceholder("e.g. Sam").fill("Carol");
+  await carol.getByRole("button", { name: /Create room/ }).click();
+  await carol.waitForURL(/\/r\/[A-Z0-9]{6}$/);
+  await carol.getByTestId("suggestions").getByRole("button").first().click();
+  await carol.getByTestId("ai-message").first().waitFor();
+  ok(true, "clicking a suggestion sends it");
+
+  // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
+  const statuses = await alice.evaluate(async () => {
+    const ip = `e2e-${Math.random()}`;
+    const out = [];
+    for (let i = 0; i < 22; i++) {
+      const r = await fetch("/api/rooms", {
+        method: "POST",
+        headers: { "content-type": "application/json", "cf-connecting-ip": ip },
+        body: JSON.stringify({ uid: "rl-test" }),
+      });
+      out.push(r.status);
+    }
+    return out;
+  });
+  ok(statuses.slice(0, 20).every((s) => s === 200) && statuses[21] === 429, "room creation is rate-limited per IP");
+
   if (shots) {
     await alice.screenshot({ path: `${shots}/room-alice.png` });
     await bob.goto(BASE);

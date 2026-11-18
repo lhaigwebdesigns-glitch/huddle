@@ -24,6 +24,10 @@ export interface Env {
   ADMIN_TOKEN?: string;
   MOCK_AI?: string;
   ROOM_DAILY_AI_LIMIT?: string;
+  /** Cloud AI turns per day across the whole deployment (default 5000). */
+  GLOBAL_DAILY_AI_LIMIT?: string;
+  /** Rooms one IP may create per hour (default 20). */
+  ROOMS_PER_IP_HOUR?: string;
   // Optional model overrides (swap in newer open-weight models without code changes)
   GROQ_MODEL?: string;
   /** Second Groq model with its own rate-limit bucket ("off" to disable). */
