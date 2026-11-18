@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chatWithFallback } from "./providers";
+import { chatWithFallback, parseRetryAfter } from "./providers";
 
 const sse = (chunks: string[]) =>
   new Response(chunks.map((c) => `data: ${JSON.stringify({ choices: [{ delta: { content: c } }] })}\n\n`).join("") + "data: [DONE]\n\n", {
@@ -21,8 +21,11 @@ describe("free provider router", () => {
       messages: [{ role: "user", content: "hi" }],
       onDelta: (d) => (streamed += d),
     });
+    // Groq's main model, then Groq's fallback model (separate rate-limit bucket), then Cerebras.
+    expect(calls).toHaveLength(3);
     expect(calls[0]).toContain("groq");
-    expect(calls[1]).toContain("cerebras");
+    expect(calls[1]).toContain("groq");
+    expect(calls[2]).toContain("cerebras");
     expect(res.content).toBe("Hello world");
     expect(streamed).toBe("Hello world");
     expect(res.provider).toBe("Cerebras");
@@ -42,6 +45,62 @@ describe("free provider router", () => {
     });
     const res = await chatWithFallback({ OPENROUTER_API_KEY: "k" } as any, { messages: [], onDelta: () => {} });
     expect(res.toolCalls[0].function).toEqual({ name: "web_search", arguments: '{"query":"cats"}' });
+  });
+
+  it("waits out a short per-minute rate limit and retries the same provider", async () => {
+    let n = 0;
+    vi.stubGlobal("fetch", async () =>
+      ++n === 1
+        ? new Response('{"error":{"message":"Rate limit reached ... Please try again in 0.01s."}}', { status: 429 })
+        : sse(["ok"]),
+    );
+    const res = await chatWithFallback({ CEREBRAS_API_KEY: "b" } as any, { messages: [], onDelta: () => {} });
+    expect(n).toBe(2);
+    expect(res.content).toBe("ok");
+  });
+
+  it("returns at the [DONE] marker even if the connection stays open", async () => {
+    vi.stubGlobal("fetch", async () => {
+      const enc = new TextEncoder();
+      const body = new ReadableStream({
+        start(c) {
+          c.enqueue(enc.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: "fast" } }] })}\n\ndata: [DONE]\n\n`));
+          // never closes
+        },
+      });
+      return new Response(body);
+    });
+    const res = await Promise.race([
+      chatWithFallback({ OPENROUTER_API_KEY: "k" } as any, { messages: [], onDelta: () => {} }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("hung waiting for close")), 1000)),
+    ]);
+    expect((res as any).content).toBe("fast");
+  });
+
+  it("parses Groq/OpenAI-style retry hints", () => {
+    expect(parseRetryAfter("Please try again in 4.125s.")).toBe(4.125);
+    expect(parseRetryAfter("Please try again in 1m30s.")).toBe(90);
+    expect(parseRetryAfter("nope", "7")).toBe(7);
+    expect(parseRetryAfter("nope")).toBeUndefined();
+  });
+
+  it("ignores gpt-oss reasoning deltas (Groq `reasoning`, Cerebras `reasoning_content`)", async () => {
+    vi.stubGlobal("fetch", async () => {
+      const parts = [
+        { role: "assistant", reasoning: "The user greets. I should" },
+        { reasoning_content: " respond briefly." },
+        { content: "Hi" },
+        { reasoning: " (more thinking)", content: " there!" },
+      ];
+      return new Response(parts.map((d) => `data: ${JSON.stringify({ choices: [{ delta: d }] })}\n\n`).join("") + "data: [DONE]\n\n");
+    });
+    let streamed = "";
+    const res = await chatWithFallback({ OPENROUTER_API_KEY: "k" } as any, {
+      messages: [{ role: "user", content: "hi" }],
+      onDelta: (d) => (streamed += d),
+    });
+    expect(streamed).toBe("Hi there!");
+    expect(res.content).toBe("Hi there!");
   });
 });
 

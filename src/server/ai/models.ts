@@ -15,6 +15,10 @@ export interface ProviderConfig {
   supportsTools: boolean;
   extraHeaders?: Record<string, string>;
   binding?: Ai;
+  /** Give up (and fall through to the next provider) if no response starts within this time. */
+  responseTimeoutMs?: number;
+  /** OpenAI-style reasoning_effort for "thinking" models (none | low | medium | high). */
+  reasoningEffort?: string;
 }
 
 export function getProviders(env: Env): ProviderConfig[] {
@@ -22,6 +26,24 @@ export function getProviders(env: Env): ProviderConfig[] {
     return [{ id: "mock", label: "Mock AI (dev)", kind: "mock", model: "mock", supportsTools: true }];
   }
   const list: ProviderConfig[] = [];
+  if (env.OLLAMA_BASE_URL) {
+    // Your own GPU first: unlimited and free. If the PC is off or busy past the timeout,
+    // the router moves on to the hosted free tiers below.
+    list.push({
+      id: "ollama",
+      label: "Self-hosted",
+      kind: "openai",
+      baseUrl: `${env.OLLAMA_BASE_URL.replace(/\/+$/, "")}/v1`,
+      apiKey: env.OLLAMA_API_KEY || "ollama",
+      // "huddle" = qwen3:14b with a 16k context window, built from ollama/Modelfile.
+      model: env.OLLAMA_MODEL || "huddle",
+      supportsTools: true,
+      // Covers loading the model into GPU memory on the first request after idle.
+      responseTimeoutMs: 60_000,
+      // Qwen3 "thinks" by default; off, it answers in ~2s instead of ~20s and still uses tools well.
+      reasoningEffort: env.OLLAMA_REASONING || "none",
+    });
+  }
   if (env.GROQ_API_KEY) {
     list.push({
       id: "groq",
@@ -32,6 +54,20 @@ export function getProviders(env: Env): ProviderConfig[] {
       model: env.GROQ_MODEL || "openai/gpt-oss-120b",
       supportsTools: true,
     });
+    // Groq's free tier rate-limits each model separately (e.g. 8k tokens/min), so a second
+    // model on the same key absorbs bursts. Set GROQ_FALLBACK_MODEL="off" to disable.
+    const fallback = env.GROQ_FALLBACK_MODEL || "openai/gpt-oss-20b";
+    if (fallback !== "off" && fallback !== list[list.length - 1].model) {
+      list.push({
+        id: "groq-fallback",
+        label: "Groq",
+        kind: "openai",
+        baseUrl: "https://api.groq.com/openai/v1",
+        apiKey: env.GROQ_API_KEY,
+        model: fallback,
+        supportsTools: true,
+      });
+    }
   }
   if (env.CEREBRAS_API_KEY) {
     list.push({

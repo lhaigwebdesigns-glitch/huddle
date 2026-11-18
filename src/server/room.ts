@@ -1,18 +1,40 @@
-import { Server, type Connection, type ConnectionContext, type WSMessage } from "partyserver";
+import { getServerByName, Server, type Connection, type ConnectionContext, type WSMessage } from "partyserver";
 import type { Env } from "./env";
-import type {
-  ChatMessage,
-  ClientMsg,
-  Member,
-  RoomFile,
-  RoomSettings,
-  ServerMsg,
-  Source,
-  Step,
+import {
+  REACTIONS,
+  type ChatMessage,
+  type ClientMsg,
+  type Member,
+  type RoomFile,
+  type RoomSettings,
+  type ServerMsg,
+  type Source,
+  type Step,
 } from "../shared/protocol";
 import { availableProviders, chatWithFallback, ProviderError, type LlmMessage } from "./ai/providers";
+import { compactDocArgs, withFreshNote } from "./ai/turn";
+import { aiTurnsToday, countAiTurn } from "./db";
+import { FILE_INFO, isFileKind, type FileKind } from "../shared/files";
+import { colName } from "../shared/formula";
+import { chunkText, ftsQuery } from "../shared/knowledge";
+import { parseCsv } from "../shared/sheet-model";
+import type { Attachment } from "../shared/protocol";
 import { SKILLS } from "./ai/skills";
 import { runTool, TOOL_DEFS } from "./ai/tools";
+import { collectUrls, stripUnverifiedLinks } from "./ai/citations";
+import { getProviders as getProvidersConfigured } from "./ai/models";
+
+const MAX_FILES = 100;
+
+/** One line per file type the AI can create, for the system prompt. */
+const FILE_GUIDE = [
+  `- doc (create_doc/read_doc/edit_doc): writing, plans, reports, essays, notes. edit_doc mode "append" adds a section.`,
+  `- sheet (create_sheet/read_sheet/edit_sheet): tables, budgets, trackers, numbers. Use formulas (=SUM, =AVERAGE, =IF…) for totals and add a chart when it helps.`,
+  `- slides (create_slides/read_slides/edit_slides): presentations and pitches. 5–10 slides, short bullets (max ~6 words each), speaker notes for detail; load the slide-deck-design skill first.`,
+  `- artifact (make_artifact/read_artifact): interactive things to look at or use: mini apps, calculators, games, quizzes, data visualizations, page mockups. One self-contained HTML file; it renders live beside the chat.`,
+  `- form (create_form/read_form_responses): sign-ups, surveys, RSVPs, quizzes, feedback. It gets a public link anyone can fill in; summarize responses on request.`,
+  `- whiteboard (draw_whiteboard/read_whiteboard): diagrams, flows, mind maps, architectures, timelines, drawn from Mermaid (flowchart/sequenceDiagram/classDiagram). People can then rearrange the shapes.`,
+];
 
 interface ConnState {
   uid: string;
@@ -23,6 +45,9 @@ interface ConnState {
 
 const MAX_ROOM_SIZE = 12;
 const MAX_STEPS = 6;
+/** Deep Research mode: room for several searches and page reads before writing. */
+const DEEP_RESEARCH_STEPS = 15;
+const MAX_MEMORY_FACTS = 50;
 const HISTORY_FOR_AI = 30;
 const USER_AI_PER_HOUR = 40;
 
@@ -48,6 +73,62 @@ export class Room extends Server<Env> {
     this.sql`CREATE TABLE IF NOT EXISTS files (
       id TEXT PRIMARY KEY, kind TEXT, title TEXT, created_at INTEGER, created_by TEXT)`;
     this.settings = (await this.ctx.storage.get<RoomSettings>("settings")) ?? null;
+    // Uploaded text, searchable by the AI. FTS5 when available, plain LIKE otherwise.
+    try {
+      this.sql`CREATE VIRTUAL TABLE IF NOT EXISTS knowledge USING fts5(name, chunk, upload_id UNINDEXED)`;
+      this.fts = true;
+    } catch {
+      this.sql`CREATE TABLE IF NOT EXISTS knowledge (name TEXT, chunk TEXT, upload_id TEXT)`;
+      this.fts = false;
+    }
+  }
+
+  private fts = true;
+
+  // ---------- RPC: knowledge (uploads) ----------
+
+  async exists() {
+    return !!this.settings;
+  }
+
+  /** A read-only snapshot of the chat for a public share link (host only). */
+  async shareSnapshot(uid: string) {
+    if (!this.settings || uid !== this.settings.hostId) return null;
+    const messages = this.loadMessages(300)
+      .filter((m) => !m.meta?.streaming)
+      .map((m) => ({
+        role: m.role,
+        authorName: m.authorName,
+        content: m.content,
+        createdAt: m.createdAt,
+        sources: m.meta?.sources,
+        poll: m.meta?.poll ? { question: m.meta.poll.question, options: m.meta.poll.options } : undefined,
+      }));
+    return { title: this.settings.title, messages };
+  }
+
+  async indexText(uploadId: string, name: string, text: string) {
+    const chunks = chunkText(text);
+    for (const c of chunks) this.sql`INSERT INTO knowledge (name, chunk, upload_id) VALUES (${name}, ${c}, ${uploadId})`;
+    return chunks.length;
+  }
+
+  async searchKnowledge(q: string): Promise<{ name: string; chunk: string }[]> {
+    const query = ftsQuery(q);
+    if (!query) return [];
+    if (this.fts) {
+      try {
+        return this.sql<{ name: string; chunk: string }>`SELECT name, chunk FROM knowledge WHERE knowledge MATCH ${query} ORDER BY bm25(knowledge) LIMIT 6`;
+      } catch (e) {
+        console.warn("fts search failed", e);
+      }
+    }
+    const word = `%${query.split(" OR ")[0].replace(/"/g, "")}%`;
+    return this.sql<{ name: string; chunk: string }>`SELECT name, chunk FROM knowledge WHERE chunk LIKE ${word} LIMIT 6`;
+  }
+
+  async knowledgeSources() {
+    return this.sql<{ name: string; n: number }>`SELECT name, COUNT(*) AS n FROM knowledge GROUP BY name`;
   }
 
   // ---------- RPC (called from the HTTP API) ----------
@@ -75,6 +156,41 @@ export class Room extends Server<Env> {
       locked: this.settings.locked,
       members: this.members().length,
     };
+  }
+
+  /** Version history for one of this room's files. */
+  async fileVersions(fileId: string) {
+    const f = this.files().find((x) => x.id === fileId);
+    if (!f) return null;
+    const stub = await getServerByName(this.env.Doc, `${this.name}--${f.id}`);
+    return stub.listVersions();
+  }
+
+  async saveFileVersion(fileId: string) {
+    const f = this.files().find((x) => x.id === fileId);
+    if (!f) return { ok: false };
+    const stub = await getServerByName(this.env.Doc, `${this.name}--${f.id}`);
+    return stub.saveVersion();
+  }
+
+  async restoreFileVersion(fileId: string, at: number) {
+    const f = this.files().find((x) => x.id === fileId);
+    if (!f) return { ok: false, error: "No such file" };
+    const stub = await getServerByName(this.env.Doc, `${this.name}--${f.id}`);
+    return stub.restoreVersion(at, f.kind);
+  }
+
+  /** Public view of a form (questions only, never responses). */
+  async publicForm(fileId: string) {
+    const f = this.files().find((x) => x.id === fileId && x.kind === "form");
+    if (!f) return null;
+    return (await getServerByName(this.env.Doc, `${this.name}--${f.id}`)).getPublicForm(f.title);
+  }
+
+  async submitForm(fileId: string, answers: unknown) {
+    const f = this.files().find((x) => x.id === fileId && x.kind === "form");
+    if (!f) return { ok: false as const, error: "This form doesn't exist anymore." };
+    return (await getServerByName(this.env.Doc, `${this.name}--${f.id}`)).submitForm(f.title, answers);
   }
 
   // ---------- connections ----------
@@ -110,6 +226,7 @@ export class Room extends Server<Env> {
       files: this.files(),
       skills: SKILLS.map(({ name, description }) => ({ name, description })),
       providers: availableProviders(this.env).map((p) => `${p.label} · ${p.model}`),
+      memory: (await this.ctx.storage.get<string[]>("memory")) ?? [],
     });
     this.broadcastPresence();
   }
@@ -135,7 +252,12 @@ export class Room extends Server<Env> {
     switch (msg.t) {
       case "say": {
         const text = String(msg.text ?? "").trim().slice(0, 8000);
-        if (!text) return;
+        // Only accept attachments that point at this room's own uploads.
+        const attachments: Attachment[] = (Array.isArray(msg.attachments) ? msg.attachments : [])
+          .filter((a) => a && typeof a.url === "string" && a.url.startsWith(`/api/rooms/${this.name}/blobs/`))
+          .slice(0, 10)
+          .map((a) => ({ id: String(a.id).slice(0, 40), name: String(a.name).slice(0, 120), type: String(a.type).slice(0, 60), size: Number(a.size) || 0, url: a.url, indexed: !!a.indexed }));
+        if (!text && !attachments.length) return;
         const m: ChatMessage = {
           id: crypto.randomUUID(),
           role: "user",
@@ -143,6 +265,7 @@ export class Room extends Server<Env> {
           authorName: me.name,
           content: text,
           createdAt: Date.now(),
+          ...(attachments.length ? { meta: { attachments } } : {}),
         };
         this.saveMessage(m);
         this.broadcastMsg({ t: "msg", message: m });
@@ -168,6 +291,91 @@ export class Room extends Server<Env> {
         this.abort?.abort();
         this.localWaiter?.resolve("Stopped.");
         return;
+      case "edit": {
+        const text = String(msg.text ?? "").trim().slice(0, 8000);
+        const recent = this.loadMessages(200);
+        const idx = recent.findIndex((m) => m.id === msg.id);
+        const original = recent[idx];
+        if (!text || !original || original.role !== "user" || original.authorId !== me.uid) return;
+        if (text === original.content) return;
+        const edited: ChatMessage = { ...original, content: text, meta: { ...original.meta, edited: true } };
+        this.saveMessage(edited);
+        this.broadcastMsg({ t: "msg", message: edited });
+        // If this was the last thing anyone said, swap the AI's answer to it for a new one.
+        const after = recent.slice(idx + 1);
+        if (this.aiBusy || after.some((m) => m.role === "user")) return;
+        const wantsAi = this.settings.aiMode === "always" || /@ai\b/i.test(text);
+        if (!wantsAi) return;
+        if (!this.allowAi(me.uid))
+          return this.send(conn, { t: "error", message: "You've hit the hourly AI limit for the free beta. Try again soon." });
+        this.removeMessages(after.map((m) => m.id));
+        this.queueAi();
+        return;
+      }
+      case "react": {
+        if (!(REACTIONS as readonly string[]).includes(msg.emoji)) return;
+        const m = this.loadMessages(300).find((x) => x.id === msg.id);
+        if (!m || m.meta?.streaming) return;
+        const reactions = { ...(m.meta?.reactions ?? {}) };
+        const who = new Set(reactions[msg.emoji] ?? []);
+        if (who.has(me.uid)) who.delete(me.uid);
+        else who.add(me.uid);
+        if (who.size) reactions[msg.emoji] = [...who];
+        else delete reactions[msg.emoji];
+        const next: ChatMessage = { ...m, meta: { ...m.meta, reactions } };
+        this.saveMessage(next);
+        this.broadcastMsg({ t: "msg", message: next });
+        return;
+      }
+      case "poll": {
+        const question = String(msg.question ?? "").trim().slice(0, 200);
+        const options = (Array.isArray(msg.options) ? msg.options : []).map((o) => String(o).trim().slice(0, 80)).filter(Boolean).slice(0, 10);
+        if (!question || options.length < 2) return;
+        const m: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: "user",
+          authorId: me.uid,
+          authorName: me.name,
+          content: `📊 Poll: ${question}`,
+          createdAt: Date.now(),
+          meta: { poll: { question, options, votes: {} } },
+        };
+        this.saveMessage(m);
+        this.broadcastMsg({ t: "msg", message: m });
+        return;
+      }
+      case "vote": {
+        const m = this.loadMessages(300).find((x) => x.id === msg.id);
+        const poll = m?.meta?.poll;
+        if (!m || !poll || !(msg.option >= 0 && msg.option < poll.options.length)) return;
+        const votes: Record<string, string[]> = {};
+        for (const [k, uids] of Object.entries(poll.votes)) votes[k] = uids.filter((u) => u !== me.uid);
+        const key = String(Math.floor(msg.option));
+        const already = (poll.votes[key] ?? []).includes(me.uid);
+        if (!already) votes[key] = [...(votes[key] ?? []), me.uid]; // clicking your vote again removes it
+        const next: ChatMessage = { ...m, meta: { ...m.meta, poll: { ...poll, votes } } };
+        this.saveMessage(next);
+        this.broadcastMsg({ t: "msg", message: next });
+        return;
+      }
+      case "forget": {
+        const facts = (await this.ctx.storage.get<string[]>("memory")) ?? [];
+        if (!(msg.index >= 0 && msg.index < facts.length)) return;
+        facts.splice(msg.index, 1);
+        await this.ctx.storage.put("memory", facts);
+        this.broadcastMsg({ t: "memory", facts });
+        return;
+      }
+      case "regenerate": {
+        if (this.aiBusy) return this.send(conn, { t: "error", message: "The AI is still answering — try again when it's done." });
+        const [last] = this.loadMessages(1);
+        if (!last || last.role !== "assistant") return;
+        if (!this.allowAi(me.uid))
+          return this.send(conn, { t: "error", message: "You've hit the hourly AI limit for the free beta. Try again soon." });
+        this.removeMessages([last.id]);
+        this.queueAi();
+        return;
+      }
       case "settings": {
         if (!isHost) return this.send(conn, { t: "error", message: "Only the host can change room settings." });
         const p = msg.patch ?? {};
@@ -178,13 +386,66 @@ export class Room extends Server<Env> {
         if (typeof p.locked === "boolean") s.locked = p.locked;
         if (typeof p.title === "string") s.title = p.title.slice(0, 80) || s.title;
         if (Array.isArray(p.disabledSkills)) s.disabledSkills = p.disabledSkills.map(String).slice(0, 100);
+        if (typeof p.deepResearch === "boolean") s.deepResearch = p.deepResearch;
+        if (typeof p.memory === "boolean") s.memory = p.memory;
+        if (p.assistant === null || (p.assistant && typeof p.assistant === "object")) {
+          const name = String(p.assistant?.name ?? "").trim().slice(0, 40);
+          const instructions = String(p.assistant?.instructions ?? "").trim().slice(0, 4000);
+          s.assistant = name || instructions ? { name, instructions } : undefined;
+        }
         await this.ctx.storage.put("settings", s);
         this.broadcastMsg({ t: "settings", settings: s });
         return;
       }
       case "new_file": {
-        const f = this.createFile("doc", String(msg.title ?? "Untitled doc"), me.uid);
+        const kind = isFileKind(msg.kind) && msg.kind !== "artifact" ? msg.kind : "doc";
+        if (this.files().length >= MAX_FILES)
+          return this.send(conn, { t: "error", message: `Rooms can hold up to ${MAX_FILES} files. Delete some to make room.` });
+        const f = this.createFile(kind, String(msg.title ?? "") || FILE_INFO[kind].untitled, me.uid);
+        // Seed starter content on the server so two people opening it at once don't both add it.
+        if (kind === "slides") {
+          const stub = await getServerByName(this.env.Doc, `${this.name}--${f.id}`);
+          await stub.slideOps([{ op: "insert", slide: { layout: "title", title: "", body: "" } }]);
+        }
         this.send(conn, { t: "open_file", id: f.id });
+        return;
+      }
+      case "import_csv": {
+        if (this.files().length >= MAX_FILES) return;
+        const rows = parseCsv(String(msg.csv ?? "").slice(0, 2_000_000));
+        if (!rows.length) return;
+        const sheet = this.createFile("sheet", String(msg.title ?? "Imported sheet").slice(0, 120), me.uid);
+        const width = Math.max(1, ...rows.slice(0, 50).map((r) => r.length));
+        await (await getServerByName(this.env.Doc, `${this.name}--${sheet.id}`)).sheetOps([
+          { op: "set_range", start: "A1", rows: rows.map((r) => r.map((v) => (/^[=+\-@]/.test(v) && !/^-?\d/.test(v) ? `'${v}` : v))) },
+          { op: "format", range: `A1:${colName(width - 1)}1`, bold: true, bg: "#eef2ff" },
+        ]);
+        this.send(conn, { t: "open_file", id: sheet.id });
+        return;
+      }
+      case "form_to_sheet": {
+        const form = this.files().find((x) => x.id === msg.id && x.kind === "form");
+        if (!form || this.files().length >= MAX_FILES) return;
+        const rows = await (await getServerByName(this.env.Doc, `${this.name}--${form.id}`)).formRows();
+        const sheet = this.createFile("sheet", `${form.title} — responses`.slice(0, 120), me.uid);
+        const width = Math.max(1, rows[0]?.length ?? 1);
+        await (await getServerByName(this.env.Doc, `${this.name}--${sheet.id}`)).sheetOps([
+          // Prefix answers that look like formulas so they stay plain text.
+          { op: "set_range", start: "A1", rows: rows.map((r) => r.map((v) => (/^[=+\-@]/.test(v) ? `'${v}` : v))) },
+          { op: "format", range: `A1:${colName(width - 1)}1`, bold: true, bg: "#eef2ff" },
+          { op: "col_width", col: "A", width: 140 },
+        ]);
+        this.send(conn, { t: "open_file", id: sheet.id });
+        return;
+      }
+      case "duplicate_file": {
+        const src = this.files().find((x) => x.id === msg.id);
+        if (!src || this.files().length >= MAX_FILES) return;
+        const copy = this.createFile(src.kind, `Copy of ${src.title}`.slice(0, 120), me.uid);
+        const from = await getServerByName(this.env.Doc, `${this.name}--${src.id}`);
+        const to = await getServerByName(this.env.Doc, `${this.name}--${copy.id}`);
+        await to.importState(await from.exportState(), src.kind);
+        this.send(conn, { t: "open_file", id: copy.id });
         return;
       }
       case "rename_file": {
@@ -199,6 +460,8 @@ export class Room extends Server<Env> {
         if (!f || (!isHost && f.createdBy !== me.uid)) return;
         this.sql`DELETE FROM files WHERE id = ${msg.id}`;
         this.broadcastMsg({ t: "files", files: this.files() });
+        // Free the file's storage too.
+        this.ctx.waitUntil(getServerByName(this.env.Doc, `${this.name}--${f.id}`).then((s) => s.wipe()));
         return;
       }
       case "kick": {
@@ -253,7 +516,9 @@ export class Room extends Server<Env> {
           do {
             this.aiPending = false;
             await this.aiTurn();
-          } while (this.aiPending);
+            // Only run another turn if someone spoke after this turn read the history;
+            // otherwise the AI would re-answer messages it just handled.
+          } while (this.aiPending && this.hasUnseenUserMessages());
         } finally {
           this.aiBusy = false;
         }
@@ -261,12 +526,30 @@ export class Room extends Server<Env> {
     );
   }
 
-  private async dailyBudgetOk() {
+  /** createdAt cutoff of the history the last AI turn read. */
+  private aiSeenUpTo = 0;
+
+  private hasUnseenUserMessages() {
+    const [row] = this.sql<{ n: number }>`SELECT COUNT(*) AS n FROM messages WHERE role = 'user' AND created_at > ${this.aiSeenUpTo}`;
+    return (row?.n ?? 0) > 0;
+  }
+
+  /** "ok", or which free allowance is used up today: this room's, or the whole site's. */
+  private async dailyBudget(): Promise<"ok" | "room" | "global"> {
     const day = new Date().toISOString().slice(0, 10);
     const key = `ai-count:${day}`;
     const n = ((await this.ctx.storage.get<number>(key)) ?? 0) + 1;
     await this.ctx.storage.put(key, n);
-    return n <= Number(this.env.ROOM_DAILY_AI_LIMIT || 300);
+    if (n > Number(this.env.ROOM_DAILY_AI_LIMIT || 300)) return "room";
+    // Local mode runs on the host's device, so it doesn't spend shared cloud quota.
+    if (this.settings?.engine !== "local" && (await aiTurnsToday(this.env.DB)) >= Number(this.env.GLOBAL_DAILY_AI_LIMIT || 5000))
+      return "global";
+    return "ok";
+  }
+
+  /** Banner for everyone in the room when the shared cloud AI can't answer. */
+  private noticeAiUnavailable(text: string) {
+    this.broadcastMsg({ t: "notice", kind: "ai_unavailable", text });
   }
 
   private async aiTurn() {
@@ -275,7 +558,7 @@ export class Room extends Server<Env> {
       id: crypto.randomUUID(),
       role: "assistant",
       authorId: "ai",
-      authorName: "Huddle AI",
+      authorName: s.assistant?.name || "Huddle AI",
       content: "",
       createdAt: Date.now(),
       meta: { streaming: true, steps: [], sources: [] },
@@ -303,24 +586,59 @@ export class Room extends Server<Env> {
       this.broadcastMsg({ t: "ai_step", id: msg.id, step: st });
     };
 
+    let llm: LlmMessage[] = [];
     try {
-      if (!(await this.dailyBudgetOk())) {
+      const tBudget = Date.now();
+      const budget = await this.dailyBudget();
+      if (this.env.DEBUG_AI) console.log(`[ai] budget check ${Date.now() - tBudget}ms`);
+      // Everything saved up to now is part of this turn. Re-stamp the reply so it sorts
+      // after the messages it answers (some may have landed during the await above).
+      this.aiSeenUpTo = Date.now();
+      msg.createdAt = this.aiSeenUpTo + 1;
+      if (budget !== "ok") {
         msg.content =
-          "This room has used today's free AI allowance. 💤 The host can switch to **Local mode** (runs on their own device, unlimited) in Room settings, or try again tomorrow.";
+          budget === "room"
+            ? "This room has used today's free AI allowance. 💤 The host can switch to **Local mode** (runs on their own device, unlimited) in Room settings, or try again tomorrow."
+            : "Huddle has used today's shared free AI allowance across all rooms. 💤 The host can switch to **Local mode** (runs on their own device, unlimited) in Room settings, or try again tomorrow.";
         msg.meta!.error = true;
+        this.noticeAiUnavailable(
+          budget === "room" ? "This room used today's free cloud AI allowance." : "Today's shared free cloud AI allowance is used up.",
+        );
       } else if (s.engine === "local") {
         await this.localTurn(msg);
       } else {
         this.abort = new AbortController();
-        const llm: LlmMessage[] = [{ role: "system", content: this.systemPrompt(true) }, ...this.history()];
-        for (let i = 0; i < MAX_STEPS; i++) {
+        const memory = (await this.ctx.storage.get<string[]>("memory")) ?? [];
+        llm = [{ role: "system", content: this.systemPrompt(true, memory) }, ...withFreshNote(this.history())];
+        let emptyRetried = false;
+        const maxSteps = s.deepResearch ? DEEP_RESEARCH_STEPS : MAX_STEPS;
+        // Only offer tools that can do something in this room (every definition costs tokens).
+        const hasKnowledge = (this.sql<{ n: number }>`SELECT COUNT(*) AS n FROM knowledge`[0]?.n ?? 0) > 0;
+        const hasImages = this.loadMessages(HISTORY_FOR_AI).some((m) => m.meta?.attachments?.some((a) => a.type.startsWith("image/")));
+        const tools = TOOL_DEFS.filter(
+          (t) =>
+            (t.function.name !== "remember" || s.memory) &&
+            (t.function.name !== "search_knowledge" || hasKnowledge) &&
+            (t.function.name !== "describe_image" || hasImages),
+        );
+        for (let i = 0; i < maxSteps; i++) {
+          const tCall = Date.now();
+          if (this.env.DEBUG_AI) console.log(`[ai] step ${i} calling model at +${tCall - msg.createdAt}ms`);
           const res = await chatWithFallback(this.env, {
             messages: llm,
-            tools: TOOL_DEFS,
+            tools,
             signal: this.abort.signal,
             onDelta,
           });
           msg.meta!.model = `${res.provider} · ${res.model}`;
+          if (this.env.DEBUG_AI)
+            console.log(`[ai] step ${i} ${res.model} took ${Date.now() - tCall}ms: ${res.content.length} chars, tools: ${res.toolCalls.map((c) => `${c.function.name}(${c.function.arguments.slice(0, 400)})`).join(" | ") || "none"}`);
+          if (!res.toolCalls.length && !res.content.trim() && !emptyRetried) {
+            // Occasionally a model returns nothing at all; ask once more rather than showing "(no response)".
+            emptyRetried = true;
+            llm.push({ role: "user", content: "(Huddle: your last reply was empty. Please answer the request above, using a tool if needed.)" });
+            continue;
+          }
           if (!res.toolCalls.length) break;
           if (res.content && !/\s$/.test(msg.content)) onDelta("\n\n");
           llm.push({ role: "assistant", content: res.content || null, tool_calls: res.toolCalls });
@@ -333,11 +651,20 @@ export class Room extends Server<Env> {
               openFile: (id) => this.broadcastMsg({ t: "open_file", id }),
               step,
               sources,
+              remember: s.memory ? (fact) => this.remember(fact) : undefined,
+              searchKnowledge: (q) => this.searchKnowledge(q),
+              addImage: (a) => {
+                msg.meta!.images = [...(msg.meta!.images ?? []), a];
+                this.broadcastMsg({ t: "ai_step", id: msg.id, step: { kind: "other", label: `Image ready: ${a.name}` } });
+              },
             });
             llm.push({ role: "tool", tool_call_id: call.id, content: output });
+            if (this.env.DEBUG_AI) console.log(`[ai] ${call.function.name} -> ${output.slice(0, 300)}`);
+            compactDocArgs(call);
           }
-          if (i === MAX_STEPS - 2) {
-            llm.push({ role: "system", content: "Tool budget reached. Write your final answer now without calling tools." });
+          if (i === maxSteps - 2) {
+            // As a user-role note: gpt-oss/Qwen largely ignore system messages mid-conversation.
+            llm.push({ role: "user", content: "(Huddle: tool budget reached. Write your final answer now without calling tools.)" });
           }
         }
       }
@@ -345,9 +672,18 @@ export class Room extends Server<Env> {
       if (this.abort?.signal.aborted) {
         msg.content += msg.content ? "\n\n_(stopped)_" : "_(stopped)_";
       } else if (err instanceof ProviderError && (err.message === "NO_PROVIDERS" || err.message === "ALL_FAILED")) {
+        const did = msg.meta!.steps!.length
+          ? "The steps above did run, but I couldn't write my reply. "
+          : "";
+        const outOfQuota =
+          getProvidersConfigured(this.env).length === 0
+            ? "No free AI provider is configured on this server."
+            : "The free AI models are busy or have hit their per-minute limits.";
         msg.content =
-          "No free AI provider is available right now — none are configured, or all have hit their free limits. The host can switch this room to **Local mode** (the AI runs in their browser, free and unlimited) from Room settings.";
+          (msg.content.trim() ? msg.content + "\n\n" : "") +
+          `⚠️ ${outOfQuota} ${did}Try again in a minute, or the host can switch this room to **Local mode** (the AI runs in their browser, free and unlimited) from Room settings.`;
         msg.meta!.error = true;
+        this.noticeAiUnavailable(outOfQuota);
       } else {
         console.error("AI turn failed", err);
         msg.content += `\n\n⚠️ The AI hit an error: ${String(err).slice(0, 200)}`;
@@ -362,9 +698,22 @@ export class Room extends Server<Env> {
 
     msg.meta!.streaming = false;
     msg.meta!.sources = dedupeSources(sources);
+    if (llm.length) {
+      // Unlink any URL the model invented (not seen in tool results or user messages).
+      const { text, removed } = stripUnverifiedLinks(
+        msg.content,
+        collectUrls([...llm.filter((m) => m.role !== "system").map((m) => m.content), ...sources.map((s) => s.url)]),
+      );
+      if (removed.length) console.warn(`unlinked ${removed.length} unverified citation(s)`, removed);
+      msg.content = text;
+    }
     if (!msg.content.trim()) msg.content = "_(no response)_";
+    // Count cloud turns site-wide (shown in /admin; enforces GLOBAL_DAILY_AI_LIMIT).
+    if (llm.length && msg.meta!.model && !msg.meta!.error)
+      this.ctx.waitUntil(countAiTurn(this.env.DB, msg.meta!.model.split(" · ")[0]));
     this.saveMessage(msg);
     this.broadcastMsg({ t: "ai_done", message: msg });
+    if (this.env.DEBUG_AI) console.log(`[ai] turn done at +${Date.now() - msg.createdAt}ms`);
   }
 
   /** Local mode: the host's browser runs an open model with WebLLM; we relay its tokens to everyone. */
@@ -400,38 +749,78 @@ export class Room extends Server<Env> {
   }
 
   private history(limit = HISTORY_FOR_AI): LlmMessage[] {
-    return this.loadMessages(limit)
-      .filter((m) => !m.meta?.error)
-      .map((m) =>
-        m.role === "assistant"
-          ? { role: "assistant" as const, content: m.content }
-          : { role: "user" as const, content: `${m.authorName}: ${m.content}` },
-      );
+    const msgs = this.loadMessages(limit).filter((m) => !m.meta?.error);
+    const lastAi = msgs.map((m) => m.role).lastIndexOf("assistant");
+    return msgs.map((m, i) => {
+      if (m.role !== "assistant") {
+        // Tell the model what was attached and how to use it.
+        const att = (m.meta?.attachments ?? [])
+          .map((a) =>
+            a.type.startsWith("image/")
+              ? `[Image attached: "${a.name}" (image_id ${a.id}); use describe_image to see it]`
+              : `[File attached: "${a.name}"${a.indexed ? "; its text is searchable with search_knowledge" : ""}]`,
+          )
+          .join(" ");
+        return { role: "user" as const, content: `${m.authorName}: ${m.content}${att ? ` ${att}` : ""}` };
+      }
+      // Free tiers allow only a few thousand tokens per minute, so older AI replies are
+      // clipped (the full text stays in the chat; docs hold the long-form work anyway).
+      const cap = i === lastAi ? 4000 : 1200;
+      const content = m.content.length > cap ? m.content.slice(0, cap) + " …(earlier reply clipped)" : m.content;
+      return { role: "assistant" as const, content };
+    });
   }
 
-  private systemPrompt(withTools: boolean) {
+  private systemPrompt(withTools: boolean, memory: string[] = []) {
     const s = this.settings!;
     const people = [...new Set(this.members().map((m) => m.name))].join(", ") || "nobody";
     const files = this.files();
     const skills = SKILLS.filter((k) => !s.disabledSkills.includes(k.name));
     const lines = [
-      `You are Huddle AI, a helpful, capable assistant inside a multiplayer workspace room called "${s.title}".`,
+      `You are Huddle AI, a helpful, capable assistant inside a multiplayer workspace room.`,
       `Several people can be in the chat at once. Each user message is prefixed with the speaker's name ("Name: message"). Address people by name when helpful, keep track of who asked what, and when several people talk at once, answer each of them.`,
-      `People here now: ${people}. Today's date: ${new Date().toISOString().slice(0, 10)}.`,
+      `Respond to the messages that arrived after your last reply. Earlier messages are context only: never redo or re-answer a request you already handled.`,
       `Format with Markdown (headings, lists, tables, fenced code with language tags, LaTeX with $...$). Be concise by default and expand when asked.`,
+    ];
+    // Things that change between turns go last, so self-hosted models can reuse their cached
+    // prompt prefix (much faster replies on your own GPU).
+    const volatile = [
+      ...(s.assistant
+        ? [
+            `In this room you are "${s.assistant.name || "Huddle AI"}", set up by the host with these instructions (follow them unless they conflict with the rules above):\n${s.assistant.instructions}`,
+          ]
+        : []),
+      `This room is called "${s.title}". Today's date: ${new Date().toISOString().slice(0, 10)}. People here now: ${people}.`,
     ];
     if (withTools) {
       lines.push(
-        `You have tools: web_search and fetch_url for current or factual info (cite sources as markdown links; never invent URLs), create_doc / read_doc / edit_doc for collaborative documents everyone can co-edit live, and load_skill for expert playbooks.`,
-        `Use create_doc when people ask you to write, draft, plan, outline or produce something substantial (reports, essays, plans, notes, slide outlines). In chat, briefly say what you made.`,
+        `You have tools: web_search and fetch_url for current or factual info, tools that create and edit live files everyone in the room co-edits, and load_skill for expert playbooks.`,
+        `Use web_search for anything recent or time-sensitive (news, prices, releases, "this week"). Don't use tools for small talk.`,
+        `Citations: only link URLs that appear word-for-word in your tool results. Never build, guess or "fix" a URL, and only call fetch_url on URLs from search results or from the users. If you can't find a source, say so.`,
+        `Files you can make (pick the one that fits the request):`,
+        ...FILE_GUIDE,
+        `After making or changing a file, reply in chat with one or two sentences about what you did; don't repeat its content. To change an existing file, use its edit tool (read it first when rewriting).`,
+        `file_id values are internal; never show them to people, refer to files by title.`,
         `Before specialised tasks, call load_skill with the most relevant skill. Available skills:`,
         ...skills.map((k) => `- ${k.name}: ${k.description}`),
+      );
+      if (s.deepResearch)
+        volatile.push(
+          `DEEP RESEARCH MODE is on. For questions that need research: load the deep-research skill, run several web_search queries from different angles, read the best 3–6 sources with fetch_url, then write the findings as a doc with create_doc (summary first, then sections, then a Sources list of the real URLs you read). In chat, give a short summary and point to the doc. Small talk still gets a normal short reply.`,
+        );
+      if (s.memory)
+        volatile.push(
+          memory.length
+            ? `Room memory (facts people asked you to keep; use them, and call remember to add new lasting facts like names, roles, goals, deadlines or preferences):\n${memory.map((f) => `- ${f}`).join("\n")}`
+            : `Room memory is on but empty. When people share lasting facts (names, roles, goals, deadlines, preferences) or ask you to remember something, call remember.`,
+        );
+      volatile.push(
         files.length
           ? `Files in this room:\n${files.map((f) => `- ${f.kind} "${f.title}" (file_id ${f.id})`).join("\n")}`
           : `There are no files in this room yet.`,
       );
     }
-    return lines.join("\n");
+    return [...lines, ...volatile].join("\n");
   }
 
   // ---------- storage helpers ----------
@@ -454,6 +843,25 @@ export class Room extends Server<Env> {
       VALUES (${m.id}, ${m.role}, ${m.authorId}, ${m.authorName}, ${m.content}, ${m.createdAt}, ${m.meta ? JSON.stringify(m.meta) : null})`;
   }
 
+  /** Save a fact the AI should keep in mind in future turns (room memory must be on). */
+  private async remember(fact: string): Promise<string> {
+    const clean = fact.replace(/\s+/g, " ").trim().slice(0, 300);
+    if (!clean) return "Error: empty fact.";
+    const facts = (await this.ctx.storage.get<string[]>("memory")) ?? [];
+    if (facts.some((f) => f.toLowerCase() === clean.toLowerCase())) return "Already remembered.";
+    facts.push(clean);
+    while (facts.length > MAX_MEMORY_FACTS) facts.shift();
+    await this.ctx.storage.put("memory", facts);
+    this.broadcastMsg({ t: "memory", facts });
+    return `Remembered. The room can see and delete it in Room settings → Memory (${facts.length}/${MAX_MEMORY_FACTS}).`;
+  }
+
+  private removeMessages(ids: string[]) {
+    if (!ids.length) return;
+    for (const id of ids) this.sql`DELETE FROM messages WHERE id = ${id}`;
+    this.broadcastMsg({ t: "remove", ids });
+  }
+
   private files(): RoomFile[] {
     return this.sql<any>`SELECT * FROM files ORDER BY created_at DESC`.map((r) => ({
       id: r.id,
@@ -464,7 +872,7 @@ export class Room extends Server<Env> {
     }));
   }
 
-  private createFile(kind: "doc", title: string, by: string): RoomFile {
+  private createFile(kind: FileKind, title: string, by: string): RoomFile {
     const f: RoomFile = {
       id: crypto.randomUUID().slice(0, 12),
       kind,

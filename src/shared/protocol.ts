@@ -25,8 +25,36 @@ export interface ChatMessage {
     sources?: Source[];
     streaming?: boolean;
     error?: boolean;
+    /** The author changed this message after sending it. */
+    edited?: boolean;
+    /** emoji -> uids who reacted */
+    reactions?: Record<string, string[]>;
+    poll?: Poll;
+    attachments?: Attachment[];
+    /** AI-generated images (stored like uploads). */
+    images?: Attachment[];
   };
 }
+
+export interface Attachment {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  /** Same-origin URL to view/download it. */
+  url: string;
+  /** Its text was indexed for search_knowledge (PDF, CSV, text). */
+  indexed?: boolean;
+}
+
+export interface Poll {
+  question: string;
+  options: string[];
+  /** option index (as string) -> uids */
+  votes: Record<string, string[]>;
+}
+
+export const REACTIONS = ["👍", "❤️", "😂", "🎉", "🤔", "👀"] as const;
 
 export interface Member {
   uid: string;
@@ -36,7 +64,8 @@ export interface Member {
   typing?: boolean;
 }
 
-export type FileKind = "doc";
+import type { FileKind } from "./files";
+export type { FileKind } from "./files";
 
 export interface RoomFile {
   id: string;
@@ -44,6 +73,12 @@ export interface RoomFile {
   title: string;
   createdAt: number;
   createdBy: string;
+}
+
+export interface FileVersion {
+  at: number;
+  /** Approximate size of the snapshot in bytes. */
+  size: number;
 }
 
 export type AiMode = "mention" | "always";
@@ -57,6 +92,17 @@ export interface RoomSettings {
   locked: boolean;
   disabledSkills: string[];
   title: string;
+  /** Deep Research: more tool steps, multiple searches, and a cited doc at the end. */
+  deepResearch?: boolean;
+  /** Room memory: the AI may save facts (with the remember tool) that it sees in every turn. */
+  memory?: boolean;
+  /** Custom assistant: a name and standing instructions from the host. */
+  assistant?: AssistantProfile;
+}
+
+export interface AssistantProfile {
+  name: string;
+  instructions: string;
 }
 
 export interface SkillInfo {
@@ -65,16 +111,31 @@ export interface SkillInfo {
 }
 
 export type ClientMsg =
-  | { t: "say"; text: string }
+  | { t: "say"; text: string; attachments?: Attachment[] }
+  /** Turn an uploaded CSV into a live sheet. */
+  | { t: "import_csv"; title: string; csv: string }
   | { t: "typing"; on: boolean }
   | { t: "stop" }
   | { t: "settings"; patch: Partial<Omit<RoomSettings, "hostId">> }
   | { t: "new_file"; kind: FileKind; title: string }
   | { t: "rename_file"; id: string; title: string }
   | { t: "delete_file"; id: string }
+  | { t: "duplicate_file"; id: string }
+  /** Copy a form's responses into a new sheet. */
+  | { t: "form_to_sheet"; id: string }
   | { t: "kick"; uid: string }
   | { t: "local_delta"; id: string; delta: string }
-  | { t: "local_done"; id: string; error?: string };
+  | { t: "local_done"; id: string; error?: string }
+  /** Change your own message; the AI re-answers if it was the latest thing it replied to. */
+  | { t: "edit"; id: string; text: string }
+  /** Replace the latest AI reply with a fresh one. */
+  | { t: "regenerate" }
+  /** Toggle your reaction on a message. */
+  | { t: "react"; id: string; emoji: string }
+  | { t: "poll"; question: string; options: string[] }
+  | { t: "vote"; id: string; option: number }
+  /** Remove a remembered fact (anyone in the room; the list is visible in settings). */
+  | { t: "forget"; index: number };
 
 export type ServerMsg =
   | {
@@ -86,6 +147,7 @@ export type ServerMsg =
       files: RoomFile[];
       skills: SkillInfo[];
       providers: string[];
+      memory: string[];
     }
   | { t: "presence"; members: Member[] }
   | { t: "msg"; message: ChatMessage }
@@ -96,5 +158,9 @@ export type ServerMsg =
   | { t: "files"; files: RoomFile[] }
   | { t: "open_file"; id: string }
   | { t: "local_request"; id: string; model: string; messages: { role: string; content: string }[] }
+  | { t: "remove"; ids: string[] }
+  | { t: "memory"; facts: string[] }
+  /** Room-wide banner, e.g. when the free cloud AI is unavailable. */
+  | { t: "notice"; kind: "ai_unavailable"; text: string }
   | { t: "kicked" }
   | { t: "error"; message: string };

@@ -5,8 +5,19 @@
 # Fake AI for testing the UI without any keys:
 MOCK_AI=true
 
-# https://console.groq.com/keys          (fast open models: gpt-oss, Llama, Qwen)
+# Your own GPU via Ollama (https://ollama.com): free, no rate or token limits, tried first.
+# Setup: install Ollama, then `ollama pull qwen3:14b` and `ollama create huddle -f ollama/Modelfile`.
+# A deployed Worker can't reach localhost: point this at a Cloudflare Tunnel URL and set a secret.
+# OLLAMA_BASE_URL=http://127.0.0.1:11434   (use 127.0.0.1, not localhost: IPv6 lookups stall ~30s)
+# OLLAMA_MODEL=huddle
+# OLLAMA_API_KEY=            (shared secret; required when exposed through a tunnel)
+
+# https://console.groq.com/keys          (fast open models: gpt-oss, Qwen)
+# Free tier is ~8,000 tokens/min and 1,000 requests/day PER MODEL, so Huddle also uses a
+# second Groq model (default openai/gpt-oss-20b) when the first is rate-limited.
+# Add Cerebras/OpenRouter keys too for headroom with several people chatting.
 # GROQ_API_KEY=
+# GROQ_FALLBACK_MODEL=openai/gpt-oss-20b   (or "off")
 # https://cloud.cerebras.ai               (very fast open models)
 # CEREBRAS_API_KEY=
 # https://openrouter.ai/keys              (only ":free" models are used = $0)

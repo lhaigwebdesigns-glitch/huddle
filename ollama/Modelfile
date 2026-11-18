@@ -1,0 +1,7 @@
+# Huddle's self-hosted model (used when OLLAMA_BASE_URL is set).
+# Build it once with:   ollama create huddle -f ollama/Modelfile
+# Ollama's default 4k context is too small for Huddle's system prompt, tools and chat
+# history, so raise it. 12k keeps a 14B model 100% on a 12 GB GPU (checked on an RX 9070 GRE
+# with `ollama ps`); 16k spilled ~6% onto the CPU there. With 16 GB+ of VRAM, try 16384.
+FROM qwen3:14b
+PARAMETER num_ctx 12288

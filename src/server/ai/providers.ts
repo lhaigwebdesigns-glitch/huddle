@@ -30,10 +30,37 @@ interface ChatArgs {
 }
 
 export class ProviderError extends Error {
-  constructor(message: string, public status = 0) {
+  constructor(
+    message: string,
+    public status = 0,
+    /** Seconds the provider asked us to wait (from Retry-After or the error text). */
+    public retryAfter?: number,
+  ) {
     super(message);
   }
 }
+
+/**
+ * Longest rate-limit wait we'll sit through before moving to the next provider. Groq's
+ * per-minute token window often resets within ~20s, and waiting for the strong model beats
+ * handing a multi-step task to a weaker one. The room sees the typing indicator meanwhile.
+ */
+const MAX_RETRY_WAIT_S = 20;
+
+/** Reads "try again in 4.125s" (Groq) or a Retry-After header into seconds. */
+export function parseRetryAfter(text: string, header?: string | null): number | undefined {
+  const h = Number(header);
+  if (header && Number.isFinite(h)) return h;
+  const m = text.match(/try again in (?:(\d+)m)?(\d+(?:\.\d+)?)s/i);
+  if (!m) return undefined;
+  return Number(m[1] ?? 0) * 60 + Number(m[2]);
+}
+
+const sleep = (ms: number, signal?: AbortSignal) =>
+  new Promise<void>((resolve, reject) => {
+    const t = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => (clearTimeout(t), reject(new Error("aborted"))), { once: true });
+  });
 
 // Providers that hit a rate limit are skipped for a while (per isolate).
 const cooldownUntil = new Map<string, number>();
@@ -53,8 +80,8 @@ export async function chatWithFallback(env: Env, args: ChatArgs): Promise<ChatRe
   let lastErr: unknown;
   for (const p of providers) {
     let emitted = false;
-    try {
-      return await chatOnce(p, {
+    const attempt = () =>
+      chatOnce(p, {
         ...args,
         tools: p.supportsTools ? args.tools : undefined,
         onDelta: (t) => {
@@ -62,12 +89,30 @@ export async function chatWithFallback(env: Env, args: ChatArgs): Promise<ChatRe
           args.onDelta(t);
         },
       });
+    try {
+      try {
+        return await attempt();
+      } catch (err) {
+        // A short per-minute token limit (common on Groq's free tier): wait it out once
+        // rather than dropping to a weaker model for the rest of the minute.
+        const wait = err instanceof ProviderError && err.status === 429 ? err.retryAfter : undefined;
+        if (emitted || args.signal?.aborted || wait === undefined || wait > MAX_RETRY_WAIT_S) throw err;
+        console.warn(`provider ${p.id} rate-limited, retrying in ${wait}s`);
+        await sleep(wait * 1000 + 250, args.signal);
+        return await attempt();
+      }
     } catch (err) {
       if (args.signal?.aborted) throw err;
       lastErr = err;
       const status = err instanceof ProviderError ? err.status : 0;
-      cooldownUntil.set(p.id, Date.now() + (status === 429 ? 60_000 : 15_000));
-      console.warn(`provider ${p.id} failed`, status, String(err));
+      const msg = String(err);
+      const cooldown = /run remotely/i.test(msg)
+        ? 24 * 3_600_000 // Workers AI binding in local dev without a Cloudflare login: never works this session
+        : status === 429
+          ? Math.max(60, (err as ProviderError).retryAfter ?? 0) * 1000
+          : 15_000;
+      cooldownUntil.set(p.id, Date.now() + cooldown);
+      console.warn(`provider ${p.id} failed`, status, msg.slice(0, 200));
       if (emitted) throw err;
     }
   }
@@ -82,33 +127,58 @@ async function chatOnce(p: ProviderConfig, args: ChatArgs): Promise<ChatResult> 
 }
 
 async function openAiCompatChat(p: ProviderConfig, args: ChatArgs): Promise<ChatResult> {
-  const res = await fetch(`${p.baseUrl}/chat/completions`, {
-    method: "POST",
-    signal: args.signal,
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${p.apiKey}`,
-      ...p.extraHeaders,
-    },
-    body: JSON.stringify({
-      model: p.model,
-      messages: args.messages,
-      tools: args.tools?.length ? args.tools : undefined,
-      stream: true,
-      temperature: 0.6,
-      max_tokens: 4096,
-    }),
-  });
+  // Optional deadline for the response to start (self-hosted models may be asleep or busy).
+  const timeout = p.responseTimeoutMs ? new AbortController() : null;
+  const timer = timeout ? setTimeout(() => timeout.abort(), p.responseTimeoutMs) : undefined;
+  const signal = timeout ? (args.signal ? AbortSignal.any([args.signal, timeout.signal]) : timeout.signal) : args.signal;
+  let res: Response;
+  try {
+    res = await fetch(`${p.baseUrl}/chat/completions`, {
+      method: "POST",
+      signal,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${p.apiKey}`,
+        ...p.extraHeaders,
+      },
+      body: JSON.stringify({
+        model: p.model,
+        messages: args.messages,
+        tools: args.tools?.length ? args.tools : undefined,
+        stream: true,
+        temperature: 0.6,
+        max_tokens: 4096,
+        // Thinking models: gpt-oss's hidden reasoning counts against free tokens-per-minute
+        // limits, so it runs at "low"; a provider can set its own (e.g. Ollama's "none").
+        ...(p.reasoningEffort ? { reasoning_effort: p.reasoningEffort } : /gpt-oss/.test(p.model) ? { reasoning_effort: "low" } : {}),
+      }),
+    });
+  } catch (err) {
+    if (timeout?.signal.aborted && !args.signal?.aborted)
+      throw new ProviderError(`${p.id}: no response within ${p.responseTimeoutMs! / 1000}s`, 504);
+    if (args.signal?.aborted) throw err;
+    // Connection refused / DNS / tunnel down: the provider is offline.
+    throw new ProviderError(`${p.id} unreachable: ${String(err).slice(0, 200)}`, 503);
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok || !res.body) {
     const text = await res.text().catch(() => "");
-    throw new ProviderError(`${p.id} ${res.status}: ${text.slice(0, 300)}`, res.status);
+    throw new ProviderError(
+      `${p.id} ${res.status}: ${text.slice(0, 300)}`,
+      res.status,
+      res.status === 429 ? parseRetryAfter(text, res.headers.get("retry-after")) : undefined,
+    );
   }
 
   let content = "";
   const calls: ToolCall[] = [];
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
   let buf = "";
-  for (;;) {
+  // Stop at the "[DONE]" marker rather than waiting for the connection to close: some servers
+  // (Ollama behind local dev) keep it open ~30s after the answer is complete.
+  let finished = false;
+  while (!finished) {
     const { value, done } = await reader.read();
     if (done) break;
     buf += value;
@@ -118,7 +188,10 @@ async function openAiCompatChat(p: ProviderConfig, args: ChatArgs): Promise<Chat
       const line = raw.trim();
       if (!line.startsWith("data:")) continue;
       const data = line.slice(5).trim();
-      if (data === "[DONE]") continue;
+      if (data === "[DONE]") {
+        finished = true;
+        break;
+      }
       let json: any;
       try {
         json = JSON.parse(data);
@@ -141,6 +214,7 @@ async function openAiCompatChat(p: ProviderConfig, args: ChatArgs): Promise<Chat
       }
     }
   }
+  if (finished) reader.cancel().catch(() => {});
   return { content, toolCalls: calls.filter(Boolean), provider: p.label, model: p.model };
 }
 
@@ -188,31 +262,94 @@ async function workersAiChat(p: ProviderConfig, args: ChatArgs): Promise<ChatRes
   return { content, toolCalls, provider: p.label, model: p.model };
 }
 
+/**
+ * Deterministic tool calls for e2e tests (MOCK_AI=true): "make a doc", "make a sheet", …
+ * Each one exercises a real tool end to end without any provider keys.
+ */
+export const MOCK_TOOL_CALLS: { trigger: RegExp; name: string; args: Record<string, unknown> }[] = [
+  {
+    trigger: /make a doc/i,
+    name: "create_doc",
+    args: { title: "Mock plan", markdown: "# Mock plan\n\nThis doc was written by the **mock AI**.\n\n- First point\n- Second point" },
+  },
+  {
+    trigger: /make a sheet/i,
+    name: "create_sheet",
+    args: {
+      title: "Mock budget",
+      csv: "Item,Cost\nFlour,20\nSugar,12.5\nTotal,=SUM(B2:B3)",
+      ops: [{ op: "format", range: "B2:B4", format: "currency" }, { op: "add_chart", type: "bar", range: "A1:B3", title: "Costs" }],
+    },
+  },
+  {
+    trigger: /make slides/i,
+    name: "create_slides",
+    args: {
+      title: "Mock deck",
+      theme: "indigo",
+      slides: [
+        { layout: "title", title: "Mock deck", body: "Made by the mock AI" },
+        { layout: "bullets", title: "Agenda", body: "- Why\n- How\n- When", notes: "Keep it short" },
+        { layout: "quote", title: "Done is better than perfect" },
+      ],
+    },
+  },
+  {
+    trigger: /make a whiteboard/i,
+    name: "draw_whiteboard",
+    args: { title: "Mock flow", mermaid: "flowchart LR\n  A[Idea] --> B[Plan] --> C[Launch]" },
+  },
+  {
+    trigger: /what do the files say/i,
+    name: "search_knowledge",
+    args: { query: "flour budget" },
+  },
+  {
+    trigger: /remember that/i,
+    name: "remember",
+    args: { fact: "The bake sale deadline is Friday." },
+  },
+  {
+    trigger: /make an app/i,
+    name: "make_artifact",
+    args: {
+      title: "Mock counter",
+      html: '<h1>Counter</h1><button id="b">Clicked 0 times</button><script>let n=0;b.onclick=()=>b.textContent=`Clicked ${++n} times`</script>',
+    },
+  },
+  {
+    trigger: /make a form/i,
+    name: "create_form",
+    args: {
+      title: "Mock signup",
+      description: "Sign up to help at the bake sale.",
+      questions: [
+        { type: "short", title: "Your name", required: true },
+        { type: "choice", title: "Which shift?", options: ["Morning", "Afternoon"], required: true },
+        { type: "scale", title: "How excited are you?", max: 5 },
+      ],
+    },
+  },
+];
+
 function mockChat(args: ChatArgs): Promise<ChatResult> {
   const lastUser = [...args.messages].reverse().find((m) => m.role === "user")?.content ?? "";
   const lastIsTool = args.messages[args.messages.length - 1]?.role === "tool";
-  if (!lastIsTool && /make a doc/i.test(lastUser) && args.tools?.some((t) => t.function.name === "create_doc")) {
+  const call = !lastIsTool && MOCK_TOOL_CALLS.find((c) => c.trigger.test(lastUser) && args.tools?.some((t) => t.function.name === c.name));
+  if (call) {
     return Promise.resolve({
       content: "",
-      toolCalls: [
-        {
-          id: "mock_1",
-          type: "function",
-          function: {
-            name: "create_doc",
-            arguments: JSON.stringify({
-              title: "Mock plan",
-              markdown: "# Mock plan\n\nThis doc was written by the **mock AI**.\n\n- First point\n- Second point",
-            }),
-          },
-        },
-      ],
+      toolCalls: [{ id: `mock_${call.name}`, type: "function", function: { name: call.name, arguments: JSON.stringify(call.args) } }],
       provider: "Mock AI (dev)",
       model: "mock",
     });
   }
-  const text = lastIsTool
-    ? "Done! I created the document — it's open in the side panel for everyone."
+  const text = /show js/i.test(lastUser) && !lastIsTool
+    ? "Try this:\n\n```js\nconsole.log('answer', 6 * 7);\n```\n"
+    : /show a diagram/i.test(lastUser) && !lastIsTool
+    ? "Here's the flow:\n\n```mermaid\nflowchart LR\n  Idea --> Plan --> Launch\n```\n"
+    : lastIsTool
+    ? "Done! I made it — it's open in the side panel for everyone."
     : `🤖 (mock AI) I heard: "${lastUser.slice(0, 200)}". Configure a free provider key to get real answers.`;
   return (async () => {
     for (const word of text.split(/(?<= )/)) {

@@ -119,12 +119,20 @@ function blocks(tokens: Token[]): Y.XmlElement[] {
         out.push(new Y.XmlElement("horizontalRule"));
         break;
       case "table": {
-        // StarterKit has no tables yet: render as a readable text table.
+        // StarterKit has no tables yet: render as an aligned plain-text table in a code block
+        // (cell Markdown like **bold** is flattened so no stray asterisks show up).
         const tb = t as Tokens.Table;
-        const rows = [tb.header.map((c) => c.text), ...tb.rows.map((r) => r.map((c) => c.text))];
+        const cell = (c: Tokens.TableCell) => {
+          const ops: Op[] = [];
+          inlineToText(c.tokens, {}, ops);
+          return ops.map((o) => o.insert).join("").replace(/\s+/g, " ").trim();
+        };
+        const rows = [tb.header.map(cell), ...tb.rows.map((r) => r.map(cell))];
+        const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => (r[i] ?? "").length)));
+        const line = (r: string[]) => r.map((c, i) => (c ?? "").padEnd(widths[i])).join(" | ").trimEnd();
         const el = new Y.XmlElement("codeBlock");
         const text = new Y.XmlText();
-        text.insert(0, rows.map((r) => r.join(" | ")).join("\n"));
+        text.insert(0, [line(rows[0]), widths.map((w) => "-".repeat(w)).join("-|-"), ...rows.slice(1).map(line)].join("\n"));
         el.insert(0, [text]);
         out.push(el);
         break;
