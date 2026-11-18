@@ -127,6 +127,29 @@ export class Doc extends YServer<Env> {
     return { ok: true };
   }
 
+  // ---------- RPC: stored uploads (when there's no R2 bucket; see blobs.ts) ----------
+
+  async putBlob(bytes: Uint8Array, type: string, name: string) {
+    const CHUNK = 1_000_000; // stays under the 2 MB per-value limit
+    const data = new Uint8Array(bytes);
+    const parts: Record<string, unknown> = { "blob:meta": { type, name, n: Math.ceil(data.length / CHUNK) } };
+    for (let i = 0; i * CHUNK < data.length; i++) parts[`blob:${i}`] = data.slice(i * CHUNK, (i + 1) * CHUNK);
+    await this.ctx.storage.put(parts);
+    return { ok: true };
+  }
+
+  async getBlob(): Promise<{ bytes: Uint8Array; type: string; name: string } | null> {
+    const meta = await this.ctx.storage.get<{ type: string; name: string; n: number }>("blob:meta");
+    if (!meta) return null;
+    const keys = Array.from({ length: meta.n }, (_, i) => `blob:${i}`);
+    const got = await this.ctx.storage.get<Uint8Array>(keys);
+    const parts = keys.map((k) => got.get(k) ?? new Uint8Array());
+    const out = new Uint8Array(parts.reduce((s, p) => s + p.length, 0));
+    let at = 0;
+    for (const p of parts) out.set(p, at), (at += p.length);
+    return { bytes: out, type: meta.type, name: meta.name };
+  }
+
   // ---------- RPC: docs ----------
 
   async setMarkdown(markdown: string, mode: "replace" | "append" = "replace") {

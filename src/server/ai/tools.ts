@@ -3,6 +3,7 @@ import type { Env } from "../env";
 import type { Attachment, FileKind, RoomFile, Source, Step } from "../../shared/protocol";
 import type { ToolDef } from "./providers";
 import { getSkill } from "./skills";
+import { getBlob, putBlob } from "../blobs";
 import { parseCsv, type SheetOp } from "../../shared/sheet-model";
 import { colName } from "../../shared/formula";
 import type { SlideData, SlideOp } from "../../shared/slides-model";
@@ -486,11 +487,11 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
     case "describe_image": {
       const id = String(args.image_id ?? "");
       if (!/^[a-z0-9]{16}$/.test(id)) return "Error: unknown image_id.";
-      if (!ctx.env.FILES || !ctx.env.AI) return "Image understanding isn't available on this server (needs Cloudflare Workers AI). Tell the users you can't see images here.";
-      const obj = await ctx.env.FILES.get(`rooms/${ctx.roomCode}/${id}`);
-      if (!obj || !obj.httpMetadata?.contentType?.startsWith("image/")) return "Error: that image wasn't found.";
+      if (!ctx.env.AI) return "Image understanding isn't available on this server (needs Cloudflare Workers AI). Tell the users you can't see images here.";
+      const obj = await getBlob(ctx.env, `rooms/${ctx.roomCode}/${id}`);
+      if (!obj || !obj.type.startsWith("image/")) return "Error: that image wasn't found.";
       ctx.step({ kind: "other", label: "Looking at the image" });
-      const bytes = new Uint8Array(await obj.arrayBuffer());
+      const bytes = obj.bytes;
       try {
         const out: any = await ctx.env.AI.run("@cf/llava-hf/llava-1.5-7b-hf" as any, {
           image: [...bytes],
@@ -507,7 +508,7 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
     case "generate_image": {
       const prompt = String(args.prompt ?? "").slice(0, 1000);
       if (!prompt) return "Error: prompt is required.";
-      if (!ctx.env.FILES || !ctx.env.AI) return "Image generation isn't available on this server (needs Cloudflare Workers AI and R2).";
+      if (!ctx.env.AI) return "Image generation isn't available on this server (needs Cloudflare Workers AI).";
       ctx.step({ kind: "other", label: "Drawing an image" });
       try {
         const out: any = await ctx.env.AI.run("@cf/black-forest-labs/flux-1-schnell" as any, { prompt, steps: 4 } as any);
@@ -516,9 +517,9 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
         const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
         const id = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
         const name = `${prompt.slice(0, 40).replace(/[^\w ]+/g, "").trim() || "image"}.jpg`;
-        await ctx.env.FILES.put(`rooms/${ctx.roomCode}/${id}`, bytes, { httpMetadata: { contentType: "image/jpeg" }, customMetadata: { name } });
+        await putBlob(ctx.env, `rooms/${ctx.roomCode}/${id}`, bytes, "image/jpeg", name);
         ctx.addImage?.({ id, name, type: "image/jpeg", size: bytes.length, url: `/api/rooms/${ctx.roomCode}/blobs/${id}` });
-        return `Image created and shown in your reply (image_id ${id}). Its URL for slides is https://<this site>/api/rooms/${ctx.roomCode}/blobs/${id}`;
+        return `Image created (image_id ${id}). It is already displayed under your reply, so do NOT write a link or markdown image for it; just say a sentence about it. Only if you put it on a slide, use the URL /api/rooms/${ctx.roomCode}/blobs/${id}`;
       } catch (err) {
         return /remote|login/i.test(String(err))
           ? "Image generation works once Huddle is deployed to Cloudflare (it isn't available in local dev). Tell the users."

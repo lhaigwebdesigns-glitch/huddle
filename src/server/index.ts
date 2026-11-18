@@ -7,6 +7,7 @@ import { SKILLS } from "./ai/skills";
 import { clientIp, ensureTables, hit, usageByDay } from "./db";
 import { auth, currentUser, enabledProviders, rememberRoomForUser } from "./auth";
 import { MAX_UPLOAD_BYTES, safeFileName, UPLOAD_TYPES } from "../shared/knowledge";
+import { getBlob, putBlob } from "./blobs";
 
 export { Room } from "./room";
 export { Doc } from "./doc";
@@ -77,7 +78,6 @@ app.post("/api/rooms/:code/files/:id/versions", async (c) => {
 app.post("/api/rooms/:code/upload", async (c) => {
   const code = normalizeCode(c.req.param("code"));
   if (!isValidCode(code)) return c.json({ error: "Room not found" }, 404);
-  if (!c.env.FILES) return c.json({ error: "Uploads aren't set up on this server yet (needs the free R2 bucket)." }, 503);
   if (!(await hit(c.env.DB, `upload:${clientIp(c.req.raw)}`, 60, 3600))) return c.json({ error: "Too many uploads this hour. Try again later." }, 429);
   const room = await getServerByName(c.env.Room, code);
   if (!(await room.exists())) return c.json({ error: "Room not found" }, 404);
@@ -89,7 +89,7 @@ app.post("/api/rooms/:code/upload", async (c) => {
   if (file.size > MAX_UPLOAD_BYTES) return c.json({ error: "Files can be up to 10 MB." }, 413);
   const id = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
   const name = safeFileName(file.name);
-  await c.env.FILES.put(`rooms/${code}/${id}`, file.stream(), { httpMetadata: { contentType: type }, customMetadata: { name } });
+  await putBlob(c.env, `rooms/${code}/${id}`, new Uint8Array(await file.arrayBuffer()), type, name);
   const text = String(form?.get("text") ?? "");
   let indexed = false;
   if (UPLOAD_TYPES[type].text && text.trim()) indexed = (await room.indexText(id, name, text)) > 0;
@@ -99,12 +99,11 @@ app.post("/api/rooms/:code/upload", async (c) => {
 app.get("/api/rooms/:code/blobs/:id", async (c) => {
   const code = normalizeCode(c.req.param("code"));
   const id = c.req.param("id");
-  if (!isValidCode(code) || !/^[a-z0-9]{16}$/.test(id) || !c.env.FILES) return c.text("Not found", 404);
-  const obj = await c.env.FILES.get(`rooms/${code}/${id}`);
+  if (!isValidCode(code) || !/^[a-z0-9]{16}$/.test(id)) return c.text("Not found", 404);
+  const obj = await getBlob(c.env, `rooms/${code}/${id}`);
   if (!obj) return c.text("Not found", 404);
-  const type = obj.httpMetadata?.contentType ?? "application/octet-stream";
-  const name = obj.customMetadata?.name ?? "file";
-  return new Response(obj.body, {
+  const { type, name } = obj;
+  return new Response(obj.bytes as Uint8Array<ArrayBuffer>, {
     headers: {
       "content-type": type,
       // Images and PDFs open inline; everything else downloads. Never let a file run scripts here.
