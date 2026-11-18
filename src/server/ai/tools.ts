@@ -1,6 +1,6 @@
 import { getServerByName } from "partyserver";
 import type { Env } from "../env";
-import type { FileKind, RoomFile, Source, Step } from "../../shared/protocol";
+import type { Attachment, FileKind, RoomFile, Source, Step } from "../../shared/protocol";
 import type { ToolDef } from "./providers";
 import { getSkill } from "./skills";
 import { parseCsv, type SheetOp } from "../../shared/sheet-model";
@@ -17,6 +17,9 @@ export interface ToolContext {
   sources: Source[];
   /** Present only when the room has memory turned on. */
   remember?: (fact: string) => Promise<string>;
+  searchKnowledge?: (q: string) => Promise<{ name: string; chunk: string }[]>;
+  /** Show a generated image in the AI's reply. */
+  addImage?: (a: Attachment) => void;
 }
 
 export const TOOL_DEFS: ToolDef[] = [
@@ -209,6 +212,30 @@ export const TOOL_DEFS: ToolDef[] = [
       name: "read_form_responses",
       description: "Summarize a form's responses: counts per option, scale averages, and recent text answers.",
       parameters: { type: "object", properties: { file_id: { type: "string" } }, required: ["file_id"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "search_knowledge",
+      description: "Search the text of files people uploaded to this room (PDFs, CSVs, notes). Returns the most relevant passages with file names.",
+      parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "describe_image",
+      description: "Look at an image someone attached (by image_id) and describe it or answer a question about it.",
+      parameters: { type: "object", properties: { image_id: { type: "string" }, question: { type: "string" } }, required: ["image_id"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "generate_image",
+      description: "Create an image from a text description (illustrations, logos, slide art). It appears in your reply for everyone.",
+      parameters: { type: "object", properties: { prompt: { type: "string" } }, required: ["prompt"] },
     },
   },
   {
@@ -448,6 +475,55 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
       if (typeof file === "string") return file;
       ctx.step({ kind: "doc", label: `Reading responses to “${file.title}”` });
       return (await fileStub(ctx, file)).formSummary();
+    }
+    case "search_knowledge": {
+      const q = String(args.query ?? "").slice(0, 300);
+      ctx.step({ kind: "search", label: `Searching room files for “${q}”` });
+      const hits = (await ctx.searchKnowledge?.(q)) ?? [];
+      if (!hits.length) return "No matching passages in this room's uploaded files.";
+      return hits.map((h, i) => `[${i + 1}] From "${h.name}":\n${h.chunk}`).join("\n\n");
+    }
+    case "describe_image": {
+      const id = String(args.image_id ?? "");
+      if (!/^[a-z0-9]{16}$/.test(id)) return "Error: unknown image_id.";
+      if (!ctx.env.FILES || !ctx.env.AI) return "Image understanding isn't available on this server (needs Cloudflare Workers AI). Tell the users you can't see images here.";
+      const obj = await ctx.env.FILES.get(`rooms/${ctx.roomCode}/${id}`);
+      if (!obj || !obj.httpMetadata?.contentType?.startsWith("image/")) return "Error: that image wasn't found.";
+      ctx.step({ kind: "other", label: "Looking at the image" });
+      const bytes = new Uint8Array(await obj.arrayBuffer());
+      try {
+        const out: any = await ctx.env.AI.run("@cf/llava-hf/llava-1.5-7b-hf" as any, {
+          image: [...bytes],
+          prompt: String(args.question ?? "Describe this image in detail, including any text in it."),
+          max_tokens: 512,
+        } as any);
+        return String(out?.description ?? out?.response ?? "").trim() || "(the vision model returned nothing)";
+      } catch (err) {
+        return /remote|login/i.test(String(err))
+          ? "Image understanding works once Huddle is deployed to Cloudflare (it isn't available in local dev). Tell the users."
+          : `Error looking at the image: ${String(err).slice(0, 150)}`;
+      }
+    }
+    case "generate_image": {
+      const prompt = String(args.prompt ?? "").slice(0, 1000);
+      if (!prompt) return "Error: prompt is required.";
+      if (!ctx.env.FILES || !ctx.env.AI) return "Image generation isn't available on this server (needs Cloudflare Workers AI and R2).";
+      ctx.step({ kind: "other", label: "Drawing an image" });
+      try {
+        const out: any = await ctx.env.AI.run("@cf/black-forest-labs/flux-1-schnell" as any, { prompt, steps: 4 } as any);
+        const b64 = String(out?.image ?? "");
+        if (!b64) return "The image model returned nothing; try a different description.";
+        const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+        const id = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+        const name = `${prompt.slice(0, 40).replace(/[^\w ]+/g, "").trim() || "image"}.jpg`;
+        await ctx.env.FILES.put(`rooms/${ctx.roomCode}/${id}`, bytes, { httpMetadata: { contentType: "image/jpeg" }, customMetadata: { name } });
+        ctx.addImage?.({ id, name, type: "image/jpeg", size: bytes.length, url: `/api/rooms/${ctx.roomCode}/blobs/${id}` });
+        return `Image created and shown in your reply (image_id ${id}). Its URL for slides is https://<this site>/api/rooms/${ctx.roomCode}/blobs/${id}`;
+      } catch (err) {
+        return /remote|login/i.test(String(err))
+          ? "Image generation works once Huddle is deployed to Cloudflare (it isn't available in local dev). Tell the users."
+          : `Error generating the image: ${String(err).slice(0, 150)}`;
+      }
     }
     case "remember": {
       if (!ctx.remember) return "Room memory is turned off; the host can turn it on in Room settings.";

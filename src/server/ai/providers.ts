@@ -300,6 +300,11 @@ export const MOCK_TOOL_CALLS: { trigger: RegExp; name: string; args: Record<stri
     args: { title: "Mock flow", mermaid: "flowchart LR\n  A[Idea] --> B[Plan] --> C[Launch]" },
   },
   {
+    trigger: /what do the files say/i,
+    name: "search_knowledge",
+    args: { query: "flour budget" },
+  },
+  {
     trigger: /remember that/i,
     name: "remember",
     args: { fact: "The bake sale deadline is Friday." },
@@ -339,7 +344,9 @@ function mockChat(args: ChatArgs): Promise<ChatResult> {
       model: "mock",
     });
   }
-  const text = /show a diagram/i.test(lastUser) && !lastIsTool
+  const text = /show js/i.test(lastUser) && !lastIsTool
+    ? "Try this:\n\n```js\nconsole.log('answer', 6 * 7);\n```\n"
+    : /show a diagram/i.test(lastUser) && !lastIsTool
     ? "Here's the flow:\n\n```mermaid\nflowchart LR\n  Idea --> Plan --> Launch\n```\n"
     : lastIsTool
     ? "Done! I made it — it's open in the side panel for everyone."

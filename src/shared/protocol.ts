@@ -30,7 +30,21 @@ export interface ChatMessage {
     /** emoji -> uids who reacted */
     reactions?: Record<string, string[]>;
     poll?: Poll;
+    attachments?: Attachment[];
+    /** AI-generated images (stored like uploads). */
+    images?: Attachment[];
   };
+}
+
+export interface Attachment {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  /** Same-origin URL to view/download it. */
+  url: string;
+  /** Its text was indexed for search_knowledge (PDF, CSV, text). */
+  indexed?: boolean;
 }
 
 export interface Poll {
@@ -82,6 +96,13 @@ export interface RoomSettings {
   deepResearch?: boolean;
   /** Room memory: the AI may save facts (with the remember tool) that it sees in every turn. */
   memory?: boolean;
+  /** Custom assistant: a name and standing instructions from the host. */
+  assistant?: AssistantProfile;
+}
+
+export interface AssistantProfile {
+  name: string;
+  instructions: string;
 }
 
 export interface SkillInfo {
@@ -90,7 +111,9 @@ export interface SkillInfo {
 }
 
 export type ClientMsg =
-  | { t: "say"; text: string }
+  | { t: "say"; text: string; attachments?: Attachment[] }
+  /** Turn an uploaded CSV into a live sheet. */
+  | { t: "import_csv"; title: string; csv: string }
   | { t: "typing"; on: boolean }
   | { t: "stop" }
   | { t: "settings"; patch: Partial<Omit<RoomSettings, "hostId">> }

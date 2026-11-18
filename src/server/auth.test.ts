@@ -1,0 +1,30 @@
+import { describe, expect, it } from "vitest";
+import { cookie, enabledProviders, parseCookies, safeReturn, sha256 } from "./auth";
+
+describe("auth helpers", () => {
+  it("parses and writes cookies", () => {
+    expect(parseCookies("a=1; huddle_session=abc%3D; x")).toEqual({ a: "1", huddle_session: "abc=" });
+    const c = cookie("huddle_session", "t", { maxAge: 60, secure: true });
+    expect(c).toContain("HttpOnly");
+    expect(c).toContain("SameSite=Lax");
+    expect(c).toContain("Secure");
+  });
+
+  it("only enables configured providers; dev only when asked", () => {
+    expect(enabledProviders({} as any)).toEqual([]);
+    expect(enabledProviders({ GITHUB_CLIENT_ID: "a", GITHUB_CLIENT_SECRET: "b" } as any)).toEqual(["github"]);
+    expect(enabledProviders({ GOOGLE_CLIENT_ID: "a" } as any)).toEqual([]); // secret missing
+    expect(enabledProviders({ DEV_AUTH: "1" } as any)).toEqual(["dev"]);
+  });
+
+  it("blocks open redirects", () => {
+    expect(safeReturn("/r/ABC123")).toBe("/r/ABC123");
+    expect(safeReturn("//evil.example")).toBe("/");
+    expect(safeReturn("https://evil.example")).toBe("/");
+    expect(safeReturn(undefined)).toBe("/");
+  });
+
+  it("hashes tokens", async () => {
+    expect(await sha256("abc")).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+  });
+});

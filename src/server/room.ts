@@ -16,6 +16,9 @@ import { compactDocArgs, withFreshNote } from "./ai/turn";
 import { aiTurnsToday, countAiTurn } from "./db";
 import { FILE_INFO, isFileKind, type FileKind } from "../shared/files";
 import { colName } from "../shared/formula";
+import { chunkText, ftsQuery } from "../shared/knowledge";
+import { parseCsv } from "../shared/sheet-model";
+import type { Attachment } from "../shared/protocol";
 import { SKILLS } from "./ai/skills";
 import { runTool, TOOL_DEFS } from "./ai/tools";
 import { collectUrls, stripUnverifiedLinks } from "./ai/citations";
@@ -70,6 +73,62 @@ export class Room extends Server<Env> {
     this.sql`CREATE TABLE IF NOT EXISTS files (
       id TEXT PRIMARY KEY, kind TEXT, title TEXT, created_at INTEGER, created_by TEXT)`;
     this.settings = (await this.ctx.storage.get<RoomSettings>("settings")) ?? null;
+    // Uploaded text, searchable by the AI. FTS5 when available, plain LIKE otherwise.
+    try {
+      this.sql`CREATE VIRTUAL TABLE IF NOT EXISTS knowledge USING fts5(name, chunk, upload_id UNINDEXED)`;
+      this.fts = true;
+    } catch {
+      this.sql`CREATE TABLE IF NOT EXISTS knowledge (name TEXT, chunk TEXT, upload_id TEXT)`;
+      this.fts = false;
+    }
+  }
+
+  private fts = true;
+
+  // ---------- RPC: knowledge (uploads) ----------
+
+  async exists() {
+    return !!this.settings;
+  }
+
+  /** A read-only snapshot of the chat for a public share link (host only). */
+  async shareSnapshot(uid: string) {
+    if (!this.settings || uid !== this.settings.hostId) return null;
+    const messages = this.loadMessages(300)
+      .filter((m) => !m.meta?.streaming)
+      .map((m) => ({
+        role: m.role,
+        authorName: m.authorName,
+        content: m.content,
+        createdAt: m.createdAt,
+        sources: m.meta?.sources,
+        poll: m.meta?.poll ? { question: m.meta.poll.question, options: m.meta.poll.options } : undefined,
+      }));
+    return { title: this.settings.title, messages };
+  }
+
+  async indexText(uploadId: string, name: string, text: string) {
+    const chunks = chunkText(text);
+    for (const c of chunks) this.sql`INSERT INTO knowledge (name, chunk, upload_id) VALUES (${name}, ${c}, ${uploadId})`;
+    return chunks.length;
+  }
+
+  async searchKnowledge(q: string): Promise<{ name: string; chunk: string }[]> {
+    const query = ftsQuery(q);
+    if (!query) return [];
+    if (this.fts) {
+      try {
+        return this.sql<{ name: string; chunk: string }>`SELECT name, chunk FROM knowledge WHERE knowledge MATCH ${query} ORDER BY bm25(knowledge) LIMIT 6`;
+      } catch (e) {
+        console.warn("fts search failed", e);
+      }
+    }
+    const word = `%${query.split(" OR ")[0].replace(/"/g, "")}%`;
+    return this.sql<{ name: string; chunk: string }>`SELECT name, chunk FROM knowledge WHERE chunk LIKE ${word} LIMIT 6`;
+  }
+
+  async knowledgeSources() {
+    return this.sql<{ name: string; n: number }>`SELECT name, COUNT(*) AS n FROM knowledge GROUP BY name`;
   }
 
   // ---------- RPC (called from the HTTP API) ----------
@@ -193,7 +252,12 @@ export class Room extends Server<Env> {
     switch (msg.t) {
       case "say": {
         const text = String(msg.text ?? "").trim().slice(0, 8000);
-        if (!text) return;
+        // Only accept attachments that point at this room's own uploads.
+        const attachments: Attachment[] = (Array.isArray(msg.attachments) ? msg.attachments : [])
+          .filter((a) => a && typeof a.url === "string" && a.url.startsWith(`/api/rooms/${this.name}/blobs/`))
+          .slice(0, 10)
+          .map((a) => ({ id: String(a.id).slice(0, 40), name: String(a.name).slice(0, 120), type: String(a.type).slice(0, 60), size: Number(a.size) || 0, url: a.url, indexed: !!a.indexed }));
+        if (!text && !attachments.length) return;
         const m: ChatMessage = {
           id: crypto.randomUUID(),
           role: "user",
@@ -201,6 +265,7 @@ export class Room extends Server<Env> {
           authorName: me.name,
           content: text,
           createdAt: Date.now(),
+          ...(attachments.length ? { meta: { attachments } } : {}),
         };
         this.saveMessage(m);
         this.broadcastMsg({ t: "msg", message: m });
@@ -323,6 +388,11 @@ export class Room extends Server<Env> {
         if (Array.isArray(p.disabledSkills)) s.disabledSkills = p.disabledSkills.map(String).slice(0, 100);
         if (typeof p.deepResearch === "boolean") s.deepResearch = p.deepResearch;
         if (typeof p.memory === "boolean") s.memory = p.memory;
+        if (p.assistant === null || (p.assistant && typeof p.assistant === "object")) {
+          const name = String(p.assistant?.name ?? "").trim().slice(0, 40);
+          const instructions = String(p.assistant?.instructions ?? "").trim().slice(0, 4000);
+          s.assistant = name || instructions ? { name, instructions } : undefined;
+        }
         await this.ctx.storage.put("settings", s);
         this.broadcastMsg({ t: "settings", settings: s });
         return;
@@ -338,6 +408,19 @@ export class Room extends Server<Env> {
           await stub.slideOps([{ op: "insert", slide: { layout: "title", title: "", body: "" } }]);
         }
         this.send(conn, { t: "open_file", id: f.id });
+        return;
+      }
+      case "import_csv": {
+        if (this.files().length >= MAX_FILES) return;
+        const rows = parseCsv(String(msg.csv ?? "").slice(0, 2_000_000));
+        if (!rows.length) return;
+        const sheet = this.createFile("sheet", String(msg.title ?? "Imported sheet").slice(0, 120), me.uid);
+        const width = Math.max(1, ...rows.slice(0, 50).map((r) => r.length));
+        await (await getServerByName(this.env.Doc, `${this.name}--${sheet.id}`)).sheetOps([
+          { op: "set_range", start: "A1", rows: rows.map((r) => r.map((v) => (/^[=+\-@]/.test(v) && !/^-?\d/.test(v) ? `'${v}` : v))) },
+          { op: "format", range: `A1:${colName(width - 1)}1`, bold: true, bg: "#eef2ff" },
+        ]);
+        this.send(conn, { t: "open_file", id: sheet.id });
         return;
       }
       case "form_to_sheet": {
@@ -475,7 +558,7 @@ export class Room extends Server<Env> {
       id: crypto.randomUUID(),
       role: "assistant",
       authorId: "ai",
-      authorName: "Huddle AI",
+      authorName: s.assistant?.name || "Huddle AI",
       content: "",
       createdAt: Date.now(),
       meta: { streaming: true, steps: [], sources: [] },
@@ -529,8 +612,15 @@ export class Room extends Server<Env> {
         llm = [{ role: "system", content: this.systemPrompt(true, memory) }, ...withFreshNote(this.history())];
         let emptyRetried = false;
         const maxSteps = s.deepResearch ? DEEP_RESEARCH_STEPS : MAX_STEPS;
-        // The remember tool only exists when the room has memory turned on.
-        const tools = s.memory ? TOOL_DEFS : TOOL_DEFS.filter((t) => t.function.name !== "remember");
+        // Only offer tools that can do something in this room (every definition costs tokens).
+        const hasKnowledge = (this.sql<{ n: number }>`SELECT COUNT(*) AS n FROM knowledge`[0]?.n ?? 0) > 0;
+        const hasImages = this.loadMessages(HISTORY_FOR_AI).some((m) => m.meta?.attachments?.some((a) => a.type.startsWith("image/")));
+        const tools = TOOL_DEFS.filter(
+          (t) =>
+            (t.function.name !== "remember" || s.memory) &&
+            (t.function.name !== "search_knowledge" || hasKnowledge) &&
+            (t.function.name !== "describe_image" || hasImages),
+        );
         for (let i = 0; i < maxSteps; i++) {
           const tCall = Date.now();
           if (this.env.DEBUG_AI) console.log(`[ai] step ${i} calling model at +${tCall - msg.createdAt}ms`);
@@ -562,6 +652,11 @@ export class Room extends Server<Env> {
               step,
               sources,
               remember: s.memory ? (fact) => this.remember(fact) : undefined,
+              searchKnowledge: (q) => this.searchKnowledge(q),
+              addImage: (a) => {
+                msg.meta!.images = [...(msg.meta!.images ?? []), a];
+                this.broadcastMsg({ t: "ai_step", id: msg.id, step: { kind: "other", label: `Image ready: ${a.name}` } });
+              },
             });
             llm.push({ role: "tool", tool_call_id: call.id, content: output });
             if (this.env.DEBUG_AI) console.log(`[ai] ${call.function.name} -> ${output.slice(0, 300)}`);
@@ -657,7 +752,17 @@ export class Room extends Server<Env> {
     const msgs = this.loadMessages(limit).filter((m) => !m.meta?.error);
     const lastAi = msgs.map((m) => m.role).lastIndexOf("assistant");
     return msgs.map((m, i) => {
-      if (m.role !== "assistant") return { role: "user" as const, content: `${m.authorName}: ${m.content}` };
+      if (m.role !== "assistant") {
+        // Tell the model what was attached and how to use it.
+        const att = (m.meta?.attachments ?? [])
+          .map((a) =>
+            a.type.startsWith("image/")
+              ? `[Image attached: "${a.name}" (image_id ${a.id}); use describe_image to see it]`
+              : `[File attached: "${a.name}"${a.indexed ? "; its text is searchable with search_knowledge" : ""}]`,
+          )
+          .join(" ");
+        return { role: "user" as const, content: `${m.authorName}: ${m.content}${att ? ` ${att}` : ""}` };
+      }
       // Free tiers allow only a few thousand tokens per minute, so older AI replies are
       // clipped (the full text stays in the chat; docs hold the long-form work anyway).
       const cap = i === lastAi ? 4000 : 1200;
@@ -680,6 +785,11 @@ export class Room extends Server<Env> {
     // Things that change between turns go last, so self-hosted models can reuse their cached
     // prompt prefix (much faster replies on your own GPU).
     const volatile = [
+      ...(s.assistant
+        ? [
+            `In this room you are "${s.assistant.name || "Huddle AI"}", set up by the host with these instructions (follow them unless they conflict with the rules above):\n${s.assistant.instructions}`,
+          ]
+        : []),
       `This room is called "${s.title}". Today's date: ${new Date().toISOString().slice(0, 10)}. People here now: ${people}.`,
     ];
     if (withTools) {

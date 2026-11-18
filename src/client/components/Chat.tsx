@@ -2,6 +2,56 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { REACTIONS, type ChatMessage, type ClientMsg, type Member, type Poll, type RoomSettings } from "../../shared/protocol";
 import { Markdown } from "./Markdown";
 import { expandSlash, matchSlash, parsePoll } from "../lib/slash";
+import type { Attachment } from "../../shared/protocol";
+import { uploadFile } from "../lib/uploads";
+
+function Attachments({ items, send }: { items: Attachment[]; send: (m: ClientMsg) => void }) {
+  if (!items.length) return null;
+  const images = items.filter((a) => a.type.startsWith("image/"));
+  const files = items.filter((a) => !a.type.startsWith("image/"));
+  return (
+    <div className="mt-2 space-y-2" data-testid="attachments">
+      {!!images.length && (
+        <div className="flex flex-wrap gap-2">
+          {images.map((a) => (
+            <a key={a.id} href={a.url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border border-zinc-200 dark:border-zinc-800">
+              <img src={a.url} alt={a.name} loading="lazy" className="max-h-56 max-w-[16rem] object-cover" />
+            </a>
+          ))}
+        </div>
+      )}
+      {files.map((a) => (
+        <div key={a.id} className="flex max-w-md items-center gap-2 rounded-lg border border-zinc-200 px-2 py-1.5 text-sm dark:border-zinc-800" data-testid="file-chip">
+          <span aria-hidden>{a.type === "application/pdf" ? "📕" : a.type === "text/csv" ? "📊" : "📄"}</span>
+          <a href={a.url} className="min-w-0 flex-1 truncate hover:underline" title={a.name}>{a.name}</a>
+          <span className="text-xs text-zinc-400">{Math.max(1, Math.round(a.size / 1024))} KB{a.indexed ? " · searchable" : ""}</span>
+          {a.type === "text/csv" && (
+            <button
+              className="rounded bg-indigo-600 px-1.5 py-0.5 text-xs font-medium text-white"
+              onClick={async () => send({ t: "import_csv", title: a.name.replace(/\.csv$/i, ""), csv: await (await fetch(a.url)).text() })}
+              data-testid="open-as-sheet"
+            >
+              Open as sheet
+            </button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Plain text for reading a reply aloud. */
+const speakable = (md: string) =>
+  md
+    .replace(/```[\s\S]*?```/g, " (code) ")
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/[#*_`>|~-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+type SpeechRec = { lang: string; interimResults: boolean; continuous: boolean; start(): void; stop(): void; onresult: ((e: any) => void) | null; onend: (() => void) | null; onerror: ((e: any) => void) | null };
+const SpeechRecognitionCtor: (new () => SpeechRec) | undefined =
+  typeof window !== "undefined" ? ((window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition) : undefined;
 
 function PollCard({ id, poll, me, members, send }: { id: string; poll: Poll; me: Member; members: Member[]; send: (m: ClientMsg) => void }) {
   const total = Object.values(poll.votes).reduce((n, v) => n + v.length, 0);
@@ -149,6 +199,18 @@ function Feedback({ msg, room, me, canRegenerate, onRegenerate }: { msg: ChatMes
       {canRegenerate && (
         <button className={btn} onClick={onRegenerate} title="Ask the AI to answer again" data-testid="regenerate">
           ↻ Regenerate
+        </button>
+      )}
+      {"speechSynthesis" in window && (
+        <button
+          className={btn}
+          title="Read this reply aloud"
+          onClick={() => {
+            speechSynthesis.cancel();
+            speechSynthesis.speak(new SpeechSynthesisUtterance(speakable(msg.content)));
+          }}
+        >
+          🔊
         </button>
       )}
       {msg.meta?.model && <span className="truncate">· {msg.meta.model}</span>}
@@ -308,6 +370,7 @@ function MessageView({
             ))}
           </div>
         )}
+        <Attachments items={[...(m.meta?.attachments ?? []), ...(m.meta?.images ?? [])]} send={send} />
         {m.meta?.poll && <PollCard id={m.id} poll={m.meta.poll} me={me} members={members} send={send} />}
         {!m.meta?.streaming && <Reactions m={m} me={me} members={members} send={send} />}
         {isAi && !m.meta?.streaming && (
@@ -345,6 +408,43 @@ export function Chat({
 }) {
   const [text, setText] = useState("");
   const [menuIndex, setMenuIndex] = useState(0);
+  const [pending, setPending] = useState<Attachment[]>([]);
+  const [uploading, setUploading] = useState(0);
+  const [uploadErr, setUploadErr] = useState("");
+  const [listening, setListening] = useState(false);
+  const recRef = useRef<SpeechRec | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const addFiles = async (files: FileList | File[]) => {
+    setUploadErr("");
+    for (const f of [...files].slice(0, 10)) {
+      setUploading((n) => n + 1);
+      try {
+        const a = await uploadFile(room, f);
+        setPending((p) => [...p, a]);
+      } catch (e) {
+        setUploadErr(String((e as Error).message));
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    }
+  };
+
+  const toggleMic = () => {
+    if (!SpeechRecognitionCtor) return;
+    if (listening) return recRef.current?.stop();
+    const rec = new SpeechRecognitionCtor();
+    rec.lang = navigator.language || "en-US";
+    rec.interimResults = true;
+    rec.continuous = false;
+    const base = text ? text.replace(/\s*$/, " ") : "";
+    rec.onresult = (e: any) => setText(base + [...e.results].map((r: any) => r[0].transcript).join(""));
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    recRef.current = rec;
+    setListening(true);
+    rec.start();
+  };
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stick = useRef(true);
@@ -383,9 +483,11 @@ export function Chat({
       return;
     }
     if (/^\/poll\b/i.test(raw.trim())) return; // incomplete poll: keep typing (needs 2+ options)
-    const expanded = expandSlash(raw.trim());
-    if (!expanded) return; // "/doc" with nothing after it: keep typing
-    send({ t: "say", text: expanded });
+    if (uploading) return; // wait for uploads to finish
+    const expanded = raw.trim() ? expandSlash(raw.trim()) : "";
+    if (expanded === null || (!expanded && !pending.length)) return; // "/doc" with nothing after it: keep typing
+    send({ t: "say", text: expanded, ...(pending.length ? { attachments: pending } : {}) });
+    setPending([]);
     setText("");
     if (inputRef.current) inputRef.current.style.height = "auto";
     clearTimeout(typingTimer.current);
@@ -399,7 +501,15 @@ export function Chat({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div
+      className="flex h-full min-h-0 flex-col"
+      onDragOver={(e) => e.dataTransfer.types.includes("Files") && e.preventDefault()}
+      onDrop={(e) => {
+        if (!e.dataTransfer.files.length) return;
+        e.preventDefault();
+        void addFiles(e.dataTransfer.files);
+      }}
+    >
       <div
         ref={listRef}
         className="min-h-0 flex-1 overflow-y-auto"
@@ -497,7 +607,50 @@ export function Chat({
                   ? "Mention @ai to get the AI's attention"
                   : ""}
           </div>
+          {(pending.length > 0 || uploading > 0 || uploadErr) && (
+            <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-xs" data-testid="pending-uploads">
+              {pending.map((a) => (
+                <span key={a.id} className="flex items-center gap-1 rounded-full border border-zinc-300 bg-white px-2 py-0.5 dark:border-zinc-700 dark:bg-zinc-900">
+                  {a.type.startsWith("image/") ? "🖼️" : "📎"} <span className="max-w-[10rem] truncate">{a.name}</span>
+                  <button onClick={() => setPending((p) => p.filter((x) => x.id !== a.id))} aria-label={`Remove ${a.name}`} className="text-zinc-400 hover:text-red-600">✕</button>
+                </span>
+              ))}
+              {uploading > 0 && <span className="text-zinc-500">Uploading {uploading}…</span>}
+              {uploadErr && <span className="text-red-600" role="alert">{uploadErr}</span>}
+            </div>
+          )}
           <div className="flex items-end gap-2 rounded-2xl border border-zinc-300 bg-white p-2 shadow-sm focus-within:border-indigo-400 dark:border-zinc-700 dark:bg-zinc-900">
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              hidden
+              accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,text/csv,text/plain,text/markdown,.md,.csv,.txt"
+              onChange={(e) => {
+                if (e.target.files) void addFiles(e.target.files);
+                e.target.value = "";
+              }}
+              data-testid="file-input"
+            />
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="rounded-xl px-2 py-2 text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              title="Attach images, PDFs, CSV or text (or drop files here)"
+              aria-label="Attach files"
+            >
+              📎
+            </button>
+            {SpeechRecognitionCtor && (
+              <button
+                onClick={toggleMic}
+                className={`rounded-xl px-2 py-2 ${listening ? "animate-pulse bg-red-100 text-red-600 dark:bg-red-950/50" : "text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800"}`}
+                title={listening ? "Stop listening" : "Speak your message"}
+                aria-label={listening ? "Stop voice input" : "Voice input"}
+                aria-pressed={listening}
+              >
+                🎤
+              </button>
+            )}
             <textarea
               ref={inputRef}
               data-testid="composer"
@@ -542,7 +695,7 @@ export function Chat({
             ) : null}
             <button
               onClick={() => submit()}
-              disabled={!text.trim()}
+              disabled={(!text.trim() && !pending.length) || uploading > 0}
               className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-40"
             >
               Send

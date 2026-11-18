@@ -6,6 +6,17 @@ export interface Env {
   Doc: DurableObjectNamespace<Doc>;
   ASSETS: Fetcher;
   DB?: D1Database;
+  /** R2 bucket for uploads and AI images (simulated on disk in local dev). */
+  FILES?: R2Bucket;
+  // ---- Accounts (optional; guests can always join) ----
+  GITHUB_CLIENT_ID?: string;
+  GITHUB_CLIENT_SECRET?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  /** "1" = only signed-in people can create rooms (needs a provider configured). */
+  REQUIRE_SIGNIN_TO_CREATE?: string;
+  /** "1" = a passwordless "dev" sign-in for local testing. Never set this in production. */
+  DEV_AUTH?: string;
   /** Cloudflare Workers AI binding (free daily allowance). Optional. */
   AI?: Ai;
   /**
