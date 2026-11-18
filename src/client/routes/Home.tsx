@@ -173,6 +173,9 @@ export default function Home() {
           )}
         </section>
       </main>
+      <footer className="pb-6 text-center text-xs text-zinc-500">
+        <a href="/privacy" className="hover:underline">Privacy</a> · <a href="/terms" className="hover:underline">Terms</a>
+      </footer>
     </div>
   );
 }

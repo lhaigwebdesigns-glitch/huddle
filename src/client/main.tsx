@@ -9,6 +9,7 @@ import RoomPage from "./routes/RoomPage";
 import Admin from "./routes/Admin";
 import PublicForm from "./routes/PublicForm";
 import SharedChat from "./routes/SharedChat";
+import { Privacy, Terms } from "./routes/Legal";
 
 function JoinRedirect() {
   const { code = "" } = useParams();
@@ -31,6 +32,8 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/admin" element={<Admin />} />
         <Route path="/f/:code/:id" element={<PublicForm />} />
         <Route path="/s/:id" element={<SharedChat />} />
+        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/terms" element={<Terms />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
