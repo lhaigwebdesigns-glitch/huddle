@@ -5,3 +5,4 @@
 import { registerEditor } from "./components/FilePanel";
 
 registerEditor("sheet", () => import("./components/SheetEditor"));
+registerEditor("slides", () => import("./components/SlidesEditor"));

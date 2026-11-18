@@ -274,6 +274,19 @@ export const MOCK_TOOL_CALLS: { trigger: RegExp; name: string; args: Record<stri
       ops: [{ op: "format", range: "B2:B4", format: "currency" }, { op: "add_chart", type: "bar", range: "A1:B3", title: "Costs" }],
     },
   },
+  {
+    trigger: /make slides/i,
+    name: "create_slides",
+    args: {
+      title: "Mock deck",
+      theme: "indigo",
+      slides: [
+        { layout: "title", title: "Mock deck", body: "Made by the mock AI" },
+        { layout: "bullets", title: "Agenda", body: "- Why\n- How\n- When", notes: "Keep it short" },
+        { layout: "quote", title: "Done is better than perfect" },
+      ],
+    },
+  },
 ];
 
 function mockChat(args: ChatArgs): Promise<ChatResult> {

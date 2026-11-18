@@ -5,6 +5,7 @@ import type { FileKind, FileVersion } from "../shared/protocol";
 import { readMarkdown, writeMarkdown } from "./markdown-yjs";
 import { chunk, docFromState, replaceContent, unchunk } from "./yjs-files";
 import { applySheetOps, cellsOf, readSheet, type SheetOp } from "../shared/sheet-model";
+import { applySlideOps, deckOutline, slidesOf, type SlideOp } from "../shared/slides-model";
 
 /** Take a version-history snapshot at most this often while people edit. */
 const SNAPSHOT_EVERY_MS = 10 * 60_000;
@@ -137,5 +138,18 @@ export class Doc extends YServer<Env> {
 
   async readSheet(range?: string) {
     return readSheet(this.document, range);
+  }
+
+  // ---------- RPC: slides ----------
+
+  async slideOps(ops: SlideOp[], snapshotFirst = false) {
+    if (snapshotFirst && slidesOf(this.document).length) await this.saveVersion();
+    const done = applySlideOps(this.document, ops);
+    await this.onSave();
+    return done;
+  }
+
+  async readDeck() {
+    return deckOutline(this.document);
   }
 }

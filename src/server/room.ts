@@ -22,6 +22,7 @@ const MAX_FILES = 100;
 const FILE_GUIDE = [
   `- doc (create_doc/read_doc/edit_doc): writing, plans, reports, essays, notes. edit_doc mode "append" adds a section.`,
   `- sheet (create_sheet/read_sheet/edit_sheet): tables, budgets, trackers, numbers. Use formulas (=SUM, =AVERAGE, =IF…) for totals and add a chart when it helps.`,
+  `- slides (create_slides/read_slides/edit_slides): presentations and pitches. 5–10 slides, short bullets (max ~6 words each), speaker notes for detail; load the slide-deck-design skill first.`,
 ];
 import { SKILLS } from "./ai/skills";
 import { runTool, TOOL_DEFS } from "./ai/tools";
@@ -254,6 +255,11 @@ export class Room extends Server<Env> {
         if (this.files().length >= MAX_FILES)
           return this.send(conn, { t: "error", message: `Rooms can hold up to ${MAX_FILES} files. Delete some to make room.` });
         const f = this.createFile(kind, String(msg.title ?? "") || FILE_INFO[kind].untitled, me.uid);
+        // Seed starter content on the server so two people opening it at once don't both add it.
+        if (kind === "slides") {
+          const stub = await getServerByName(this.env.Doc, `${this.name}--${f.id}`);
+          await stub.slideOps([{ op: "insert", slide: { layout: "title", title: "", body: "" } }]);
+        }
         this.send(conn, { t: "open_file", id: f.id });
         return;
       }

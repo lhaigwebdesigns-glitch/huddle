@@ -5,6 +5,7 @@ import type { ToolDef } from "./providers";
 import { getSkill } from "./skills";
 import { parseCsv, type SheetOp } from "../../shared/sheet-model";
 import { colName } from "../../shared/formula";
+import type { SlideData, SlideOp } from "../../shared/slides-model";
 
 export interface ToolContext {
   env: Env;
@@ -136,6 +137,44 @@ export const TOOL_DEFS: ToolDef[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "create_slides",
+      description:
+        "Create a live slide deck. Each slide: {layout: title|bullets|two|quote|section|image, title, body (bullet lines, one per line), body2 (right column for 'two'), image (https URL for 'image'), notes (speaker notes)}. themes: light, dark, indigo, sunset, forest.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          theme: { type: "string" },
+          slides: { type: "array", items: { type: "object" } },
+        },
+        required: ["title", "slides"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_slides",
+      description: "Read a deck's outline: every slide's layout, text and notes (slides are numbered from 1).",
+      parameters: { type: "object", properties: { file_id: { type: "string" } }, required: ["file_id"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "edit_slides",
+      description:
+        'Edit a deck with ops (slide numbers start at 1): {"op":"update","index":2,"slide":{"title":"…","body":"…"}}, {"op":"insert","index":3,"slide":{…}} (omit index to append), {"op":"delete","index":4}, {"op":"move","from":5,"to":2}, {"op":"theme","theme":"dark"}.',
+      parameters: {
+        type: "object",
+        properties: { file_id: { type: "string" }, ops: { type: "array", items: { type: "object" } } },
+        required: ["file_id", "ops"],
+      },
+    },
+  },
 ];
 
 /** Find a room file of the expected kind, with a helpful error for the model otherwise. */
@@ -255,6 +294,39 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
       if (!Array.isArray(args.ops) || !args.ops.length) return "Error: ops must be a non-empty array.";
       ctx.step({ kind: "doc", label: `Editing “${file.title}”` });
       const done = await (await fileStub(ctx, file)).sheetOps(args.ops as SheetOp[], true);
+      ctx.openFile(file.id);
+      return `Updated "${file.title}": ${done.join("; ")}.`;
+    }
+    case "create_slides": {
+      const title = String(args.title ?? "Untitled deck").slice(0, 120);
+      const slides: SlideData[] = Array.isArray(args.slides) ? args.slides.slice(0, 60) : [];
+      if (!slides.length) return "Error: slides must be a non-empty array.";
+      const file = ctx.createFile("slides", title);
+      ctx.step({ kind: "doc", label: `Designing deck “${title}”` });
+      const ops: SlideOp[] = slides.map((slide) => ({ op: "insert", slide }));
+      if (args.theme) ops.push({ op: "theme", theme: args.theme });
+      const stub = await fileStub(ctx, file);
+      try {
+        await stub.slideOps(ops);
+      } catch (err) {
+        await stub.slideOps(ops.filter((o) => o.op !== "theme"));
+        return `Created deck "${title}" (file_id ${file.id}) with ${slides.length} slides, but: ${String(err).slice(0, 150)}`;
+      }
+      ctx.openFile(file.id);
+      return `Created deck "${title}" with file_id ${file.id}: ${slides.length} slides. It is open for everyone; they can press Present.`;
+    }
+    case "read_slides": {
+      const file = fileOf(ctx, args.file_id, "slides");
+      if (typeof file === "string") return file;
+      ctx.step({ kind: "doc", label: `Reading “${file.title}”` });
+      return (await fileStub(ctx, file)).readDeck();
+    }
+    case "edit_slides": {
+      const file = fileOf(ctx, args.file_id, "slides");
+      if (typeof file === "string") return file;
+      if (!Array.isArray(args.ops) || !args.ops.length) return "Error: ops must be a non-empty array.";
+      ctx.step({ kind: "doc", label: `Editing “${file.title}”` });
+      const done = await (await fileStub(ctx, file)).slideOps(args.ops as SlideOp[], true);
       ctx.openFile(file.id);
       return `Updated "${file.title}": ${done.join("; ")}.`;
     }

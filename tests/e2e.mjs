@@ -182,6 +182,29 @@ try {
   await alice.locator('[data-cell="C2"]').click();
   ok((await alice.getByTestId("formula-bar").inputValue()) === "=B2*2", "formula bar shows the formula");
 
+  // Slides: AI deck, live co-editing of a text box, and "follow the presenter".
+  await bob.getByTestId("composer").fill("make slides for our pitch");
+  await bob.getByTestId("composer").press("Enter");
+  await alice.getByTestId("slides-editor").waitFor({ timeout: 15000 });
+  await bob.getByTestId("slides-editor").waitFor();
+  ok((await bob.getByTestId("slide-thumb").count()) === 3, "AI deck has 3 slides for everyone");
+  const titleBox = alice.getByTestId("slide-canvas").locator('textarea[data-field="title"]');
+  await titleBox.click();
+  await alice.keyboard.press("End");
+  await alice.keyboard.type(" v2");
+  await bob.waitForFunction(() => document.querySelector('[data-testid=slide-canvas] textarea[data-field="title"]')?.value === "Mock deck v2", null, { timeout: 10000 });
+  ok(true, "slide text edits sync live");
+  await alice.getByTestId("present-button").click();
+  await alice.getByTestId("present").waitFor();
+  await bob.getByTestId("follow-presenter").click();
+  await bob.getByTestId("present-index").getByText("Following Alice · 1 / 3").waitFor();
+  await alice.keyboard.press("ArrowRight");
+  await bob.getByTestId("present-index").getByText("Following Alice · 2 / 3").waitFor({ timeout: 10000 });
+  ok(true, "Bob follows Alice's presentation slide by slide");
+  await bob.keyboard.press("Escape");
+  await alice.keyboard.press("Escape");
+  await alice.getByTestId("present").waitFor({ state: "detached" });
+
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
   const statuses = await alice.evaluate(async () => {
     const ip = `e2e-${Math.random()}`;
