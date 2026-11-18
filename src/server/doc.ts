@@ -4,6 +4,7 @@ import type { Env } from "./env";
 import type { FileKind, FileVersion } from "../shared/protocol";
 import { readMarkdown, writeMarkdown } from "./markdown-yjs";
 import { chunk, docFromState, replaceContent, unchunk } from "./yjs-files";
+import { applySheetOps, cellsOf, readSheet, type SheetOp } from "../shared/sheet-model";
 
 /** Take a version-history snapshot at most this often while people edit. */
 const SNAPSHOT_EVERY_MS = 10 * 60_000;
@@ -123,5 +124,18 @@ export class Doc extends YServer<Env> {
 
   async getMarkdown() {
     return readMarkdown(this.document);
+  }
+
+  // ---------- RPC: sheets ----------
+
+  async sheetOps(ops: SheetOp[], snapshotFirst = false) {
+    if (snapshotFirst && cellsOf(this.document).size) await this.saveVersion();
+    const done = applySheetOps(this.document, ops);
+    await this.onSave();
+    return done;
+  }
+
+  async readSheet(range?: string) {
+    return readSheet(this.document, range);
   }
 }

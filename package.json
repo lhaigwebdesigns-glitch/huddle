@@ -21,6 +21,7 @@
     "@tiptap/react": "^3.34.0",
     "@tiptap/starter-kit": "^3.34.0",
     "@tiptap/y-tiptap": "^3.3.0",
+    "chart.js": "^4.6.1",
     "hono": "^4.13.19",
     "katex": "^0.19.1",
     "marked": "^18.2.1",
@@ -33,6 +34,7 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "write-excel-file": "^4.1.1",
     "y-partyserver": "^2.2.0",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.33"

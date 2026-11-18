@@ -28,14 +28,26 @@ export function withFreshNote(hist: LlmMessage[]): LlmMessage[] {
  * Once a doc write has run, the model doesn't need its own Markdown echoed back on the next
  * step; replacing it with a short note saves ~1–2k tokens per step on free per-minute limits.
  */
+const BULKY_FIELDS = ["markdown", "csv", "html", "mermaid"];
+
 export function compactDocArgs(call: ToolCall) {
-  if (call.function.name !== "create_doc" && call.function.name !== "edit_doc") return;
+  if (!/^(create|edit)_/.test(call.function.name) && call.function.name !== "draw_whiteboard") return;
   try {
     const args = JSON.parse(call.function.arguments);
-    if (typeof args.markdown === "string" && args.markdown.length > 300) {
-      args.markdown = `[${args.markdown.length} characters of Markdown, already written to the doc]`;
-      call.function.arguments = JSON.stringify(args);
+    let changed = false;
+    for (const f of BULKY_FIELDS) {
+      if (typeof args[f] === "string" && args[f].length > 300) {
+        args[f] = `[${args[f].length} characters, already written to the file]`;
+        changed = true;
+      }
     }
+    for (const f of ["ops", "slides", "questions"]) {
+      if (Array.isArray(args[f]) && JSON.stringify(args[f]).length > 600) {
+        args[f] = `[${args[f].length} items, already applied]`;
+        changed = true;
+      }
+    }
+    if (changed) call.function.arguments = JSON.stringify(args);
   } catch {
     // leave malformed arguments as they were
   }

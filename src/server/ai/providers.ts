@@ -255,31 +255,41 @@ async function workersAiChat(p: ProviderConfig, args: ChatArgs): Promise<ChatRes
   return { content, toolCalls, provider: p.label, model: p.model };
 }
 
+/**
+ * Deterministic tool calls for e2e tests (MOCK_AI=true): "make a doc", "make a sheet", …
+ * Each one exercises a real tool end to end without any provider keys.
+ */
+export const MOCK_TOOL_CALLS: { trigger: RegExp; name: string; args: Record<string, unknown> }[] = [
+  {
+    trigger: /make a doc/i,
+    name: "create_doc",
+    args: { title: "Mock plan", markdown: "# Mock plan\n\nThis doc was written by the **mock AI**.\n\n- First point\n- Second point" },
+  },
+  {
+    trigger: /make a sheet/i,
+    name: "create_sheet",
+    args: {
+      title: "Mock budget",
+      csv: "Item,Cost\nFlour,20\nSugar,12.5\nTotal,=SUM(B2:B3)",
+      ops: [{ op: "format", range: "B2:B4", format: "currency" }, { op: "add_chart", type: "bar", range: "A1:B3", title: "Costs" }],
+    },
+  },
+];
+
 function mockChat(args: ChatArgs): Promise<ChatResult> {
   const lastUser = [...args.messages].reverse().find((m) => m.role === "user")?.content ?? "";
   const lastIsTool = args.messages[args.messages.length - 1]?.role === "tool";
-  if (!lastIsTool && /make a doc/i.test(lastUser) && args.tools?.some((t) => t.function.name === "create_doc")) {
+  const call = !lastIsTool && MOCK_TOOL_CALLS.find((c) => c.trigger.test(lastUser) && args.tools?.some((t) => t.function.name === c.name));
+  if (call) {
     return Promise.resolve({
       content: "",
-      toolCalls: [
-        {
-          id: "mock_1",
-          type: "function",
-          function: {
-            name: "create_doc",
-            arguments: JSON.stringify({
-              title: "Mock plan",
-              markdown: "# Mock plan\n\nThis doc was written by the **mock AI**.\n\n- First point\n- Second point",
-            }),
-          },
-        },
-      ],
+      toolCalls: [{ id: `mock_${call.name}`, type: "function", function: { name: call.name, arguments: JSON.stringify(call.args) } }],
       provider: "Mock AI (dev)",
       model: "mock",
     });
   }
   const text = lastIsTool
-    ? "Done! I created the document — it's open in the side panel for everyone."
+    ? "Done! I made it — it's open in the side panel for everyone."
     : `🤖 (mock AI) I heard: "${lastUser.slice(0, 200)}". Configure a free provider key to get real answers.`;
   return (async () => {
     for (const word of text.split(/(?<= )/)) {

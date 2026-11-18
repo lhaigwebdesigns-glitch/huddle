@@ -17,6 +17,12 @@ import { getServerByName } from "partyserver";
 import { FILE_INFO, isFileKind, type FileKind } from "../shared/files";
 
 const MAX_FILES = 100;
+
+/** One line per file type the AI can create, for the system prompt. */
+const FILE_GUIDE = [
+  `- doc (create_doc/read_doc/edit_doc): writing, plans, reports, essays, notes. edit_doc mode "append" adds a section.`,
+  `- sheet (create_sheet/read_sheet/edit_sheet): tables, budgets, trackers, numbers. Use formulas (=SUM, =AVERAGE, =IF…) for totals and add a chart when it helps.`,
+];
 import { SKILLS } from "./ai/skills";
 import { runTool, TOOL_DEFS } from "./ai/tools";
 import { collectUrls, stripUnverifiedLinks } from "./ai/citations";
@@ -555,12 +561,13 @@ export class Room extends Server<Env> {
     ];
     if (withTools) {
       lines.push(
-        `You have tools: web_search and fetch_url for current or factual info, create_doc / read_doc / edit_doc for collaborative documents everyone can co-edit live, and load_skill for expert playbooks.`,
+        `You have tools: web_search and fetch_url for current or factual info, tools that create and edit live files everyone in the room co-edits, and load_skill for expert playbooks.`,
         `Use web_search for anything recent or time-sensitive (news, prices, releases, "this week"). Don't use tools for small talk.`,
         `Citations: only link URLs that appear word-for-word in your tool results. Never build, guess or "fix" a URL, and only call fetch_url on URLs from search results or from the users. If you can't find a source, say so.`,
-        `Use create_doc when people ask you to write, draft, plan, outline or produce something substantial (reports, essays, plans, notes, slide outlines). Afterwards reply in chat with one or two sentences about what you made; don't repeat the doc's content.`,
-        `To change an existing doc, use edit_doc with mode "append" to add a section, or read_doc then mode "replace" to rewrite it.`,
-        `Docs are the only file type so far: don't offer spreadsheets, slides or other files. file_id values are internal; never show them to people, refer to docs by title.`,
+        `Files you can make (pick the one that fits the request):`,
+        ...FILE_GUIDE,
+        `After making or changing a file, reply in chat with one or two sentences about what you did; don't repeat its content. To change an existing file, use its edit tool (read it first when rewriting).`,
+        `file_id values are internal; never show them to people, refer to files by title.`,
         `Before specialised tasks, call load_skill with the most relevant skill. Available skills:`,
         ...skills.map((k) => `- ${k.name}: ${k.description}`),
         files.length

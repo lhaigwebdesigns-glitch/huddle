@@ -166,6 +166,22 @@ try {
   await bob.getByTestId("drive-file").filter({ hasText: "Copy of Mock plan" }).waitFor({ state: "detached" });
   ok(true, "deleting a file removes it for everyone");
 
+  // Sheets: AI builds one with formulas + a chart; a formula typed by Alice computes for Bob.
+  await bob.getByTestId("composer").fill("make a sheet of our costs");
+  await bob.getByTestId("composer").press("Enter");
+  await alice.getByTestId("sheet-editor").waitFor({ timeout: 15000 });
+  await bob.locator('[data-cell="B4"]').getByText("$32.50").waitFor();
+  ok(true, "AI-built sheet computes =SUM for everyone");
+  await bob.getByTestId("sheet-chart").waitFor();
+  ok(true, "AI-added chart renders");
+  await alice.locator('[data-cell="C2"]').click();
+  await alice.keyboard.type("=B2*2");
+  await alice.keyboard.press("Enter");
+  await bob.locator('[data-cell="C2"]').getByText("40").waitFor({ timeout: 10000 });
+  ok(true, "a formula Alice types computes live for Bob");
+  await alice.locator('[data-cell="C2"]').click();
+  ok((await alice.getByTestId("formula-bar").inputValue()) === "=B2*2", "formula bar shows the formula");
+
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
   const statuses = await alice.evaluate(async () => {
     const ip = `e2e-${Math.random()}`;

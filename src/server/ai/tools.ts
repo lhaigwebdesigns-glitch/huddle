@@ -3,6 +3,8 @@ import type { Env } from "../env";
 import type { FileKind, RoomFile, Source, Step } from "../../shared/protocol";
 import type { ToolDef } from "./providers";
 import { getSkill } from "./skills";
+import { parseCsv, type SheetOp } from "../../shared/sheet-model";
+import { colName } from "../../shared/formula";
 
 export interface ToolContext {
   env: Env;
@@ -96,7 +98,55 @@ export const TOOL_DEFS: ToolDef[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "create_sheet",
+      description:
+        "Create a live spreadsheet. Give the data as CSV (first row = headers). Cells may be formulas like =SUM(B2:B9). Optionally pass ops to format or chart it.",
+      parameters: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          csv: { type: "string" },
+          ops: { type: "array", items: { type: "object" }, description: "Same ops as edit_sheet, applied after the CSV" },
+        },
+        required: ["title", "csv"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_sheet",
+      description: "Read a spreadsheet's computed values as CSV, plus its formulas. range like A1:D20 (default: all data).",
+      parameters: { type: "object", properties: { file_id: { type: "string" }, range: { type: "string" } }, required: ["file_id"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "edit_sheet",
+      description:
+        'Edit a spreadsheet with ops: {"op":"set","cell":"B5","value":"=B2*2"}, {"op":"set_range","start":"A1","rows":[["a",1]]}, {"op":"format","range":"A1:D1","bold":true,"align":"center","bg":"#eef2ff","format":"currency|percent|number|integer|plain"}, {"op":"clear","range":"A1:B2"}, {"op":"add_chart","type":"bar|line|pie","range":"A1:B6","title":"…"} (first column = labels, first row = series names), {"op":"col_width","col":"A","width":160}.',
+      parameters: {
+        type: "object",
+        properties: { file_id: { type: "string" }, ops: { type: "array", items: { type: "object" } } },
+        required: ["file_id", "ops"],
+      },
+    },
+  },
 ];
+
+/** Find a room file of the expected kind, with a helpful error for the model otherwise. */
+function fileOf(ctx: ToolContext, id: unknown, kind: FileKind): RoomFile | string {
+  const file = ctx.files().find((f) => f.id === id);
+  if (!file) return "No such file_id in this room.";
+  if (file.kind !== kind) return `That file is a ${file.kind}, not a ${kind}. Use the ${file.kind} tools for it.`;
+  return file;
+}
+
+const fileStub = (ctx: ToolContext, file: RoomFile) => getServerByName(ctx.env.Doc, `${ctx.roomCode}--${file.id}`);
 
 const MAX_TOOL_OUTPUT = 12_000;
 
@@ -155,21 +205,58 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
       return `Created doc "${title}" with file_id ${file.id}. It is now open for everyone in the room.`;
     }
     case "read_doc": {
-      const file = ctx.files().find((f) => f.id === args.file_id);
-      if (!file) return "No such file_id in this room.";
+      const file = fileOf(ctx, args.file_id, "doc");
+      if (typeof file === "string") return file;
       ctx.step({ kind: "doc", label: `Reading “${file.title}”` });
       const stub = await getServerByName(ctx.env.Doc, `${ctx.roomCode}--${file.id}`);
       return (await stub.getMarkdown()) || "(empty document)";
     }
     case "edit_doc": {
-      const file = ctx.files().find((f) => f.id === args.file_id);
-      if (!file) return "No such file_id in this room.";
+      const file = fileOf(ctx, args.file_id, "doc");
+      if (typeof file === "string") return file;
       const mode = args.mode === "append" ? "append" : "replace";
       ctx.step({ kind: "doc", label: `${mode === "append" ? "Adding to" : "Editing"} “${file.title}”` });
       const stub = await getServerByName(ctx.env.Doc, `${ctx.roomCode}--${file.id}`);
       await stub.setMarkdown(String(args.markdown ?? ""), mode);
       ctx.openFile(file.id);
       return `Updated "${file.title}".`;
+    }
+    case "create_sheet": {
+      const title = String(args.title ?? "Untitled sheet").slice(0, 120);
+      const rows = parseCsv(String(args.csv ?? ""));
+      const file = ctx.createFile("sheet", title);
+      ctx.step({ kind: "doc", label: `Building sheet “${title}”` });
+      const ops: SheetOp[] = [{ op: "set_range", start: "A1", rows }];
+      // Bold the header row by default; the model's own ops can override it.
+      if (rows.length > 1) ops.push({ op: "format", range: `A1:${colName(Math.max(0, rows[0].length - 1))}1`, bold: true, bg: "#eef2ff" });
+      const extra = Array.isArray(args.ops) ? (args.ops as SheetOp[]) : [];
+      const stub = await fileStub(ctx, file);
+      let note = "";
+      try {
+        await stub.sheetOps([...ops, ...extra]);
+      } catch (err) {
+        await stub.sheetOps(ops);
+        note = ` (Some extra ops failed: ${String(err).slice(0, 150)})`;
+      }
+      ctx.openFile(file.id);
+      return `Created sheet "${title}" with file_id ${file.id}: ${rows.length} rows. It is open for everyone.${note}`;
+    }
+    case "read_sheet": {
+      const file = fileOf(ctx, args.file_id, "sheet");
+      if (typeof file === "string") return file;
+      ctx.step({ kind: "doc", label: `Reading “${file.title}”` });
+      const out = await (await fileStub(ctx, file)).readSheet(args.range ? String(args.range) : undefined);
+      if (!out.range) return "(empty sheet)";
+      return `Range ${out.range} (computed values):\n${out.csv}${out.formulas.length ? `\n\nFormulas:\n${out.formulas.join("\n")}` : ""}`;
+    }
+    case "edit_sheet": {
+      const file = fileOf(ctx, args.file_id, "sheet");
+      if (typeof file === "string") return file;
+      if (!Array.isArray(args.ops) || !args.ops.length) return "Error: ops must be a non-empty array.";
+      ctx.step({ kind: "doc", label: `Editing “${file.title}”` });
+      const done = await (await fileStub(ctx, file)).sheetOps(args.ops as SheetOp[], true);
+      ctx.openFile(file.id);
+      return `Updated "${file.title}": ${done.join("; ")}.`;
     }
     default:
       return `Unknown tool ${name}`;

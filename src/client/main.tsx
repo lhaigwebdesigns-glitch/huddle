@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
 import "katex/dist/katex.min.css";
 import "./styles.css";
+import "./editors";
 import Home from "./routes/Home";
 import RoomPage from "./routes/RoomPage";
 import Admin from "./routes/Admin";
