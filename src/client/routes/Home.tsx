@@ -70,13 +70,15 @@ export default function Home() {
           </h1>
           <p className="mt-4 text-lg text-zinc-600 dark:text-zinc-400">
             Huddle is a multiplayer AI workspace. Start a room, share the party code, and everyone chats with the same
-            AI in real time — it searches the web, writes docs you co-edit live, and runs on free open-source models.
+            AI in real time. It searches the web and builds docs, sheets, slides, whiteboards, forms and mini-apps that
+            you all edit live, on free open-source models.
           </p>
           <ul className="mt-6 space-y-2 text-zinc-700 dark:text-zinc-300">
-            <li>👥 Party codes — friends join in seconds, no sign-up</li>
+            <li>👥 Party codes: friends join in seconds, no sign-up</li>
             <li>🌐 Web search & page reading with sources</li>
-            <li>📄 AI-written docs everyone edits live (Sheets & Slides coming next)</li>
-            <li>🧠 20 expert skills: writing, problem solving, web design, research…</li>
+            <li>📄📊🖼️ Docs, Sheets (formulas & charts) and Slides (present together), all live</li>
+            <li>🎨📝 Whiteboards, Forms with public links, and AI-built mini-apps</li>
+            <li>🧠 20 expert skills, Deep Research mode and room memory</li>
             <li>💻 Local mode: run the AI on your own device, free & private</li>
           </ul>
         </section>

@@ -15,6 +15,8 @@ export interface ToolContext {
   openFile: (id: string) => void;
   step: (s: Step) => void;
   sources: Source[];
+  /** Present only when the room has memory turned on. */
+  remember?: (fact: string) => Promise<string>;
 }
 
 export const TOOL_DEFS: ToolDef[] = [
@@ -206,6 +208,35 @@ export const TOOL_DEFS: ToolDef[] = [
     function: {
       name: "read_form_responses",
       description: "Summarize a form's responses: counts per option, scale averages, and recent text answers.",
+      parameters: { type: "object", properties: { file_id: { type: "string" } }, required: ["file_id"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remember",
+      description: "Save a lasting fact about this room or its people (names, roles, goals, deadlines, preferences) so you see it in future turns. One short sentence.",
+      parameters: { type: "object", properties: { fact: { type: "string" } }, required: ["fact"] },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "make_artifact",
+      description:
+        "Build an interactive web page/app/visual (one self-contained HTML document with inline CSS and JS) that runs live beside the chat: calculators, games, quizzes, charts, landing-page mockups, SVG art. To change an existing artifact pass its file_id and the full new HTML (it becomes a new version). External scripts only from https://cdn.jsdelivr.net or https://cdnjs.cloudflare.com.",
+      parameters: {
+        type: "object",
+        properties: { title: { type: "string" }, html: { type: "string" }, file_id: { type: "string" }, note: { type: "string", description: "What changed (for the version list)" } },
+        required: ["html"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "read_artifact",
+      description: "Read the latest HTML of an artifact before changing it.",
       parameters: { type: "object", properties: { file_id: { type: "string" } }, required: ["file_id"] },
     },
   },
@@ -417,6 +448,33 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
       if (typeof file === "string") return file;
       ctx.step({ kind: "doc", label: `Reading responses to “${file.title}”` });
       return (await fileStub(ctx, file)).formSummary();
+    }
+    case "remember": {
+      if (!ctx.remember) return "Room memory is turned off; the host can turn it on in Room settings.";
+      ctx.step({ kind: "other", label: "Remembering a fact" });
+      return ctx.remember(String(args.fact ?? ""));
+    }
+    case "make_artifact": {
+      const html = String(args.html ?? "");
+      if (html.trim().length < 20) return "Error: html must be a full page (or at least a meaningful fragment).";
+      let file: RoomFile;
+      if (args.file_id) {
+        const f = fileOf(ctx, args.file_id, "artifact");
+        if (typeof f === "string") return f;
+        file = f;
+      } else {
+        file = ctx.createFile("artifact", String(args.title ?? "Artifact").slice(0, 120));
+      }
+      ctx.step({ kind: "doc", label: `${args.file_id ? "Updating" : "Building"} “${file.title}”` });
+      const n = await (await fileStub(ctx, file)).addArtifactVersion(html, String(args.note ?? (args.file_id ? "Update" : "First version")), "Huddle AI");
+      ctx.openFile(file.id);
+      return `Artifact "${file.title}" (file_id ${file.id}) is live beside the chat for everyone (version ${n}).`;
+    }
+    case "read_artifact": {
+      const file = fileOf(ctx, args.file_id, "artifact");
+      if (typeof file === "string") return file;
+      ctx.step({ kind: "doc", label: `Reading “${file.title}”` });
+      return (await (await fileStub(ctx, file)).artifactHtml()) || "(empty artifact)";
     }
     case "read_whiteboard": {
       const file = fileOf(ctx, args.file_id, "whiteboard");

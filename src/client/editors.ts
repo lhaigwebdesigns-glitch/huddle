@@ -8,3 +8,4 @@ registerEditor("sheet", () => import("./components/SheetEditor"));
 registerEditor("slides", () => import("./components/SlidesEditor"));
 registerEditor("whiteboard", () => import("./components/WhiteboardEditor"));
 registerEditor("form", () => import("./components/FormEditor"));
+registerEditor("artifact", () => import("./components/ArtifactViewer"));

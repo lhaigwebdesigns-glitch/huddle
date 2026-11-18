@@ -27,8 +27,20 @@ export interface ChatMessage {
     error?: boolean;
     /** The author changed this message after sending it. */
     edited?: boolean;
+    /** emoji -> uids who reacted */
+    reactions?: Record<string, string[]>;
+    poll?: Poll;
   };
 }
+
+export interface Poll {
+  question: string;
+  options: string[];
+  /** option index (as string) -> uids */
+  votes: Record<string, string[]>;
+}
+
+export const REACTIONS = ["👍", "❤️", "😂", "🎉", "🤔", "👀"] as const;
 
 export interface Member {
   uid: string;
@@ -66,6 +78,10 @@ export interface RoomSettings {
   locked: boolean;
   disabledSkills: string[];
   title: string;
+  /** Deep Research: more tool steps, multiple searches, and a cited doc at the end. */
+  deepResearch?: boolean;
+  /** Room memory: the AI may save facts (with the remember tool) that it sees in every turn. */
+  memory?: boolean;
 }
 
 export interface SkillInfo {
@@ -90,7 +106,13 @@ export type ClientMsg =
   /** Change your own message; the AI re-answers if it was the latest thing it replied to. */
   | { t: "edit"; id: string; text: string }
   /** Replace the latest AI reply with a fresh one. */
-  | { t: "regenerate" };
+  | { t: "regenerate" }
+  /** Toggle your reaction on a message. */
+  | { t: "react"; id: string; emoji: string }
+  | { t: "poll"; question: string; options: string[] }
+  | { t: "vote"; id: string; option: number }
+  /** Remove a remembered fact (anyone in the room; the list is visible in settings). */
+  | { t: "forget"; index: number };
 
 export type ServerMsg =
   | {
@@ -102,6 +124,7 @@ export type ServerMsg =
       files: RoomFile[];
       skills: SkillInfo[];
       providers: string[];
+      memory: string[];
     }
   | { t: "presence"; members: Member[] }
   | { t: "msg"; message: ChatMessage }
@@ -113,6 +136,7 @@ export type ServerMsg =
   | { t: "open_file"; id: string }
   | { t: "local_request"; id: string; model: string; messages: { role: string; content: string }[] }
   | { t: "remove"; ids: string[] }
+  | { t: "memory"; facts: string[] }
   /** Room-wide banner, e.g. when the free cloud AI is unavailable. */
   | { t: "notice"; kind: "ai_unavailable"; text: string }
   | { t: "kicked" }

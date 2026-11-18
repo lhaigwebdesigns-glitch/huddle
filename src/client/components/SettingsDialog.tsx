@@ -8,6 +8,7 @@ export function SettingsDialog({
   providers,
   members,
   me,
+  memory,
   send,
   onClose,
 }: {
@@ -17,6 +18,7 @@ export function SettingsDialog({
   providers: string[];
   members: Member[];
   me: Member;
+  memory: string[];
   send: (m: ClientMsg) => void;
   onClose: () => void;
 }) {
@@ -108,6 +110,22 @@ export function SettingsDialog({
             )}
           </div>
 
+          <label className="flex items-center justify-between gap-3">
+            <span>
+              <span className="text-sm font-medium">🔬 Deep Research mode</span>
+              <span className="block text-xs text-zinc-500">The AI runs several searches, reads sources and writes a cited doc. Slower; uses more of the free quota.</span>
+            </span>
+            <input type="checkbox" checked={!!settings.deepResearch} onChange={(e) => patch({ deepResearch: e.target.checked })} data-testid="toggle-deep-research" />
+          </label>
+
+          <label className="flex items-center justify-between gap-3">
+            <span>
+              <span className="text-sm font-medium">🧠 Room memory</span>
+              <span className="block text-xs text-zinc-500">The AI may save facts (names, goals, deadlines) it sees in every turn. Everyone here can see and delete them.</span>
+            </span>
+            <input type="checkbox" checked={!!settings.memory} onChange={(e) => patch({ memory: e.target.checked })} data-testid="toggle-memory" />
+          </label>
+
           <label className="flex items-center justify-between">
             <span>
               <span className="text-sm font-medium">Lock room</span>
@@ -142,6 +160,26 @@ export function SettingsDialog({
             </div>
           </div>
         </fieldset>
+
+        {(settings.memory || memory.length > 0) && (
+          <div className="mt-5" data-testid="memory-list">
+            <span className="text-sm font-medium">Memory ({memory.length})</span>
+            {memory.length === 0 ? (
+              <p className="mt-1 text-xs text-zinc-500">Nothing yet. Say "remember that…" to the AI.</p>
+            ) : (
+              <ul className="mt-2 space-y-1">
+                {memory.map((f, i) => (
+                  <li key={i} className="flex items-start justify-between gap-2 rounded bg-zinc-50 px-2 py-1 text-sm dark:bg-zinc-800">
+                    <span>{f}</span>
+                    <button onClick={() => send({ t: "forget", index: i })} className="shrink-0 text-xs text-red-600 hover:underline" aria-label={`Forget: ${f}`}>
+                      Forget
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
 
         {isHost && members.length > 1 && (
           <div className="mt-5">

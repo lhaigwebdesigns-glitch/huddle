@@ -174,6 +174,8 @@ function Room({ code, me }: { code: string; me: Identity }) {
             <div className="text-xs text-zinc-500">
               {state.settings.engine === "local" ? "💻 Local mode" : "☁️ Free open models"} ·{" "}
               {state.settings.aiMode === "always" ? "AI replies to every message" : "AI replies on @ai"}
+              {state.settings.deepResearch && " · 🔬 Deep Research"}
+              {state.settings.memory && " · 🧠 Memory on"}
               {state.status !== "open" && <span className="ml-2 text-amber-600">reconnecting…</span>}
             </div>
           </div>
@@ -233,6 +235,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
           providers={state.providers}
           members={state.members}
           me={state.you}
+          memory={state.memory}
           send={send}
           onClose={() => setShowSettings(false)}
         />

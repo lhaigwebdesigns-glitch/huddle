@@ -14,7 +14,7 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   { name: "slides", hint: "topic", description: "AI makes a slide deck", expand: (a) => `@ai Create a slide deck: ${a}` },
   { name: "whiteboard", hint: "what to draw", description: "AI sketches a diagram on a whiteboard", expand: (a) => `@ai Draw on a whiteboard: ${a}` },
   { name: "form", hint: "what to ask", description: "AI builds a form people can fill in", expand: (a) => `@ai Create a form: ${a}` },
-  { name: "poll", hint: "Question | option | option", description: "Quick poll for the room", expand: (a) => `/poll ${a}` },
+  { name: "poll", hint: "Question | option | option", description: "Quick poll for the room (no AI)", expand: (a) => `/poll ${a}` },
 ];
 
 /** Commands whose name starts with what's typed after "/" (for the composer menu). */

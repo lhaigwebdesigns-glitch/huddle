@@ -1,14 +1,15 @@
 import { getServerByName, Server, type Connection, type ConnectionContext, type WSMessage } from "partyserver";
 import type { Env } from "./env";
-import type {
-  ChatMessage,
-  ClientMsg,
-  Member,
-  RoomFile,
-  RoomSettings,
-  ServerMsg,
-  Source,
-  Step,
+import {
+  REACTIONS,
+  type ChatMessage,
+  type ClientMsg,
+  type Member,
+  type RoomFile,
+  type RoomSettings,
+  type ServerMsg,
+  type Source,
+  type Step,
 } from "../shared/protocol";
 import { availableProviders, chatWithFallback, ProviderError, type LlmMessage } from "./ai/providers";
 import { compactDocArgs, withFreshNote } from "./ai/turn";
@@ -27,6 +28,7 @@ const FILE_GUIDE = [
   `- doc (create_doc/read_doc/edit_doc): writing, plans, reports, essays, notes. edit_doc mode "append" adds a section.`,
   `- sheet (create_sheet/read_sheet/edit_sheet): tables, budgets, trackers, numbers. Use formulas (=SUM, =AVERAGE, =IF…) for totals and add a chart when it helps.`,
   `- slides (create_slides/read_slides/edit_slides): presentations and pitches. 5–10 slides, short bullets (max ~6 words each), speaker notes for detail; load the slide-deck-design skill first.`,
+  `- artifact (make_artifact/read_artifact): interactive things to look at or use: mini apps, calculators, games, quizzes, data visualizations, page mockups. One self-contained HTML file; it renders live beside the chat.`,
   `- form (create_form/read_form_responses): sign-ups, surveys, RSVPs, quizzes, feedback. It gets a public link anyone can fill in; summarize responses on request.`,
   `- whiteboard (draw_whiteboard/read_whiteboard): diagrams, flows, mind maps, architectures, timelines, drawn from Mermaid (flowchart/sequenceDiagram/classDiagram). People can then rearrange the shapes.`,
 ];
@@ -40,6 +42,9 @@ interface ConnState {
 
 const MAX_ROOM_SIZE = 12;
 const MAX_STEPS = 6;
+/** Deep Research mode: room for several searches and page reads before writing. */
+const DEEP_RESEARCH_STEPS = 15;
+const MAX_MEMORY_FACTS = 50;
 const HISTORY_FOR_AI = 30;
 const USER_AI_PER_HOUR = 40;
 
@@ -162,6 +167,7 @@ export class Room extends Server<Env> {
       files: this.files(),
       skills: SKILLS.map(({ name, description }) => ({ name, description })),
       providers: availableProviders(this.env).map((p) => `${p.label} · ${p.model}`),
+      memory: (await this.ctx.storage.get<string[]>("memory")) ?? [],
     });
     this.broadcastPresence();
   }
@@ -241,6 +247,60 @@ export class Room extends Server<Env> {
         this.queueAi();
         return;
       }
+      case "react": {
+        if (!(REACTIONS as readonly string[]).includes(msg.emoji)) return;
+        const m = this.loadMessages(300).find((x) => x.id === msg.id);
+        if (!m || m.meta?.streaming) return;
+        const reactions = { ...(m.meta?.reactions ?? {}) };
+        const who = new Set(reactions[msg.emoji] ?? []);
+        if (who.has(me.uid)) who.delete(me.uid);
+        else who.add(me.uid);
+        if (who.size) reactions[msg.emoji] = [...who];
+        else delete reactions[msg.emoji];
+        const next: ChatMessage = { ...m, meta: { ...m.meta, reactions } };
+        this.saveMessage(next);
+        this.broadcastMsg({ t: "msg", message: next });
+        return;
+      }
+      case "poll": {
+        const question = String(msg.question ?? "").trim().slice(0, 200);
+        const options = (Array.isArray(msg.options) ? msg.options : []).map((o) => String(o).trim().slice(0, 80)).filter(Boolean).slice(0, 10);
+        if (!question || options.length < 2) return;
+        const m: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: "user",
+          authorId: me.uid,
+          authorName: me.name,
+          content: `📊 Poll: ${question}`,
+          createdAt: Date.now(),
+          meta: { poll: { question, options, votes: {} } },
+        };
+        this.saveMessage(m);
+        this.broadcastMsg({ t: "msg", message: m });
+        return;
+      }
+      case "vote": {
+        const m = this.loadMessages(300).find((x) => x.id === msg.id);
+        const poll = m?.meta?.poll;
+        if (!m || !poll || !(msg.option >= 0 && msg.option < poll.options.length)) return;
+        const votes: Record<string, string[]> = {};
+        for (const [k, uids] of Object.entries(poll.votes)) votes[k] = uids.filter((u) => u !== me.uid);
+        const key = String(Math.floor(msg.option));
+        const already = (poll.votes[key] ?? []).includes(me.uid);
+        if (!already) votes[key] = [...(votes[key] ?? []), me.uid]; // clicking your vote again removes it
+        const next: ChatMessage = { ...m, meta: { ...m.meta, poll: { ...poll, votes } } };
+        this.saveMessage(next);
+        this.broadcastMsg({ t: "msg", message: next });
+        return;
+      }
+      case "forget": {
+        const facts = (await this.ctx.storage.get<string[]>("memory")) ?? [];
+        if (!(msg.index >= 0 && msg.index < facts.length)) return;
+        facts.splice(msg.index, 1);
+        await this.ctx.storage.put("memory", facts);
+        this.broadcastMsg({ t: "memory", facts });
+        return;
+      }
       case "regenerate": {
         if (this.aiBusy) return this.send(conn, { t: "error", message: "The AI is still answering — try again when it's done." });
         const [last] = this.loadMessages(1);
@@ -261,6 +321,8 @@ export class Room extends Server<Env> {
         if (typeof p.locked === "boolean") s.locked = p.locked;
         if (typeof p.title === "string") s.title = p.title.slice(0, 80) || s.title;
         if (Array.isArray(p.disabledSkills)) s.disabledSkills = p.disabledSkills.map(String).slice(0, 100);
+        if (typeof p.deepResearch === "boolean") s.deepResearch = p.deepResearch;
+        if (typeof p.memory === "boolean") s.memory = p.memory;
         await this.ctx.storage.put("settings", s);
         this.broadcastMsg({ t: "settings", settings: s });
         return;
@@ -463,14 +525,18 @@ export class Room extends Server<Env> {
         await this.localTurn(msg);
       } else {
         this.abort = new AbortController();
-        llm = [{ role: "system", content: this.systemPrompt(true) }, ...withFreshNote(this.history())];
+        const memory = (await this.ctx.storage.get<string[]>("memory")) ?? [];
+        llm = [{ role: "system", content: this.systemPrompt(true, memory) }, ...withFreshNote(this.history())];
         let emptyRetried = false;
-        for (let i = 0; i < MAX_STEPS; i++) {
+        const maxSteps = s.deepResearch ? DEEP_RESEARCH_STEPS : MAX_STEPS;
+        // The remember tool only exists when the room has memory turned on.
+        const tools = s.memory ? TOOL_DEFS : TOOL_DEFS.filter((t) => t.function.name !== "remember");
+        for (let i = 0; i < maxSteps; i++) {
           const tCall = Date.now();
           if (this.env.DEBUG_AI) console.log(`[ai] step ${i} calling model at +${tCall - msg.createdAt}ms`);
           const res = await chatWithFallback(this.env, {
             messages: llm,
-            tools: TOOL_DEFS,
+            tools,
             signal: this.abort.signal,
             onDelta,
           });
@@ -495,12 +561,13 @@ export class Room extends Server<Env> {
               openFile: (id) => this.broadcastMsg({ t: "open_file", id }),
               step,
               sources,
+              remember: s.memory ? (fact) => this.remember(fact) : undefined,
             });
             llm.push({ role: "tool", tool_call_id: call.id, content: output });
             if (this.env.DEBUG_AI) console.log(`[ai] ${call.function.name} -> ${output.slice(0, 300)}`);
             compactDocArgs(call);
           }
-          if (i === MAX_STEPS - 2) {
+          if (i === maxSteps - 2) {
             // As a user-role note: gpt-oss/Qwen largely ignore system messages mid-conversation.
             llm.push({ role: "user", content: "(Huddle: tool budget reached. Write your final answer now without calling tools.)" });
           }
@@ -599,7 +666,7 @@ export class Room extends Server<Env> {
     });
   }
 
-  private systemPrompt(withTools: boolean) {
+  private systemPrompt(withTools: boolean, memory: string[] = []) {
     const s = this.settings!;
     const people = [...new Set(this.members().map((m) => m.name))].join(", ") || "nobody";
     const files = this.files();
@@ -627,6 +694,16 @@ export class Room extends Server<Env> {
         `Before specialised tasks, call load_skill with the most relevant skill. Available skills:`,
         ...skills.map((k) => `- ${k.name}: ${k.description}`),
       );
+      if (s.deepResearch)
+        volatile.push(
+          `DEEP RESEARCH MODE is on. For questions that need research: load the deep-research skill, run several web_search queries from different angles, read the best 3–6 sources with fetch_url, then write the findings as a doc with create_doc (summary first, then sections, then a Sources list of the real URLs you read). In chat, give a short summary and point to the doc. Small talk still gets a normal short reply.`,
+        );
+      if (s.memory)
+        volatile.push(
+          memory.length
+            ? `Room memory (facts people asked you to keep; use them, and call remember to add new lasting facts like names, roles, goals, deadlines or preferences):\n${memory.map((f) => `- ${f}`).join("\n")}`
+            : `Room memory is on but empty. When people share lasting facts (names, roles, goals, deadlines, preferences) or ask you to remember something, call remember.`,
+        );
       volatile.push(
         files.length
           ? `Files in this room:\n${files.map((f) => `- ${f.kind} "${f.title}" (file_id ${f.id})`).join("\n")}`
@@ -654,6 +731,19 @@ export class Room extends Server<Env> {
   private saveMessage(m: ChatMessage) {
     this.sql`INSERT OR REPLACE INTO messages (id, role, author_id, author_name, content, created_at, meta)
       VALUES (${m.id}, ${m.role}, ${m.authorId}, ${m.authorName}, ${m.content}, ${m.createdAt}, ${m.meta ? JSON.stringify(m.meta) : null})`;
+  }
+
+  /** Save a fact the AI should keep in mind in future turns (room memory must be on). */
+  private async remember(fact: string): Promise<string> {
+    const clean = fact.replace(/\s+/g, " ").trim().slice(0, 300);
+    if (!clean) return "Error: empty fact.";
+    const facts = (await this.ctx.storage.get<string[]>("memory")) ?? [];
+    if (facts.some((f) => f.toLowerCase() === clean.toLowerCase())) return "Already remembered.";
+    facts.push(clean);
+    while (facts.length > MAX_MEMORY_FACTS) facts.shift();
+    await this.ctx.storage.put("memory", facts);
+    this.broadcastMsg({ t: "memory", facts });
+    return `Remembered. The room can see and delete it in Room settings → Memory (${facts.length}/${MAX_MEMORY_FACTS}).`;
   }
 
   private removeMessages(ids: string[]) {

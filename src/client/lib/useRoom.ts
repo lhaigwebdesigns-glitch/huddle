@@ -27,6 +27,8 @@ export interface RoomState {
   toast?: string;
   /** Room banner (e.g. the free cloud AI is unavailable); cleared when dismissed or when Local mode is on. */
   notice?: string;
+  /** Facts the AI remembers for this room (when memory is on). */
+  memory: string[];
 }
 
 type Action =
@@ -52,7 +54,10 @@ function reducer(s: RoomState, a: Action): RoomState {
         files: m.files,
         skills: m.skills,
         providers: m.providers,
+        memory: m.memory ?? [],
       };
+    case "memory":
+      return { ...s, memory: m.facts };
     case "presence":
       return { ...s, members: m.members };
     case "msg":
@@ -102,6 +107,7 @@ export function useRoom(code: string, me: Identity) {
     skills: [],
     providers: [],
     openFileNonce: 0,
+    memory: [],
   });
   const [localProgress, setLocalProgress] = useState<{ text: string; pct: number } | null>(null);
   const sock = useRef<PartySocket | null>(null);

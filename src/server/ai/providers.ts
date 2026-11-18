@@ -300,6 +300,19 @@ export const MOCK_TOOL_CALLS: { trigger: RegExp; name: string; args: Record<stri
     args: { title: "Mock flow", mermaid: "flowchart LR\n  A[Idea] --> B[Plan] --> C[Launch]" },
   },
   {
+    trigger: /remember that/i,
+    name: "remember",
+    args: { fact: "The bake sale deadline is Friday." },
+  },
+  {
+    trigger: /make an app/i,
+    name: "make_artifact",
+    args: {
+      title: "Mock counter",
+      html: '<h1>Counter</h1><button id="b">Clicked 0 times</button><script>let n=0;b.onclick=()=>b.textContent=`Clicked ${++n} times`</script>',
+    },
+  },
+  {
     trigger: /make a form/i,
     name: "create_form",
     args: {
@@ -326,7 +339,9 @@ function mockChat(args: ChatArgs): Promise<ChatResult> {
       model: "mock",
     });
   }
-  const text = lastIsTool
+  const text = /show a diagram/i.test(lastUser) && !lastIsTool
+    ? "Here's the flow:\n\n```mermaid\nflowchart LR\n  Idea --> Plan --> Launch\n```\n"
+    : lastIsTool
     ? "Done! I made it — it's open in the side panel for everyone."
     : `🤖 (mock AI) I heard: "${lastUser.slice(0, 200)}". Configure a free provider key to get real answers.`;
   return (async () => {

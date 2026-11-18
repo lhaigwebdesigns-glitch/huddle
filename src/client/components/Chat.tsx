@@ -1,7 +1,83 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { ChatMessage, ClientMsg, Member, RoomSettings } from "../../shared/protocol";
+import { REACTIONS, type ChatMessage, type ClientMsg, type Member, type Poll, type RoomSettings } from "../../shared/protocol";
 import { Markdown } from "./Markdown";
-import { expandSlash, matchSlash } from "../lib/slash";
+import { expandSlash, matchSlash, parsePoll } from "../lib/slash";
+
+function PollCard({ id, poll, me, members, send }: { id: string; poll: Poll; me: Member; members: Member[]; send: (m: ClientMsg) => void }) {
+  const total = Object.values(poll.votes).reduce((n, v) => n + v.length, 0);
+  const nameOf = (uid: string) => members.find((m) => m.uid === uid)?.name ?? "someone";
+  return (
+    <div className="mt-2 max-w-md rounded-xl border border-zinc-200 p-3 dark:border-zinc-800" data-testid="poll">
+      <div className="font-medium">{poll.question}</div>
+      <div className="mt-2 space-y-1.5">
+        {poll.options.map((o, i) => {
+          const voters = poll.votes[String(i)] ?? [];
+          const mine = voters.includes(me.uid);
+          const pct = total ? Math.round((voters.length / total) * 100) : 0;
+          return (
+            <button
+              key={i}
+              onClick={() => send({ t: "vote", id, option: i })}
+              className={`relative block w-full overflow-hidden rounded-lg border px-3 py-1.5 text-left text-sm ${mine ? "border-indigo-500" : "border-zinc-200 hover:border-indigo-300 dark:border-zinc-700"}`}
+              aria-pressed={mine}
+              title={voters.map(nameOf).join(", ") || "No votes yet"}
+              data-testid="poll-option"
+            >
+              <span className="absolute inset-y-0 left-0 bg-indigo-100 dark:bg-indigo-950/60" style={{ width: `${pct}%` }} aria-hidden />
+              <span className="relative flex justify-between gap-2">
+                <span>{mine ? "✓ " : ""}{o}</span>
+                <span className="text-xs text-zinc-500">{voters.length} · {pct}%</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-1.5 text-xs text-zinc-500">{total} vote{total === 1 ? "" : "s"} · click again to take your vote back</div>
+    </div>
+  );
+}
+
+function Reactions({ m, me, members, send }: { m: ChatMessage; me: Member; members: Member[]; send: (msg: ClientMsg) => void }) {
+  const [open, setOpen] = useState(false);
+  const entries = Object.entries(m.meta?.reactions ?? {}).filter(([, u]) => u.length);
+  const nameOf = (uid: string) => members.find((x) => x.uid === uid)?.name ?? "someone";
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1">
+      {entries.map(([emoji, uids]) => (
+        <button
+          key={emoji}
+          onClick={() => send({ t: "react", id: m.id, emoji })}
+          className={`rounded-full border px-1.5 text-xs ${uids.includes(me.uid) ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-950/50" : "border-zinc-200 dark:border-zinc-700"}`}
+          title={uids.map(nameOf).join(", ")}
+          aria-label={`${emoji} ${uids.length}, react`}
+          data-testid="reaction"
+        >
+          {emoji} {uids.length}
+        </button>
+      ))}
+      <span className="relative">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className={`rounded-full px-1.5 text-xs text-zinc-400 hover:bg-zinc-100 dark:hover:bg-zinc-800 ${entries.length ? "" : "opacity-0 focus:opacity-100 group-hover:opacity-100"}`}
+          aria-label="Add reaction"
+          aria-expanded={open}
+          data-testid="add-reaction"
+        >
+          ☺+
+        </button>
+        {open && (
+          <span className="absolute bottom-full left-0 z-10 mb-1 flex gap-0.5 rounded-full border border-zinc-200 bg-white p-1 shadow-lg dark:border-zinc-700 dark:bg-zinc-900" onMouseLeave={() => setOpen(false)}>
+            {REACTIONS.map((e) => (
+              <button key={e} onClick={() => (send({ t: "react", id: m.id, emoji: e }), setOpen(false))} className="rounded-full px-1 text-base hover:bg-zinc-100 dark:hover:bg-zinc-800" aria-label={`React ${e}`}>
+                {e}
+              </button>
+            ))}
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
 
 const STEP_ICON: Record<string, string> = { search: "🔎", fetch: "📖", skill: "🧠", doc: "📄", other: "⚙️" };
 
@@ -201,7 +277,7 @@ function MessageView({
         ) : (
           <div className="flex items-start gap-2">
             <div className="min-w-0 flex-1 whitespace-pre-wrap break-words text-[15px]">
-              {m.content}
+              {m.meta?.poll ? null : m.content}
               {m.meta?.edited && <span className="ml-1 text-xs text-zinc-400">(edited)</span>}
             </div>
             {canEdit && (
@@ -232,6 +308,8 @@ function MessageView({
             ))}
           </div>
         )}
+        {m.meta?.poll && <PollCard id={m.id} poll={m.meta.poll} me={me} members={members} send={send} />}
+        {!m.meta?.streaming && <Reactions m={m} me={me} members={members} send={send} />}
         {isAi && !m.meta?.streaming && (
           <Feedback msg={m} room={room} me={me} canRegenerate={canRegenerate} onRegenerate={() => send({ t: "regenerate" })} />
         )}
@@ -298,6 +376,13 @@ export function Chat({
   };
 
   const submit = (raw = text) => {
+    const poll = parsePoll(raw);
+    if (poll) {
+      send({ t: "poll", ...poll });
+      setText("");
+      return;
+    }
+    if (/^\/poll\b/i.test(raw.trim())) return; // incomplete poll: keep typing (needs 2+ options)
     const expanded = expandSlash(raw.trim());
     if (!expanded) return; // "/doc" with nothing after it: keep typing
     send({ t: "say", text: expanded });

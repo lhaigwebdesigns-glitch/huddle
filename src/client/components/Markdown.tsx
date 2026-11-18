@@ -1,4 +1,43 @@
-import { memo, useState } from "react";
+import { memo, useEffect, useId, useState } from "react";
+
+/** Renders ```mermaid blocks as diagrams (Mermaid is MIT; loaded only when needed, strict mode). */
+function MermaidBlock({ code }: { code: string }) {
+  const [svg, setSvg] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const id = useId().replace(/[^a-zA-Z0-9]/g, "");
+  useEffect(() => {
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const { default: mermaid } = await import("mermaid");
+        mermaid.initialize({
+          startOnLoad: false,
+          securityLevel: "strict",
+          theme: document.documentElement.classList.contains("dark") ? "dark" : "default",
+        });
+        const out = await mermaid.render(`m${id}${Date.now()}`, code);
+        if (!cancelled) setSvg(out.svg);
+      } catch {
+        if (!cancelled) setFailed(true);
+      }
+    }, 250); // wait for streaming to settle
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [code, id]);
+  if (failed || !svg) return <CodeBlock className="language-mermaid">{code}</CodeBlock>;
+  return (
+    <div
+      className="not-prose my-3 overflow-x-auto rounded-lg border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-950"
+      data-testid="mermaid"
+      role="img"
+      aria-label="Diagram"
+      // Mermaid sanitizes its own output in strict mode.
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -44,6 +83,7 @@ export const Markdown = memo(function Markdown({ text }: { text: string }) {
           ),
           code: ({ className, children, ...rest }) => {
             const inline = !className && !String(children).includes("\n");
+            if (!inline && /language-mermaid/.test(className ?? "")) return <MermaidBlock code={String(children).replace(/\n$/, "")} />;
             return inline ? (
               <code className="rounded bg-zinc-100 px-1 py-0.5 text-[0.9em] before:content-none after:content-none dark:bg-zinc-800" {...rest}>
                 {children}

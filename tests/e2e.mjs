@@ -255,6 +255,50 @@ try {
   await alice.locator('[data-cell="B2"]').getByText("Dave").waitFor();
   ok(true, "responses copy into a new sheet");
 
+  // Artifacts: AI builds a mini app that runs in a sandboxed iframe for everyone.
+  await bob.getByTestId("composer").fill("make an app that counts clicks");
+  await bob.getByTestId("composer").press("Enter");
+  await alice.getByTestId("artifact-viewer").waitFor({ timeout: 15000 });
+  const frame = alice.frameLocator('[data-testid="artifact-frame"]');
+  await frame.getByRole("button", { name: "Clicked 0 times" }).click();
+  await frame.getByRole("button", { name: "Clicked 1 times" }).waitFor();
+  ok(true, "AI artifact runs interactively in a sandbox");
+  const sandbox = await alice.getByTestId("artifact-frame").getAttribute("sandbox");
+  ok(!/allow-same-origin/.test(sandbox ?? ""), "artifact iframe has no same-origin access");
+
+  // Mermaid diagrams render in chat.
+  await alice.getByTestId("composer").fill("show a diagram of our plan");
+  await alice.getByTestId("composer").press("Enter");
+  await bob.getByTestId("mermaid").last().locator("svg").waitFor({ timeout: 15000 });
+  ok(true, "Mermaid block renders as a diagram for everyone");
+
+  // Reactions and polls sync live.
+  const bobMsg = alice.getByTestId("user-message").filter({ hasText: "make an app that counts clicks" }).last();
+  await bobMsg.hover();
+  await bobMsg.getByTestId("add-reaction").click();
+  await alice.getByRole("button", { name: "React 🎉" }).click();
+  await bob.getByTestId("user-message").filter({ hasText: "make an app that counts clicks" }).last().getByTestId("reaction").getByText("🎉 1").waitFor();
+  ok(true, "a reaction shows up for everyone");
+  await alice.getByTestId("composer").fill("/poll Lunch? | Pizza | Tacos");
+  await alice.getByTestId("composer").press("Enter");
+  await bob.getByTestId("poll").last().getByTestId("poll-option").filter({ hasText: "Tacos" }).click();
+  await alice.getByTestId("poll").last().getByTestId("poll-option").filter({ hasText: "Tacos" }).getByText("1 · 100%").waitFor();
+  ok(true, "poll votes sync live");
+
+  // Room memory (host turns it on; the AI remembers; everyone can see it).
+  await alice.getByRole("button", { name: /Room settings/ }).click();
+  // The checkbox reflects the server's settings, so click and wait for the round trip.
+  await alice.getByTestId("toggle-memory").click();
+  await alice.waitForFunction(() => document.querySelector('[data-testid="toggle-memory"]')?.checked === true);
+  await alice.getByRole("button", { name: "✕" }).first().click();
+  await alice.getByTestId("composer").fill("remember that the deadline is Friday");
+  await alice.getByTestId("composer").press("Enter");
+  await alice.getByTestId("ai-message").last().getByText(/Remembering a fact/).waitFor({ timeout: 15000 });
+  await bob.getByRole("button", { name: /Room settings/ }).click();
+  await bob.getByTestId("memory-list").getByText("The bake sale deadline is Friday.").waitFor();
+  ok(true, "room memory saved and visible to everyone");
+  await bob.getByRole("button", { name: "✕" }).first().click();
+
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
   const statuses = await alice.evaluate(async () => {
     const ip = `e2e-${Math.random()}`;

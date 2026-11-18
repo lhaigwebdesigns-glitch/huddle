@@ -7,6 +7,7 @@ import { chunk, docFromState, replaceContent, unchunk } from "./yjs-files";
 import { applySheetOps, cellsOf, readSheet, type SheetOp } from "../shared/sheet-model";
 import { applySlideOps, deckOutline, slidesOf, type SlideOp } from "../shared/slides-model";
 import { boardSummary, queueDrawing } from "../shared/whiteboard-model";
+import { addVersion, latestHtml } from "../shared/artifact-model";
 import {
   addResponse,
   formMetaOf,
@@ -211,5 +212,17 @@ export class Doc extends YServer<Env> {
 
   async formRows() {
     return responseRows(this.document);
+  }
+
+  // ---------- RPC: artifacts ----------
+
+  async addArtifactVersion(html: string, note: string, by: string) {
+    const n = addVersion(this.document, html, note, by);
+    await this.onSave();
+    return n;
+  }
+
+  async artifactHtml() {
+    return latestHtml(this.document);
   }
 }
