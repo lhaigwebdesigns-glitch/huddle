@@ -63,6 +63,6 @@ npm run dev & npm run e2e   # two real browsers: join by code, chat, AI doc, liv
 ```
 
 ## Roadmap
-See the full plan in `ROADMAP.md`. Next up: Sheets (Univer), Slides + present mode, Forms, Whiteboard (Excalidraw), artifacts/canvas preview, file uploads with vision, knowledge/RAG, memory, voice, image generation, accounts, and later payments.
+**Picking this up in a new Claude Code session? Start with [`HANDOFF.md`](HANDOFF.md)** — what is built, lessons learned, and the phase-by-phase build plan. Original plan: `ROADMAP.md`. Next up: Sheets (Univer), Slides + present mode, Forms, Whiteboard (Excalidraw), artifacts/canvas preview, file uploads with vision, knowledge/RAG, memory, voice, image generation, accounts, and later payments.
 
 MIT licensed.
