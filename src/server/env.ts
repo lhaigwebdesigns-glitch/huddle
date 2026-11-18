@@ -8,6 +8,14 @@ export interface Env {
   DB?: D1Database;
   /** Cloudflare Workers AI binding (free daily allowance). Optional. */
   AI?: Ai;
+  /**
+   * Self-hosted model via Ollama on your own GPU: no rate or token limits. Local dev can use
+   * http://localhost:11434; a deployed Worker needs a public tunnel URL to your PC.
+   */
+  OLLAMA_BASE_URL?: string;
+  OLLAMA_MODEL?: string;
+  /** Shared secret sent as a Bearer token; required in front of a public tunnel. */
+  OLLAMA_API_KEY?: string;
   GROQ_API_KEY?: string;
   CEREBRAS_API_KEY?: string;
   OPENROUTER_API_KEY?: string;

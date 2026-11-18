@@ -15,6 +15,8 @@ export interface ProviderConfig {
   supportsTools: boolean;
   extraHeaders?: Record<string, string>;
   binding?: Ai;
+  /** Give up (and fall through to the next provider) if no response starts within this time. */
+  responseTimeoutMs?: number;
 }
 
 export function getProviders(env: Env): ProviderConfig[] {
@@ -22,6 +24,22 @@ export function getProviders(env: Env): ProviderConfig[] {
     return [{ id: "mock", label: "Mock AI (dev)", kind: "mock", model: "mock", supportsTools: true }];
   }
   const list: ProviderConfig[] = [];
+  if (env.OLLAMA_BASE_URL) {
+    // Your own GPU first: unlimited and free. If the PC is off or busy past the timeout,
+    // the router moves on to the hosted free tiers below.
+    list.push({
+      id: "ollama",
+      label: "Self-hosted",
+      kind: "openai",
+      baseUrl: `${env.OLLAMA_BASE_URL.replace(/\/+$/, "")}/v1`,
+      apiKey: env.OLLAMA_API_KEY || "ollama",
+      // "huddle" = qwen3:14b with a 16k context window, built from ollama/Modelfile.
+      model: env.OLLAMA_MODEL || "huddle",
+      supportsTools: true,
+      // Covers loading the model into GPU memory on the first request after idle.
+      responseTimeoutMs: 60_000,
+    });
+  }
   if (env.GROQ_API_KEY) {
     list.push({
       id: "groq",

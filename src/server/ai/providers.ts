@@ -127,26 +127,41 @@ async function chatOnce(p: ProviderConfig, args: ChatArgs): Promise<ChatResult> 
 }
 
 async function openAiCompatChat(p: ProviderConfig, args: ChatArgs): Promise<ChatResult> {
-  const res = await fetch(`${p.baseUrl}/chat/completions`, {
-    method: "POST",
-    signal: args.signal,
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${p.apiKey}`,
-      ...p.extraHeaders,
-    },
-    body: JSON.stringify({
-      model: p.model,
-      messages: args.messages,
-      tools: args.tools?.length ? args.tools : undefined,
-      stream: true,
-      temperature: 0.6,
-      max_tokens: 4096,
-      // gpt-oss "thinks" before answering; those hidden tokens count against free
-      // tokens-per-minute limits. Low effort keeps tool use reliable and quota usage small.
-      ...(/gpt-oss/.test(p.model) ? { reasoning_effort: "low" } : {}),
-    }),
-  });
+  // Optional deadline for the response to start (self-hosted models may be asleep or busy).
+  const timeout = p.responseTimeoutMs ? new AbortController() : null;
+  const timer = timeout ? setTimeout(() => timeout.abort(), p.responseTimeoutMs) : undefined;
+  const signal = timeout ? (args.signal ? AbortSignal.any([args.signal, timeout.signal]) : timeout.signal) : args.signal;
+  let res: Response;
+  try {
+    res = await fetch(`${p.baseUrl}/chat/completions`, {
+      method: "POST",
+      signal,
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${p.apiKey}`,
+        ...p.extraHeaders,
+      },
+      body: JSON.stringify({
+        model: p.model,
+        messages: args.messages,
+        tools: args.tools?.length ? args.tools : undefined,
+        stream: true,
+        temperature: 0.6,
+        max_tokens: 4096,
+        // gpt-oss "thinks" before answering; those hidden tokens count against free
+        // tokens-per-minute limits. Low effort keeps tool use reliable and quota usage small.
+        ...(/gpt-oss/.test(p.model) ? { reasoning_effort: "low" } : {}),
+      }),
+    });
+  } catch (err) {
+    if (timeout?.signal.aborted && !args.signal?.aborted)
+      throw new ProviderError(`${p.id}: no response within ${p.responseTimeoutMs! / 1000}s`, 504);
+    if (args.signal?.aborted) throw err;
+    // Connection refused / DNS / tunnel down: the provider is offline.
+    throw new ProviderError(`${p.id} unreachable: ${String(err).slice(0, 200)}`, 503);
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok || !res.body) {
     const text = await res.text().catch(() => "");
     throw new ProviderError(
