@@ -42,13 +42,31 @@ if (/"database_id":\s*"0{8}-/.test(config)) {
 } else console.log("  ✓ already set in wrangler.jsonc");
 
 step("R2 bucket for uploads and images");
+// If an earlier run switched uploads off, switch them back on before trying again.
+{
+  const cfg = readFileSync("wrangler.jsonc", "utf8");
+  if (cfg.includes("// R2 OFF")) {
+    writeFileSync(
+      "wrangler.jsonc",
+      cfg.replace(/"ai": \{ "binding": "AI" \}(\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*)\/\/ R2 OFF \(enable R2 in the dashboard, then rerun setup\): /, '"ai": { "binding": "AI" },$1'),
+    );
+  }
+}
 try {
   run("npx wrangler r2 bucket create huddle-files");
   console.log("  ✓ created huddle-files");
 } catch (e) {
   const msg = String(e.stderr ?? e.stdout ?? e);
   if (/already exists/i.test(msg)) console.log("  ✓ already exists");
-  else console.log("  ! Couldn't create it. Enable R2 in the Cloudflare dashboard (free), then rerun. Uploads stay off until then.\n    " + msg.split("\n")[0]);
+  else {
+    // Deploying with a binding to a bucket that doesn't exist fails, so switch uploads off
+    // for now. Everything else works; rerun this script after enabling R2 to turn them on.
+    const cfg = readFileSync("wrangler.jsonc", "utf8");
+    if (/^\s*"r2_buckets"/m.test(cfg)) {
+      writeFileSync("wrangler.jsonc", cfg.replace(/^(\s*)"r2_buckets"/m, '$1// R2 OFF (enable R2 in the dashboard, then rerun setup): "r2_buckets"').replace(/("ai": \{ "binding": "AI" \}),(\s*\/\/[^\n]*\n\s*\/\/[^\n]*\n\s*\/\/ R2 OFF)/, "$1$2"));
+    }
+    console.log("  ! Couldn't create it, so uploads are switched off for now (the rest of Huddle deploys fine).\n    To turn them on: enable R2 in the Cloudflare dashboard (free tier), then run this script again.\n    " + msg.split("\n")[0]);
+  }
 }
 
 step("Secrets from .dev.vars");
