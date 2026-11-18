@@ -132,6 +132,40 @@ try {
   await carol.getByTestId("ai-message").first().waitFor();
   ok(true, "clicking a suggestion sends it");
 
+  // Drive: duplicate copies content, history restores, delete removes for everyone.
+  const docRow = alice.getByTestId("drive-file").filter({ hasText: "Mock plan" }).first();
+  await docRow.hover();
+  await docRow.getByRole("button", { name: /More actions/ }).click();
+  await alice.getByRole("menuitem", { name: "Duplicate" }).click();
+  await alice.waitForFunction(
+    () => document.querySelector('[data-testid=file-panel] input[aria-label="File name"]')?.value === "Copy of Mock plan",
+  );
+  await alice.getByTestId("doc-editor").getByText("This doc was written by the").waitFor();
+  ok(true, "duplicating a doc copies its content");
+  await bob.getByTestId("drive-file").filter({ hasText: "Copy of Mock plan" }).waitFor();
+  ok(true, "Bob sees the duplicate in the Drive");
+
+  await alice.getByRole("button", { name: "Version history" }).click();
+  await alice.getByRole("button", { name: "Save version now" }).click();
+  await alice.getByTestId("history").getByRole("button", { name: "Restore" }).first().waitFor();
+  await alice.getByTestId("doc-editor").getByText("Second point").click();
+  await alice.waitForTimeout(150);
+  await alice.keyboard.press("End");
+  await alice.keyboard.type(" EDIT-TO-UNDO");
+  await alice.getByTestId("doc-editor").getByText(/EDIT-TO-UNDO/).waitFor();
+  alice.once("dialog", (d) => d.accept());
+  await alice.getByTestId("history").getByRole("button", { name: "Restore" }).last().click();
+  await alice.getByTestId("doc-editor").getByText(/EDIT-TO-UNDO/).waitFor({ state: "detached", timeout: 10000 });
+  ok(true, "restoring a version rolls the doc back live");
+
+  const copyRow = alice.getByTestId("drive-file").filter({ hasText: "Copy of Mock plan" });
+  await copyRow.hover();
+  await copyRow.getByRole("button", { name: /More actions/ }).click();
+  alice.once("dialog", (d) => d.accept());
+  await alice.getByRole("menuitem", { name: "Delete" }).click();
+  await bob.getByTestId("drive-file").filter({ hasText: "Copy of Mock plan" }).waitFor({ state: "detached" });
+  ok(true, "deleting a file removes it for everyone");
+
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
   const statuses = await alice.evaluate(async () => {
     const ip = `e2e-${Math.random()}`;

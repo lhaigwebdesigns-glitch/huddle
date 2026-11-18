@@ -1,6 +1,6 @@
 import { getServerByName } from "partyserver";
 import type { Env } from "../env";
-import type { RoomFile, Source, Step } from "../../shared/protocol";
+import type { FileKind, RoomFile, Source, Step } from "../../shared/protocol";
 import type { ToolDef } from "./providers";
 import { getSkill } from "./skills";
 
@@ -8,7 +8,7 @@ export interface ToolContext {
   env: Env;
   roomCode: string;
   files: () => RoomFile[];
-  createFile: (kind: "doc", title: string) => RoomFile;
+  createFile: (kind: FileKind, title: string) => RoomFile;
   openFile: (id: string) => void;
   step: (s: Step) => void;
   sources: Source[];

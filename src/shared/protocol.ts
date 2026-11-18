@@ -38,7 +38,8 @@ export interface Member {
   typing?: boolean;
 }
 
-export type FileKind = "doc";
+import type { FileKind } from "./files";
+export type { FileKind } from "./files";
 
 export interface RoomFile {
   id: string;
@@ -46,6 +47,12 @@ export interface RoomFile {
   title: string;
   createdAt: number;
   createdBy: string;
+}
+
+export interface FileVersion {
+  at: number;
+  /** Approximate size of the snapshot in bytes. */
+  size: number;
 }
 
 export type AiMode = "mention" | "always";
@@ -74,6 +81,7 @@ export type ClientMsg =
   | { t: "new_file"; kind: FileKind; title: string }
   | { t: "rename_file"; id: string; title: string }
   | { t: "delete_file"; id: string }
+  | { t: "duplicate_file"; id: string }
   | { t: "kick"; uid: string }
   | { t: "local_delta"; id: string; delta: string }
   | { t: "local_done"; id: string; error?: string }

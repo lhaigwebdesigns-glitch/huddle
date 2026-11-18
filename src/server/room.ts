@@ -13,6 +13,10 @@ import type {
 import { availableProviders, chatWithFallback, ProviderError, type LlmMessage } from "./ai/providers";
 import { compactDocArgs, withFreshNote } from "./ai/turn";
 import { aiTurnsToday, countAiTurn } from "./db";
+import { getServerByName } from "partyserver";
+import { FILE_INFO, isFileKind, type FileKind } from "../shared/files";
+
+const MAX_FILES = 100;
 import { SKILLS } from "./ai/skills";
 import { runTool, TOOL_DEFS } from "./ai/tools";
 import { collectUrls, stripUnverifiedLinks } from "./ai/citations";
@@ -79,6 +83,28 @@ export class Room extends Server<Env> {
       locked: this.settings.locked,
       members: this.members().length,
     };
+  }
+
+  /** Version history for one of this room's files. */
+  async fileVersions(fileId: string) {
+    const f = this.files().find((x) => x.id === fileId);
+    if (!f) return null;
+    const stub = await getServerByName(this.env.Doc, `${this.name}--${f.id}`);
+    return stub.listVersions();
+  }
+
+  async saveFileVersion(fileId: string) {
+    const f = this.files().find((x) => x.id === fileId);
+    if (!f) return { ok: false };
+    const stub = await getServerByName(this.env.Doc, `${this.name}--${f.id}`);
+    return stub.saveVersion();
+  }
+
+  async restoreFileVersion(fileId: string, at: number) {
+    const f = this.files().find((x) => x.id === fileId);
+    if (!f) return { ok: false, error: "No such file" };
+    const stub = await getServerByName(this.env.Doc, `${this.name}--${f.id}`);
+    return stub.restoreVersion(at, f.kind);
   }
 
   // ---------- connections ----------
@@ -218,8 +244,21 @@ export class Room extends Server<Env> {
         return;
       }
       case "new_file": {
-        const f = this.createFile("doc", String(msg.title ?? "Untitled doc"), me.uid);
+        const kind = isFileKind(msg.kind) && msg.kind !== "artifact" ? msg.kind : "doc";
+        if (this.files().length >= MAX_FILES)
+          return this.send(conn, { t: "error", message: `Rooms can hold up to ${MAX_FILES} files. Delete some to make room.` });
+        const f = this.createFile(kind, String(msg.title ?? "") || FILE_INFO[kind].untitled, me.uid);
         this.send(conn, { t: "open_file", id: f.id });
+        return;
+      }
+      case "duplicate_file": {
+        const src = this.files().find((x) => x.id === msg.id);
+        if (!src || this.files().length >= MAX_FILES) return;
+        const copy = this.createFile(src.kind, `Copy of ${src.title}`.slice(0, 120), me.uid);
+        const from = await getServerByName(this.env.Doc, `${this.name}--${src.id}`);
+        const to = await getServerByName(this.env.Doc, `${this.name}--${copy.id}`);
+        await to.importState(await from.exportState(), src.kind);
+        this.send(conn, { t: "open_file", id: copy.id });
         return;
       }
       case "rename_file": {
@@ -234,6 +273,8 @@ export class Room extends Server<Env> {
         if (!f || (!isHost && f.createdBy !== me.uid)) return;
         this.sql`DELETE FROM files WHERE id = ${msg.id}`;
         this.broadcastMsg({ t: "files", files: this.files() });
+        // Free the file's storage too.
+        this.ctx.waitUntil(getServerByName(this.env.Doc, `${this.name}--${f.id}`).then((s) => s.wipe()));
         return;
       }
       case "kick": {
@@ -566,7 +607,7 @@ export class Room extends Server<Env> {
     }));
   }
 
-  private createFile(kind: "doc", title: string, by: string): RoomFile {
+  private createFile(kind: FileKind, title: string, by: string): RoomFile {
     const f: RoomFile = {
       id: crypto.randomUUID().slice(0, 12),
       kind,

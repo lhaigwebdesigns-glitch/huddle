@@ -43,6 +43,24 @@ app.get("/api/rooms/:code", async (c) => {
   return c.json(info, info.exists ? 200 : 404);
 });
 
+// ---- File version history (the party code is the room's secret, as for WebSockets) ----
+
+app.get("/api/rooms/:code/files/:id/versions", async (c) => {
+  const code = normalizeCode(c.req.param("code"));
+  if (!isValidCode(code)) return c.json({ error: "bad code" }, 404);
+  const versions = await (await getServerByName(c.env.Room, code)).fileVersions(c.req.param("id"));
+  return versions ? c.json({ versions }) : c.json({ error: "not found" }, 404);
+});
+
+app.post("/api/rooms/:code/files/:id/versions", async (c) => {
+  const code = normalizeCode(c.req.param("code"));
+  if (!isValidCode(code)) return c.json({ error: "bad code" }, 404);
+  const body = await c.req.json<{ restore?: number }>().catch(() => ({}) as { restore?: number });
+  const room = await getServerByName(c.env.Room, code);
+  const res = body.restore ? await room.restoreFileVersion(c.req.param("id"), Number(body.restore)) : await room.saveFileVersion(c.req.param("id"));
+  return c.json(res, res.ok ? 200 : 404);
+});
+
 // ---- Feedback (stored in the free D1 database) ----
 
 app.post("/api/feedback", async (c) => {

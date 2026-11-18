@@ -4,7 +4,8 @@ import { formatCode, normalizeCode } from "../../shared/code";
 import { getIdentity, rememberRoom, setName, type Identity } from "../lib/identity";
 import { useRoom } from "../lib/useRoom";
 import { Chat } from "../components/Chat";
-import { DocPanel } from "../components/DocEditor";
+import { FilePanel } from "../components/FilePanel";
+import { Drive } from "../components/Drive";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { FeedbackDialog } from "../components/FeedbackDialog";
 
@@ -112,43 +113,17 @@ function Room({ code, me }: { code: string; me: Identity }) {
         <div className="mt-1 text-center text-xs text-zinc-500">{copied ? "Invite link copied!" : "Click to copy invite link"}</div>
       </div>
 
-      <div className="px-3 pt-2">
-        <div className="flex items-center justify-between">
-          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Files</div>
-          <button
-            onClick={() => send({ t: "new_file", kind: "doc", title: "Untitled doc" })}
-            className="rounded px-1.5 text-sm text-indigo-600 hover:bg-indigo-50 dark:text-indigo-400 dark:hover:bg-indigo-950/40"
-          >
-            + Doc
-          </button>
-        </div>
-        <ul className="mt-1 max-h-64 space-y-0.5 overflow-y-auto">
-          {state.files.length === 0 && <li className="py-1 text-sm text-zinc-400">No files yet — ask the AI to write one.</li>}
-          {state.files.map((f) => (
-            <li key={f.id} className="group flex items-center">
-              <button
-                onClick={() => {
-                  setOpenFile(f.id);
-                  setShowSidebar(false);
-                }}
-                className={`min-w-0 flex-1 truncate rounded px-2 py-1 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 ${openFile === f.id ? "bg-zinc-100 font-medium dark:bg-zinc-800" : ""}`}
-              >
-                📄 {f.title}
-              </button>
-              {(isHost || f.createdBy === me.uid) && (
-                <button
-                  onClick={() => confirm(`Delete “${f.title}”?`) && send({ t: "delete_file", id: f.id })}
-                  className="hidden px-1 text-xs text-zinc-400 hover:text-red-600 group-hover:block"
-                  title="Delete"
-                >
-                  ✕
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-        <div className="mt-1 text-xs text-zinc-400">Sheets, Slides, Forms & Whiteboards — coming soon</div>
-      </div>
+      <Drive
+        files={state.files}
+        openId={openFile}
+        isHost={isHost}
+        myUid={me.uid}
+        send={send}
+        onOpen={(id) => {
+          setOpenFile(id);
+          setShowSidebar(false);
+        }}
+      />
 
       <div className="mt-4 min-h-0 flex-1 overflow-y-auto px-3">
         <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">In the room · {state.members.length}</div>
@@ -235,7 +210,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
 
       {file && (
         <section className="flex min-h-0 w-full flex-col border-l border-zinc-200 lg:w-[48%] dark:border-zinc-800">
-          <DocPanel
+          <FilePanel
             room={code}
             file={file}
             me={me}
