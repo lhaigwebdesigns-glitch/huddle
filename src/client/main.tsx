@@ -1,7 +1,9 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
+import "@fontsource-variable/inter/opsz.css";
 import "katex/dist/katex.min.css";
+import { initTheme } from "./lib/theme";
 import "./styles.css";
 import "./editors";
 import Home from "./routes/Home";
@@ -16,11 +18,8 @@ function JoinRedirect() {
   return <Navigate to={`/r/${code.toUpperCase().replace(/[^A-Z0-9]/g, "")}`} replace />;
 }
 
-// Follow the OS theme.
-const mq = window.matchMedia("(prefers-color-scheme: dark)");
-const applyTheme = () => document.documentElement.classList.toggle("dark", mq.matches);
-applyTheme();
-mq.addEventListener("change", applyTheme);
+// Light / dark / follow the OS (choice stored per browser).
+initTheme();
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

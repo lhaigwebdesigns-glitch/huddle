@@ -33,7 +33,7 @@ export default function SharedChat() {
             <h1 className="truncate font-semibold" data-testid="shared-title">{data?.title ?? "Shared chat"}</h1>
             {data && <p className="text-xs text-zinc-500">Read-only snapshot · {new Date(data.createdAt).toLocaleString()}</p>}
           </div>
-          <Link to="/" className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white">Start your own Huddle</Link>
+          <Link to="/" className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg">Start your own Huddle</Link>
         </div>
       </header>
       <main className="mx-auto max-w-3xl px-4 py-4">

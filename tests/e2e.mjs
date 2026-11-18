@@ -20,7 +20,7 @@ try {
   await alice.goto(BASE);
   await alice.getByPlaceholder("e.g. Sam").fill("Alice");
   await alice.getByPlaceholder(/Room name/).fill("Science project");
-  await alice.getByRole("button", { name: /Create room/ }).click();
+  await alice.locator("#start").getByRole("button", { name: /Start a room/ }).click();
   await alice.waitForURL(/\/r\/[A-Z0-9]{6}$/);
   const code = alice.url().split("/r/")[1];
   ok(/^[A-Z0-9]{6}$/.test(code), `room created with party code ${code}`);
@@ -126,7 +126,7 @@ try {
   const carol = await (await browser.newContext()).newPage();
   await carol.goto(BASE);
   await carol.getByPlaceholder("e.g. Sam").fill("Carol");
-  await carol.getByRole("button", { name: /Create room/ }).click();
+  await carol.locator("#start").getByRole("button", { name: /Start a room/ }).click();
   await carol.waitForURL(/\/r\/[A-Z0-9]{6}$/);
   await carol.getByTestId("suggestions").getByRole("button").first().click();
   await carol.getByTestId("ai-message").first().waitFor();
@@ -290,14 +290,14 @@ try {
   // The checkbox reflects the server's settings, so click and wait for the round trip.
   await alice.getByTestId("toggle-memory").click();
   await alice.waitForFunction(() => document.querySelector('[data-testid="toggle-memory"]')?.checked === true);
-  await alice.getByRole("button", { name: "✕" }).first().click();
+  await alice.getByRole("button", { name: "Close settings" }).click();
   await alice.getByTestId("composer").fill("remember that the deadline is Friday");
   await alice.getByTestId("composer").press("Enter");
   await alice.getByTestId("ai-message").last().getByText(/Remembering a fact/).waitFor({ timeout: 15000 });
   await bob.getByRole("button", { name: /Room settings/ }).click();
   await bob.getByTestId("memory-list").getByText("The bake sale deadline is Friday.").waitFor();
   ok(true, "room memory saved and visible to everyone");
-  await bob.getByRole("button", { name: "✕" }).first().click();
+  await bob.getByRole("button", { name: "Close settings" }).click();
 
   // Uploads: a CSV becomes searchable knowledge and opens as a sheet; an image shows inline.
   await alice.getByTestId("file-input").setInputFiles({ name: "budget.csv", mimeType: "text/csv", buffer: Buffer.from("Item,Cost\nFlour budget,20\nSugar,12\n") });
@@ -333,7 +333,7 @@ try {
   await alice.getByTestId("assistant-apply").click();
   await alice.getByTestId("assistant-share").click();
   await alice.getByTestId("assistant-msg").getByText(/Share code: [A-Z0-9]{3}-[A-Z0-9]{3}/).waitFor();
-  await alice.getByRole("button", { name: "✕" }).first().click();
+  await alice.getByRole("button", { name: "Close settings" }).click();
   await bob.getByTestId("composer").fill("hello coach");
   await bob.getByTestId("composer").press("Enter");
   await alice.getByTestId("ai-message").last().getByText("Coach Kai", { exact: true }).waitFor({ timeout: 10000 });
@@ -352,11 +352,13 @@ try {
   await erin.getByTestId("account-button").getByText("Erin").waitFor();
   await erin.getByPlaceholder("e.g. Sam").fill("Erin");
   await erin.getByPlaceholder(/Room name/).fill("Erin's room");
-  await erin.getByRole("button", { name: /Create room/ }).click();
+  await erin.locator("#start").getByRole("button", { name: /Start a room/ }).click();
   await erin.waitForURL(/\/r\/[A-Z0-9]{6}$/);
+  const erinCode = erin.url().slice(-6);
   await erin.goto(BASE);
   await erin.getByTestId("rooms-heading").getByText("My rooms").waitFor();
-  await erin.getByRole("button", { name: /Erin's room/ }).waitFor();
+  // Match this run's room by its code (earlier local runs leave other "Erin's room"s behind).
+  await erin.getByRole("button", { name: `Erin's room ${erinCode.slice(0, 3)}-${erinCode.slice(3)}` }).waitFor();
   ok(true, "signed-in user sees their rooms under My rooms");
 
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).

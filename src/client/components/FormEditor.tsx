@@ -69,7 +69,7 @@ function QuestionCard({ q, ymap, index, total, onMove, onDelete }: { q: Question
             </li>
           ))}
           <li>
-            <button onClick={() => setOptions([...options, `Option ${options.length + 1}`])} className="text-sm text-indigo-600 hover:underline dark:text-indigo-400">
+            <button onClick={() => setOptions([...options, `Option ${options.length + 1}`])} className="text-sm text-fg hover:underline ">
               + Add option
             </button>
           </li>
@@ -103,7 +103,7 @@ function Bar({ label, n, total }: { label: string; n: number; total: number }) {
     <div className="flex items-center gap-2 text-sm">
       <span className="w-32 shrink-0 truncate" title={label}>{label}</span>
       <span className="h-3 flex-1 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800">
-        <span className="block h-full rounded bg-indigo-500" style={{ width: `${total ? (n / total) * 100 : 0}%` }} />
+        <span className="block h-full rounded bg-primary" style={{ width: `${total ? (n / total) * 100 : 0}%` }} />
       </span>
       <span className="w-14 text-right text-xs text-zinc-500">{n} ({total ? Math.round((n / total) * 100) : 0}%)</span>
     </div>
@@ -160,7 +160,7 @@ export default function FormEditor({ ydoc, room, file, synced }: EditorProps) {
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           }}
-          className="rounded-md bg-indigo-600 px-2.5 py-1 font-semibold text-white hover:bg-indigo-500"
+          className="rounded-md bg-primary px-2.5 py-1 font-semibold text-primary-fg hover:bg-primary-hover"
           data-testid="form-share"
           data-link={link}
         >
@@ -204,7 +204,7 @@ export default function FormEditor({ ydoc, room, file, synced }: EditorProps) {
                       (e.currentTarget.closest("details") as HTMLDetailsElement).open = false;
                       ydoc.transact(() => qArr.push([makeQuestion({ type: t, title: "" })]), "user");
                     }}
-                    className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-sm hover:border-indigo-300 dark:border-zinc-800 dark:bg-zinc-900"
+                    className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-sm hover:border-line-strong dark:border-zinc-800 dark:bg-zinc-900"
                   >
                     {QUESTION_LABEL[t]}
                   </button>

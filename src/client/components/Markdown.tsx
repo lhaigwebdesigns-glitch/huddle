@@ -78,7 +78,7 @@ function CodeBlock({ className, children }: { className?: string; children?: Rea
               setRunning(false);
             }}
             disabled={running}
-            className="mr-3 font-medium text-indigo-600 hover:text-indigo-800 disabled:opacity-50 dark:text-indigo-400"
+            className="mr-3 font-medium text-fg hover:text-fg-muted disabled:opacity-50 "
             title="Run in a sandbox on your device"
             data-testid="run-code"
           >

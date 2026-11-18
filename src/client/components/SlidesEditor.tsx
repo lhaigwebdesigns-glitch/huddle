@@ -246,19 +246,19 @@ export default function SlidesEditor({ ydoc, provider, file, me, synced }: Edito
         </button>
         <button
           onClick={() => setPresenting({})}
-          className="rounded-md bg-indigo-600 px-2.5 py-1 font-semibold text-white hover:bg-indigo-500"
+          className="rounded-md bg-primary px-2.5 py-1 font-semibold text-primary-fg hover:bg-primary-hover"
           data-testid="present-button"
         >
           ▶ Present
         </button>
       </div>
       {presenter && !presenting && (
-        <div className="flex items-center gap-2 border-b border-indigo-200 bg-indigo-50 px-3 py-1.5 text-sm text-indigo-900 dark:border-indigo-900 dark:bg-indigo-950/50 dark:text-indigo-200">
+        <div className="flex items-center gap-2 border-b border-line-strong bg-surface-2 px-3 py-1.5 text-sm text-fg ">
           <span className="h-2 w-2 animate-pulse rounded-full" style={{ background: presenter.state.user.color }} />
           {presenter.state.user.name} is presenting
           <button
             onClick={() => setPresenting({ follow: presenter.clientId, who: presenter.state.user.name })}
-            className="ml-auto rounded bg-indigo-600 px-2 py-0.5 text-xs font-semibold text-white"
+            className="ml-auto rounded bg-primary px-2 py-0.5 text-xs font-semibold text-primary-fg"
             data-testid="follow-presenter"
           >
             Follow along
@@ -271,7 +271,7 @@ export default function SlidesEditor({ ydoc, provider, file, me, synced }: Edito
             <li key={s.id}>
               <button
                 onClick={() => setCurrent(i)}
-                className={`relative block w-full overflow-hidden rounded border-2 ${i === idx ? "border-indigo-500" : "border-transparent hover:border-zinc-300 dark:hover:border-zinc-700"}`}
+                className={`relative block w-full overflow-hidden rounded border-2 ${i === idx ? "border-fg" : "border-transparent hover:border-zinc-300 dark:hover:border-zinc-700"}`}
                 aria-label={`Slide ${i + 1}: ${s.title || "untitled"}`}
                 aria-current={i === idx}
                 data-testid="slide-thumb"
@@ -303,7 +303,7 @@ export default function SlidesEditor({ ydoc, provider, file, me, synced }: Edito
         </ol>
         <div className="flex min-w-0 flex-1 flex-col overflow-y-auto bg-zinc-100 p-4 dark:bg-zinc-950">
           {!slide && (
-            <button onClick={() => add("title")} className="m-auto rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">
+            <button onClick={() => add("title")} className="m-auto rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-fg">
               + Add the first slide
             </button>
           )}

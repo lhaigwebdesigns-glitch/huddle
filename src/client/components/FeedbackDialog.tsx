@@ -10,7 +10,7 @@ export function FeedbackDialog({ room, uid, name, onClose }: { room: string; uid
           <>
             <h2 className="text-lg font-semibold">Thank you! 💜</h2>
             <p className="mt-2 text-sm text-zinc-500">Your feedback goes straight to the team building Huddle.</p>
-            <button onClick={onClose} className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-white">Close</button>
+            <button onClick={onClose} className="mt-4 rounded-lg bg-primary px-4 py-2 text-primary-fg">Close</button>
           </>
         ) : (
           <form
@@ -36,7 +36,7 @@ export function FeedbackDialog({ room, uid, name, onClose }: { room: string; uid
             />
             <div className="mt-3 flex justify-end gap-2">
               <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-zinc-600">Cancel</button>
-              <button className="rounded-lg bg-indigo-600 px-4 py-2 text-white">Send</button>
+              <button className="rounded-lg bg-primary px-4 py-2 text-primary-fg">Send</button>
             </div>
           </form>
         )}
