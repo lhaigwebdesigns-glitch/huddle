@@ -5,6 +5,8 @@ import { isValidCode, makeCode, normalizeCode } from "../shared/code";
 import { availableProviders } from "./ai/providers";
 import { SKILLS } from "./ai/skills";
 import { clientIp, ensureTables, hit, usageByDay } from "./db";
+import { auth, currentUser, enabledProviders, rememberRoomForUser } from "./auth";
+import { MAX_UPLOAD_BYTES, safeFileName, UPLOAD_TYPES } from "../shared/knowledge";
 
 export { Room } from "./room";
 export { Doc } from "./doc";
@@ -20,17 +22,26 @@ app.get("/api/health", (c) =>
   }),
 );
 
+app.route("/api/auth", auth);
+
 app.post("/api/rooms", async (c) => {
+  const user = await currentUser(c.env, c.req.raw);
+  if (c.env.REQUIRE_SIGNIN_TO_CREATE === "1" && enabledProviders(c.env).length && !user)
+    return c.json({ error: "Sign in to create a room (joining with a code doesn't need an account).", signIn: true }, 401);
   if (!(await hit(c.env.DB, `rooms:${clientIp(c.req.raw)}`, Number(c.env.ROOMS_PER_IP_HOUR || 20), 3600)))
     return c.json({ error: "You've created a lot of rooms in the last hour. Please wait a bit and try again." }, 429);
   const body = await c.req.json<{ uid?: string; title?: string }>().catch(() => ({}) as any);
-  const uid = String(body.uid ?? "").slice(0, 64);
+  // Signed-in people always host under their account's identity.
+  const uid = user?.uid ?? String(body.uid ?? "").slice(0, 64);
   if (!uid) return c.json({ error: "uid required" }, 400);
   for (let attempt = 0; attempt < 5; attempt++) {
     const code = makeCode();
     const stub = await getServerByName(c.env.Room, code);
     const res = await stub.init(uid, String(body.title ?? ""));
-    if (res.ok) return c.json({ code });
+    if (res.ok) {
+      if (user) c.executionCtx.waitUntil(rememberRoomForUser(c.env, user, code, String(body.title ?? "")));
+      return c.json({ code });
+    }
   }
   return c.json({ error: "Could not allocate a room code, try again." }, 500);
 });
@@ -59,6 +70,104 @@ app.post("/api/rooms/:code/files/:id/versions", async (c) => {
   const room = await getServerByName(c.env.Room, code);
   const res = body.restore ? await room.restoreFileVersion(c.req.param("id"), Number(body.restore)) : await room.saveFileVersion(c.req.param("id"));
   return c.json(res, res.ok ? 200 : 404);
+});
+
+// ---- Uploads (R2). Text from PDFs/CSV/text is extracted in the browser and indexed for the AI. ----
+
+app.post("/api/rooms/:code/upload", async (c) => {
+  const code = normalizeCode(c.req.param("code"));
+  if (!isValidCode(code)) return c.json({ error: "Room not found" }, 404);
+  if (!c.env.FILES) return c.json({ error: "Uploads aren't set up on this server yet (needs the free R2 bucket)." }, 503);
+  if (!(await hit(c.env.DB, `upload:${clientIp(c.req.raw)}`, 60, 3600))) return c.json({ error: "Too many uploads this hour. Try again later." }, 429);
+  const room = await getServerByName(c.env.Room, code);
+  if (!(await room.exists())) return c.json({ error: "Room not found" }, 404);
+  const form = await c.req.formData().catch(() => null);
+  const file = form?.get("file");
+  if (!(file instanceof File)) return c.json({ error: "No file" }, 400);
+  const type = file.type || "application/octet-stream";
+  if (!UPLOAD_TYPES[type]) return c.json({ error: "That file type isn't supported. Try an image, PDF, CSV or text file." }, 415);
+  if (file.size > MAX_UPLOAD_BYTES) return c.json({ error: "Files can be up to 10 MB." }, 413);
+  const id = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+  const name = safeFileName(file.name);
+  await c.env.FILES.put(`rooms/${code}/${id}`, file.stream(), { httpMetadata: { contentType: type }, customMetadata: { name } });
+  const text = String(form?.get("text") ?? "");
+  let indexed = false;
+  if (UPLOAD_TYPES[type].text && text.trim()) indexed = (await room.indexText(id, name, text)) > 0;
+  return c.json({ id, name, type, size: file.size, url: `/api/rooms/${code}/blobs/${id}`, indexed });
+});
+
+app.get("/api/rooms/:code/blobs/:id", async (c) => {
+  const code = normalizeCode(c.req.param("code"));
+  const id = c.req.param("id");
+  if (!isValidCode(code) || !/^[a-z0-9]{16}$/.test(id) || !c.env.FILES) return c.text("Not found", 404);
+  const obj = await c.env.FILES.get(`rooms/${code}/${id}`);
+  if (!obj) return c.text("Not found", 404);
+  const type = obj.httpMetadata?.contentType ?? "application/octet-stream";
+  const name = obj.customMetadata?.name ?? "file";
+  return new Response(obj.body, {
+    headers: {
+      "content-type": type,
+      // Images and PDFs open inline; everything else downloads. Never let a file run scripts here.
+      "content-disposition": `${/^image\/|^application\/pdf$/.test(type) ? "inline" : "attachment"}; filename="${name.replace(/"/g, "")}"`,
+      "x-content-type-options": "nosniff",
+      "content-security-policy": "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox",
+      "cache-control": "private, max-age=86400",
+    },
+  });
+});
+
+// ---- Custom assistants, shareable by a 6-character code ----
+
+app.post("/api/assistants", async (c) => {
+  if (!c.env.DB) return c.json({ error: "Not available" }, 503);
+  if (!(await hit(c.env.DB, `assistant:${clientIp(c.req.raw)}`, 30, 3600))) return c.json({ error: "Too many saves this hour." }, 429);
+  const b = await c.req.json<{ name?: string; instructions?: string }>().catch(() => ({}) as { name?: string; instructions?: string });
+  const data = { name: String(b.name ?? "").trim().slice(0, 40), instructions: String(b.instructions ?? "").trim().slice(0, 4000) };
+  if (!data.name && !data.instructions) return c.json({ error: "Give the assistant a name or instructions first." }, 400);
+  await ensureTables(c.env.DB);
+  const code = makeCode();
+  await c.env.DB.prepare(`INSERT INTO assistants (code, created_at, data) VALUES (?1, ?2, ?3)`).bind(code, Date.now(), JSON.stringify(data)).run();
+  return c.json({ code });
+});
+
+app.get("/api/assistants/:code", async (c) => {
+  const code = normalizeCode(c.req.param("code"));
+  if (!isValidCode(code) || !c.env.DB) return c.json({ error: "not found" }, 404);
+  await ensureTables(c.env.DB);
+  const row = await c.env.DB.prepare(`SELECT data FROM assistants WHERE code = ?1`).bind(code).first<{ data: string }>();
+  return row ? c.json(JSON.parse(row.data)) : c.json({ error: "No assistant with that code." }, 404);
+});
+
+// ---- Read-only share links (a snapshot of the chat, made by the host) ----
+
+app.post("/api/rooms/:code/share", async (c) => {
+  const code = normalizeCode(c.req.param("code"));
+  if (!isValidCode(code) || !c.env.DB) return c.json({ error: "Sharing isn't available" }, 404);
+  if (!(await hit(c.env.DB, `share:${clientIp(c.req.raw)}`, 20, 3600))) return c.json({ error: "Too many share links this hour." }, 429);
+  const body = await c.req.json<{ uid?: string }>().catch(() => ({}) as { uid?: string });
+  const user = await currentUser(c.env, c.req.raw);
+  const snap = await (await getServerByName(c.env.Room, code)).shareSnapshot(user?.uid ?? String(body.uid ?? ""));
+  if (!snap) return c.json({ error: "Only the room's host can create a share link." }, 403);
+  await ensureTables(c.env.DB);
+  const id = crypto.randomUUID().replace(/-/g, "").slice(0, 20);
+  const json = JSON.stringify(snap.messages).slice(0, 1_500_000);
+  await c.env.DB.prepare(`INSERT INTO shares (id, created_at, title, messages) VALUES (?1, ?2, ?3, ?4)`).bind(id, Date.now(), snap.title, json).run();
+  return c.json({ id, url: `/s/${id}` });
+});
+
+app.get("/api/share/:id", async (c) => {
+  const id = c.req.param("id");
+  if (!/^[a-f0-9]{20}$/.test(id) || !c.env.DB) return c.json({ error: "not found" }, 404);
+  await ensureTables(c.env.DB);
+  const row = await c.env.DB.prepare(`SELECT title, created_at, messages FROM shares WHERE id = ?1`).bind(id).first<{ title: string; created_at: number; messages: string }>();
+  if (!row) return c.json({ error: "This share link doesn't exist (or was removed)." }, 404);
+  let messages: unknown = [];
+  try {
+    messages = JSON.parse(row.messages);
+  } catch {
+    /* truncated snapshot */
+  }
+  return c.json({ title: row.title, createdAt: row.created_at, messages });
 });
 
 // ---- Public forms: anyone with the link can fill one in, without joining the room ----

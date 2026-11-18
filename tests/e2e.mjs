@@ -299,6 +299,66 @@ try {
   ok(true, "room memory saved and visible to everyone");
   await bob.getByRole("button", { name: "✕" }).first().click();
 
+  // Uploads: a CSV becomes searchable knowledge and opens as a sheet; an image shows inline.
+  await alice.getByTestId("file-input").setInputFiles({ name: "budget.csv", mimeType: "text/csv", buffer: Buffer.from("Item,Cost\nFlour budget,20\nSugar,12\n") });
+  await alice.getByTestId("pending-uploads").getByText("budget.csv").waitFor();
+  await alice.getByTestId("composer").fill("what do the files say about flour?");
+  await alice.getByTestId("composer").press("Enter");
+  await bob.getByTestId("file-chip").filter({ hasText: "budget.csv" }).getByText(/searchable/).waitFor({ timeout: 10000 });
+  await alice.getByTestId("ai-message").last().getByText(/Searching room files/).waitFor({ timeout: 15000 });
+  ok(true, "uploaded CSV is shared and searchable by the AI");
+  await bob.getByTestId("file-chip").filter({ hasText: "budget.csv" }).getByTestId("open-as-sheet").click();
+  await bob.getByTestId("sheet-editor").waitFor({ timeout: 10000 });
+  await bob.locator('[data-cell="A2"]').getByText("Flour budget").waitFor();
+  ok(true, "a CSV upload opens as a live sheet");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+  await alice.getByTestId("file-input").setInputFiles({ name: "dot.png", mimeType: "image/png", buffer: png });
+  await alice.getByTestId("pending-uploads").getByText("dot.png").waitFor();
+  await alice.getByTestId("composer").fill("look at this");
+  await alice.getByTestId("composer").press("Enter");
+  await bob.waitForFunction(() => [...document.querySelectorAll('[data-testid="attachments"] img')].some((i) => i.naturalWidth > 0), null, { timeout: 10000 });
+  ok(true, "an uploaded image shows for everyone");
+
+  // Code runner: JavaScript in an AI reply runs in a sandbox on the viewer's device.
+  await alice.getByTestId("composer").fill("show js for the answer");
+  await alice.getByTestId("composer").press("Enter");
+  await alice.getByTestId("ai-message").last().getByTestId("run-code").click();
+  await alice.getByTestId("run-output").last().getByText("answer 42").waitFor({ timeout: 10000 });
+  ok(true, "JS code blocks run in a sandbox");
+
+  // Custom assistant: the host renames the AI and it replies under that name.
+  await alice.getByRole("button", { name: /Room settings/ }).click();
+  await alice.getByLabel("Assistant name").fill("Coach Kai");
+  await alice.getByLabel("Assistant instructions").fill("Be encouraging.");
+  await alice.getByTestId("assistant-apply").click();
+  await alice.getByTestId("assistant-share").click();
+  await alice.getByTestId("assistant-msg").getByText(/Share code: [A-Z0-9]{3}-[A-Z0-9]{3}/).waitFor();
+  await alice.getByRole("button", { name: "✕" }).first().click();
+  await bob.getByTestId("composer").fill("hello coach");
+  await bob.getByTestId("composer").press("Enter");
+  await alice.getByTestId("ai-message").last().getByText("Coach Kai", { exact: true }).waitFor({ timeout: 10000 });
+  ok(true, "custom assistant name and share code work");
+
+  // Share link: the host publishes a read-only snapshot.
+  alice.once("dialog", (d) => d.accept());
+  const [shared] = await Promise.all([alice.context().waitForEvent("page"), alice.getByTestId("share-chat").click()]);
+  await shared.getByTestId("shared-title").getByText("Science project").waitFor();
+  ok((await shared.getByTestId("shared-message").count()) > 5, "read-only share link shows the chat");
+  await shared.close();
+
+  // Accounts (dev sign-in, local only): sign in, create a room, see it under "My rooms".
+  const erin = await (await browser.newContext()).newPage();
+  await erin.goto(`${BASE}/api/auth/login/dev?name=Erin&return=/`);
+  await erin.getByTestId("account-button").getByText("Erin").waitFor();
+  await erin.getByPlaceholder("e.g. Sam").fill("Erin");
+  await erin.getByPlaceholder(/Room name/).fill("Erin's room");
+  await erin.getByRole("button", { name: /Create room/ }).click();
+  await erin.waitForURL(/\/r\/[A-Z0-9]{6}$/);
+  await erin.goto(BASE);
+  await erin.getByTestId("rooms-heading").getByText("My rooms").waitFor();
+  await erin.getByRole("button", { name: /Erin's room/ }).waitFor();
+  ok(true, "signed-in user sees their rooms under My rooms");
+
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
   const statuses = await alice.evaluate(async () => {
     const ip = `e2e-${Math.random()}`;

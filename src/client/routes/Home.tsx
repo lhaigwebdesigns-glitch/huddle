@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { signInUrl, useAccount } from "../lib/account";
+import { AccountMenu } from "../components/AccountMenu";
 import { useNavigate } from "react-router-dom";
 import { formatCode, isValidCode, normalizeCode } from "../../shared/code";
 import { getIdentity, recentRooms, setName } from "../lib/identity";
@@ -11,7 +13,17 @@ export default function Home() {
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
-  const recent = recentRooms();
+  const account = useAccount();
+  const [myRooms, setMyRooms] = useState<{ code: string; title: string }[]>([]);
+  useEffect(() => {
+    if (!account.user) return;
+    fetch("/api/auth/rooms")
+      .then((r) => r.json() as Promise<{ rooms: { code: string; title: string }[] }>)
+      .then((d) => setMyRooms(d.rooms))
+      .catch(() => {});
+  }, [account.user]);
+  // Signed in: rooms from your account (all devices), else this browser's recent rooms.
+  const recent = account.user && myRooms.length ? myRooms : recentRooms();
 
   const ensureName = () => {
     if (!name.trim()) {
@@ -32,7 +44,11 @@ export default function Home() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ uid: me.uid, title: title.trim() || `${name.trim()}'s room` }),
       });
-      const data = (await res.json()) as { code?: string; error?: string };
+      const data = (await res.json()) as { code?: string; error?: string; signIn?: boolean };
+      if (data.signIn && account.providers[0]) {
+        location.href = signInUrl(account.providers[0], "/");
+        return;
+      }
       if (!res.ok) throw new Error(data.error || "Could not create room");
       nav(`/r/${data.code}`);
     } catch (e) {
@@ -60,7 +76,7 @@ export default function Home() {
         <div className="flex items-center gap-2 text-lg font-semibold">
           <img src="/favicon.svg" className="h-7 w-7" alt="" /> Huddle
         </div>
-        <span className="text-sm text-zinc-500">Free & open source</span>
+        <AccountMenu user={account.user} providers={account.providers} />
       </header>
 
       <main className="mx-auto grid max-w-5xl gap-10 px-4 pb-16 pt-6 md:grid-cols-2 md:pt-14">
@@ -137,7 +153,9 @@ export default function Home() {
 
           {recent.length > 0 && (
             <div className="mt-6">
-              <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Recent rooms</div>
+              <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500" data-testid="rooms-heading">
+                {account.user && myRooms.length ? "My rooms" : "Recent rooms"}
+              </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 {recent.map((r) => (
                   <button

@@ -27,5 +27,8 @@
     "ROOM_DAILY_AI_LIMIT": "300"
   },
   // Cloudflare Workers AI: free daily allowance of open-weight models (Llama, Qwen, gpt-oss…).
-  "ai": { "binding": "AI" }
+  "ai": { "binding": "AI" },
+  // Free R2 storage (10 GB) for uploads and AI images. `npm run setup:cloudflare` creates it.
+  // Local dev simulates it on disk, so uploads work without an account.
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "huddle-files" }]
 }

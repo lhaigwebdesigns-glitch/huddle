@@ -1,0 +1,31 @@
+name: Deploy
+# Deploys to Cloudflare Workers on every push to main once the repo has a
+# CLOUDFLARE_API_TOKEN secret (Settings → Secrets → Actions). Without it, this is skipped.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency: deploy
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      HAS_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
+    steps:
+      - if: env.HAS_TOKEN != 'true'
+        run: echo "No CLOUDFLARE_API_TOKEN secret yet; skipping deploy."
+      - if: env.HAS_TOKEN == 'true'
+        uses: actions/checkout@v4
+      - if: env.HAS_TOKEN == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - if: env.HAS_TOKEN == 'true'
+        run: npm ci && npm test && npm run build
+      - if: env.HAS_TOKEN == 'true'
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

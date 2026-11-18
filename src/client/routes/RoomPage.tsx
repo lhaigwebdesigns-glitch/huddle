@@ -68,7 +68,14 @@ function Room({ code, me }: { code: string; me: Identity }) {
     return () => setEditorSender(null);
   }, [send]);
   useEffect(() => {
-    if (state.settings) rememberRoom(code, state.settings.title);
+    if (!state.settings) return;
+    rememberRoom(code, state.settings.title);
+    // Signed in? Add it to "My rooms" on every device (no-op for guests).
+    fetch("/api/auth/rooms", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code, title: state.settings.title }),
+    }).catch(() => {});
   }, [code, state.settings?.title]);
   useEffect(() => {
     if (!state.toast) return;
@@ -148,6 +155,28 @@ function Room({ code, me }: { code: string; me: Identity }) {
         <button onClick={() => setShowSettings(true)} className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800">
           ⚙️ Room settings
         </button>
+        {isHost && (
+          <button
+            onClick={async () => {
+              if (!confirm("Create a public read-only link to this chat? Anyone with the link can read the messages up to now (not the files).")) return;
+              const r = await fetch(`/api/rooms/${code}/share`, {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ uid: me.uid }),
+              });
+              const d = (await r.json()) as { url?: string; error?: string };
+              if (!d.url) return showToast(d.error ?? "Couldn't create a share link.");
+              const link = `${location.origin}${d.url}`;
+              await navigator.clipboard.writeText(link).catch(() => {});
+              showToast("🔗 Read-only link copied");
+              window.open(link, "_blank", "noopener");
+            }}
+            className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800"
+            data-testid="share-chat"
+          >
+            🔗 Share chat (read-only)
+          </button>
+        )}
         <button onClick={() => setShowFeedback(true)} className="block w-full rounded px-2 py-1 text-left hover:bg-zinc-100 dark:hover:bg-zinc-800">
           💬 Send feedback
         </button>
