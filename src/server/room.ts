@@ -11,8 +11,11 @@ import type {
   Step,
 } from "../shared/protocol";
 import { availableProviders, chatWithFallback, ProviderError, type LlmMessage } from "./ai/providers";
+import { compactDocArgs, withFreshNote } from "./ai/turn";
 import { SKILLS } from "./ai/skills";
 import { runTool, TOOL_DEFS } from "./ai/tools";
+import { collectUrls, stripUnverifiedLinks } from "./ai/citations";
+import { getProviders as getProvidersConfigured } from "./ai/models";
 
 interface ConnState {
   uid: string;
@@ -253,12 +256,22 @@ export class Room extends Server<Env> {
           do {
             this.aiPending = false;
             await this.aiTurn();
-          } while (this.aiPending);
+            // Only run another turn if someone spoke after this turn read the history;
+            // otherwise the AI would re-answer messages it just handled.
+          } while (this.aiPending && this.hasUnseenUserMessages());
         } finally {
           this.aiBusy = false;
         }
       })(),
     );
+  }
+
+  /** createdAt cutoff of the history the last AI turn read. */
+  private aiSeenUpTo = 0;
+
+  private hasUnseenUserMessages() {
+    const [row] = this.sql<{ n: number }>`SELECT COUNT(*) AS n FROM messages WHERE role = 'user' AND created_at > ${this.aiSeenUpTo}`;
+    return (row?.n ?? 0) > 0;
   }
 
   private async dailyBudgetOk() {
@@ -303,8 +316,14 @@ export class Room extends Server<Env> {
       this.broadcastMsg({ t: "ai_step", id: msg.id, step: st });
     };
 
+    let llm: LlmMessage[] = [];
     try {
-      if (!(await this.dailyBudgetOk())) {
+      const budgetOk = await this.dailyBudgetOk();
+      // Everything saved up to now is part of this turn. Re-stamp the reply so it sorts
+      // after the messages it answers (some may have landed during the await above).
+      this.aiSeenUpTo = Date.now();
+      msg.createdAt = this.aiSeenUpTo + 1;
+      if (!budgetOk) {
         msg.content =
           "This room has used today's free AI allowance. 💤 The host can switch to **Local mode** (runs on their own device, unlimited) in Room settings, or try again tomorrow.";
         msg.meta!.error = true;
@@ -312,7 +331,7 @@ export class Room extends Server<Env> {
         await this.localTurn(msg);
       } else {
         this.abort = new AbortController();
-        const llm: LlmMessage[] = [{ role: "system", content: this.systemPrompt(true) }, ...this.history()];
+        llm = [{ role: "system", content: this.systemPrompt(true) }, ...withFreshNote(this.history())];
         for (let i = 0; i < MAX_STEPS; i++) {
           const res = await chatWithFallback(this.env, {
             messages: llm,
@@ -335,6 +354,7 @@ export class Room extends Server<Env> {
               sources,
             });
             llm.push({ role: "tool", tool_call_id: call.id, content: output });
+            compactDocArgs(call);
           }
           if (i === MAX_STEPS - 2) {
             llm.push({ role: "system", content: "Tool budget reached. Write your final answer now without calling tools." });
@@ -345,8 +365,16 @@ export class Room extends Server<Env> {
       if (this.abort?.signal.aborted) {
         msg.content += msg.content ? "\n\n_(stopped)_" : "_(stopped)_";
       } else if (err instanceof ProviderError && (err.message === "NO_PROVIDERS" || err.message === "ALL_FAILED")) {
+        const did = msg.meta!.steps!.length
+          ? "The steps above did run, but I couldn't write my reply. "
+          : "";
+        const outOfQuota =
+          getProvidersConfigured(this.env).length === 0
+            ? "No free AI provider is configured on this server."
+            : "The free AI models are busy or have hit their per-minute limits.";
         msg.content =
-          "No free AI provider is available right now — none are configured, or all have hit their free limits. The host can switch this room to **Local mode** (the AI runs in their browser, free and unlimited) from Room settings.";
+          (msg.content.trim() ? msg.content + "\n\n" : "") +
+          `⚠️ ${outOfQuota} ${did}Try again in a minute, or the host can switch this room to **Local mode** (the AI runs in their browser, free and unlimited) from Room settings.`;
         msg.meta!.error = true;
       } else {
         console.error("AI turn failed", err);
@@ -362,6 +390,15 @@ export class Room extends Server<Env> {
 
     msg.meta!.streaming = false;
     msg.meta!.sources = dedupeSources(sources);
+    if (llm.length) {
+      // Unlink any URL the model invented (not seen in tool results or user messages).
+      const { text, removed } = stripUnverifiedLinks(
+        msg.content,
+        collectUrls([...llm.filter((m) => m.role !== "system").map((m) => m.content), ...sources.map((s) => s.url)]),
+      );
+      if (removed.length) console.warn(`unlinked ${removed.length} unverified citation(s)`, removed);
+      msg.content = text;
+    }
     if (!msg.content.trim()) msg.content = "_(no response)_";
     this.saveMessage(msg);
     this.broadcastMsg({ t: "ai_done", message: msg });
@@ -400,13 +437,16 @@ export class Room extends Server<Env> {
   }
 
   private history(limit = HISTORY_FOR_AI): LlmMessage[] {
-    return this.loadMessages(limit)
-      .filter((m) => !m.meta?.error)
-      .map((m) =>
-        m.role === "assistant"
-          ? { role: "assistant" as const, content: m.content }
-          : { role: "user" as const, content: `${m.authorName}: ${m.content}` },
-      );
+    const msgs = this.loadMessages(limit).filter((m) => !m.meta?.error);
+    const lastAi = msgs.map((m) => m.role).lastIndexOf("assistant");
+    return msgs.map((m, i) => {
+      if (m.role !== "assistant") return { role: "user" as const, content: `${m.authorName}: ${m.content}` };
+      // Free tiers allow only a few thousand tokens per minute, so older AI replies are
+      // clipped (the full text stays in the chat; docs hold the long-form work anyway).
+      const cap = i === lastAi ? 4000 : 1200;
+      const content = m.content.length > cap ? m.content.slice(0, cap) + " …(earlier reply clipped)" : m.content;
+      return { role: "assistant" as const, content };
+    });
   }
 
   private systemPrompt(withTools: boolean) {
@@ -417,13 +457,18 @@ export class Room extends Server<Env> {
     const lines = [
       `You are Huddle AI, a helpful, capable assistant inside a multiplayer workspace room called "${s.title}".`,
       `Several people can be in the chat at once. Each user message is prefixed with the speaker's name ("Name: message"). Address people by name when helpful, keep track of who asked what, and when several people talk at once, answer each of them.`,
+      `Respond to the messages that arrived after your last reply. Earlier messages are context only: never redo or re-answer a request you already handled.`,
       `People here now: ${people}. Today's date: ${new Date().toISOString().slice(0, 10)}.`,
       `Format with Markdown (headings, lists, tables, fenced code with language tags, LaTeX with $...$). Be concise by default and expand when asked.`,
     ];
     if (withTools) {
       lines.push(
-        `You have tools: web_search and fetch_url for current or factual info (cite sources as markdown links; never invent URLs), create_doc / read_doc / edit_doc for collaborative documents everyone can co-edit live, and load_skill for expert playbooks.`,
-        `Use create_doc when people ask you to write, draft, plan, outline or produce something substantial (reports, essays, plans, notes, slide outlines). In chat, briefly say what you made.`,
+        `You have tools: web_search and fetch_url for current or factual info, create_doc / read_doc / edit_doc for collaborative documents everyone can co-edit live, and load_skill for expert playbooks.`,
+        `Use web_search for anything recent or time-sensitive (news, prices, releases, "this week"). Don't use tools for small talk.`,
+        `Citations: only link URLs that appear word-for-word in your tool results. Never build, guess or "fix" a URL, and only call fetch_url on URLs from search results or from the users. If you can't find a source, say so.`,
+        `Use create_doc when people ask you to write, draft, plan, outline or produce something substantial (reports, essays, plans, notes, slide outlines). Afterwards reply in chat with one or two sentences about what you made; don't repeat the doc's content.`,
+        `To change an existing doc, use edit_doc with mode "append" to add a section, or read_doc then mode "replace" to rewrite it.`,
+        `Docs are the only file type so far: don't offer spreadsheets, slides or other files. file_id values are internal; never show them to people, refer to docs by title.`,
         `Before specialised tasks, call load_skill with the most relevant skill. Available skills:`,
         ...skills.map((k) => `- ${k.name}: ${k.description}`),
         files.length

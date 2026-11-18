@@ -32,6 +32,20 @@ export function getProviders(env: Env): ProviderConfig[] {
       model: env.GROQ_MODEL || "openai/gpt-oss-120b",
       supportsTools: true,
     });
+    // Groq's free tier rate-limits each model separately (e.g. 8k tokens/min), so a second
+    // model on the same key absorbs bursts. Set GROQ_FALLBACK_MODEL="off" to disable.
+    const fallback = env.GROQ_FALLBACK_MODEL || "openai/gpt-oss-20b";
+    if (fallback !== "off" && fallback !== list[list.length - 1].model) {
+      list.push({
+        id: "groq-fallback",
+        label: "Groq",
+        kind: "openai",
+        baseUrl: "https://api.groq.com/openai/v1",
+        apiKey: env.GROQ_API_KEY,
+        model: fallback,
+        supportsTools: true,
+      });
+    }
   }
   if (env.CEREBRAS_API_KEY) {
     list.push({

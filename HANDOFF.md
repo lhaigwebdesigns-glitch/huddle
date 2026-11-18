@@ -60,6 +60,11 @@ All message types live in `src/shared/protocol.ts` (`ClientMsg` / `ServerMsg`). 
 - `.npmrc` has `legacy-peer-deps=true` (a peer-dependency conflict between partyserver and workers-types).
 - The Workers AI binding needs a Cloudflare login. Local dev only uses it with `HUDDLE_REMOTE=1` (see `vite.config.ts`).
 - DuckDuckGo blocks cloud IPs, so **a free `TAVILY_API_KEY` or `JINA_API_KEY` is required** for reliable search.
+- **Groq free tier = ~8k tokens/min and 1,000 requests/day per model.** One doc-writing turn uses most of a minute's budget. Mitigations in place: wait up to 20s on short 429s (`providers.ts`), a second Groq model (`GROQ_FALLBACK_MODEL`, default `openai/gpt-oss-20b`), `reasoning_effort: "low"` for gpt-oss, clipped old AI replies in history, and compacted doc Markdown in tool-call history (`ai/turn.ts`). For real multi-user load, add Cerebras/OpenRouter keys.
+- gpt-oss **invents plausible URLs** (e.g. fake article ids). `ai/citations.ts` unlinks any Markdown link whose URL never appeared in tool results or user messages, and `fetch_url` no longer records failed pages as sources.
+- gpt-oss mostly **ignores `system` messages placed after the conversation starts** (harmony format). Put per-turn instructions in the latest user message instead (`withFreshNote` in `ai/turn.ts`).
+- Queued AI turns: only run another turn if a user message arrived after the previous turn read the history (`hasUnseenUserMessages` in `room.ts`), or the AI re-answers.
+- Aborting the provider `fetch` ends the stream cleanly; Stop works for any member (checked with a real model).
 
 ### Running locally
 ```

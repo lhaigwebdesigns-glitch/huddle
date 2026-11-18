@@ -29,4 +29,13 @@ describe("markdown ⇄ yjs", () => {
     expect(md).toContain("[docs](https://example.com)");
     expect(md).toContain("const a = 1;");
   });
+
+  it("writes tables as aligned plain text without raw Markdown", () => {
+    const doc = new Y.Doc();
+    writeMarkdown(doc, "| Item | Cost |\n|---|---|\n| Flour | $20 |\n| **Total** | **$380** |", "append");
+    const md = readMarkdown(doc);
+    expect(md).not.toContain("**");
+    expect(md).toContain("Item  | Cost");
+    expect(md).toContain("Total | $380");
+  });
 });

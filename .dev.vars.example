@@ -5,8 +5,12 @@
 # Fake AI for testing the UI without any keys:
 MOCK_AI=true
 
-# https://console.groq.com/keys          (fast open models: gpt-oss, Llama, Qwen)
+# https://console.groq.com/keys          (fast open models: gpt-oss, Qwen)
+# Free tier is ~8,000 tokens/min and 1,000 requests/day PER MODEL, so Huddle also uses a
+# second Groq model (default openai/gpt-oss-20b) when the first is rate-limited.
+# Add Cerebras/OpenRouter keys too for headroom with several people chatting.
 # GROQ_API_KEY=
+# GROQ_FALLBACK_MODEL=openai/gpt-oss-20b   (or "off")
 # https://cloud.cerebras.ai               (very fast open models)
 # CEREBRAS_API_KEY=
 # https://openrouter.ai/keys              (only ":free" models are used = $0)

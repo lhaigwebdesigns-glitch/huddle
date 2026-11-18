@@ -129,7 +129,13 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
       const url = String(args.url ?? "");
       if (!/^https?:\/\//i.test(url)) return "Error: url must start with http(s)://";
       ctx.step({ kind: "fetch", label: `Reading ${new URL(url).hostname}` });
-      const text = await fetchReadable(url);
+      let text: string;
+      try {
+        text = await fetchReadable(url);
+      } catch (err) {
+        // Don't list pages that failed to load as sources (models sometimes guess URLs).
+        return `Error: could not read ${url} (${String(err).slice(0, 120)}). Do not cite this URL. Use web_search to find a real page instead.`;
+      }
       if (!ctx.sources.some((s) => s.url === url)) ctx.sources.push({ title: new URL(url).hostname, url });
       return text;
     }
@@ -258,18 +264,26 @@ async function duckDuckGo(query: string): Promise<SearchResult[]> {
   return out;
 }
 
-/** Read a page as clean text: Jina Reader (free, no key) → direct fetch fallback. */
+/**
+ * Read a page as clean text: Jina Reader (free, no key) → direct fetch fallback.
+ * Throws if the page doesn't exist (404 etc.) so callers never treat it as a source.
+ */
 export async function fetchReadable(url: string): Promise<string> {
   try {
     const res = await fetch(`https://r.jina.ai/${url}`, { headers: { accept: "text/plain" } });
     if (res.ok) {
       const text = await res.text();
+      // Jina returns 200 with a warning line when the target page itself errored.
+      const upstream = text.match(/Target URL returned error (\d{3})/i);
+      if (upstream && Number(upstream[1]) >= 400) throw new Error(`HTTP ${upstream[1]}`);
       if (text.trim().length > 200) return text;
     }
   } catch (e) {
+    if (/^Error: HTTP \d{3}$/.test(String(e))) throw e;
     console.warn("jina failed", e);
   }
   const res = await fetch(url, { headers: { "user-agent": "Mozilla/5.0 (compatible; HuddleBot/0.1)" } });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const html = await res.text();
   const body = html
     .replace(/<script[\s\S]*?<\/script>/gi, "")

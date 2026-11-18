@@ -18,6 +18,8 @@ export interface Env {
   ROOM_DAILY_AI_LIMIT?: string;
   // Optional model overrides (swap in newer open-weight models without code changes)
   GROQ_MODEL?: string;
+  /** Second Groq model with its own rate-limit bucket ("off" to disable). */
+  GROQ_FALLBACK_MODEL?: string;
   CEREBRAS_MODEL?: string;
   OPENROUTER_MODEL?: string;
   WORKERS_AI_MODEL?: string;
