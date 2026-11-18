@@ -1,15 +1,34 @@
 # Huddle: a multiplayer AI workspace
 
-Huddle is free and open source. Someone starts a room and shares the **party code**, and everyone chats with the same AI in real time. The AI can search the web, read pages, follow 20 built-in skills, and write **docs that everyone co-edits live**. It runs on **free, open-weight models**, so there is no AI bill.
+Huddle is free and open source. Someone starts a room and shares the **party code**, and everyone chats with the same AI in real time. The AI can search the web, read pages, follow 20 built-in skills, and build **docs, sheets, slides, whiteboards, forms and mini-apps that everyone co-edits live**. It runs on **free, open-weight models** (including one on your own GPU), so there is no AI bill.
 
 ## What works today
+- **A live office suite, built by the AI or by hand**:
+  - **Docs**: Word export.
+  - **Sheets**: 35 formula functions, charts, `.xlsx` and CSV.
+  - **Slides**: 6 layouts and 5 themes, present with **follow-along**, `.pptx` export.
+  - **Whiteboards**: Excalidraw; the AI draws from Mermaid.
+  - **Forms**: public link, live response charts, send responses to a sheet.
+  - **Artifacts**: AI-built mini apps in a sandbox.
+  - Every file has version history, duplicate and delete in the Drive sidebar.
+- **Chat extras**:
+  - edit and resend, Regenerate
+  - reactions and polls
+  - Mermaid diagrams
+  - slash commands (`/doc`, `/sheet`, `/slides`, …)
+  - clickable starter prompts
+  - Deep Research mode and opt-in room memory
+- **Your own GPU as the AI**: point `OLLAMA_BASE_URL` at [Ollama](https://ollama.com) and Huddle uses it first, with no rate or token limits (see `ollama/Modelfile`).
+- **Launch protection**:
+  - per-IP limits on room creation, feedback and forms
+  - a site-wide daily AI cap shown in `/admin`
+  - a "switch to Local mode" banner when the free cloud AI is out of quota
 - **Party-code rooms**: create a room, share `K7Q-29F` or the invite link, and friends join with just a name. Rooms show who's online, typing indicators, a host badge, room lock and removing people.
 - **Shared AI chat**: one AI reply is streamed to everyone. It knows who said what and replies to every message or only on `@ai`. Anyone can press Stop, and messages sent while it's answering are batched into its next turn.
-- **Free model router**: tries Groq → Cerebras → Cloudflare Workers AI → OpenRouter `:free`, and skips any provider that is rate-limited.
+- **Free model router**: tries your own GPU (Ollama) → Groq (two models) → Cerebras → Cloudflare Workers AI → OpenRouter `:free`, waits out short rate limits, and skips any provider that is down. It also unlinks citations the model invented.
 - **Local mode**: the host's browser runs Qwen3, Llama 3.2 or Phi with [WebLLM](https://github.com/mlc-ai/web-llm) (WebGPU). It's unlimited and private, and its tokens are relayed to the whole room.
 - **Web tools**: `web_search` (Tavily → Jina → DuckDuckGo) and `fetch_url` (Jina Reader, no key needed). Answers show source chips.
 - **Skills**: 20 playbooks in the open Agent Skills `SKILL.md` format, covering writing, editing, problem solving, math, debugging, research, deep research, web design, frontend, UX copy, accessibility, docs, slides, spreadsheets, facilitation and tutoring. The AI loads them on demand, and hosts can toggle them per room.
-- **Collaborative Docs**: Tiptap + Yjs with live cursors. The AI can `create_doc`, `read_doc` and `edit_doc` while people type in the same doc. Export to Word or text.
 - **Feedback loop**: 👍/👎 plus a comment on every AI reply, a "Send feedback" box, and an `/admin` dashboard.
 - Markdown, tables, code blocks with a copy button, LaTeX math, dark mode and a mobile layout.
 

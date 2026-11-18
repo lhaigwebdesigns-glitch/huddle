@@ -3,7 +3,6 @@ import type { FileVersion, RoomFile } from "../../shared/protocol";
 import { FILE_INFO, type FileKind } from "../../shared/files";
 import type { Identity } from "../lib/identity";
 import { useYDoc, type YConn } from "../lib/useYDoc";
-import { DocEditor } from "./DocEditor";
 
 export interface EditorProps extends YConn {
   room: string;
@@ -12,10 +11,8 @@ export interface EditorProps extends YConn {
   synced: boolean;
 }
 
-// Heavier editors load on first use so the chat stays fast.
-const EDITORS: Partial<Record<FileKind, ComponentType<EditorProps>>> = {
-  doc: DocEditor,
-};
+// Every editor loads on first use (see src/client/editors.ts) so the chat stays fast.
+const EDITORS: Partial<Record<FileKind, ComponentType<EditorProps>>> = {};
 
 export function registerEditor(kind: FileKind, loader: () => Promise<{ default: ComponentType<EditorProps> }>) {
   EDITORS[kind] = lazy(loader);

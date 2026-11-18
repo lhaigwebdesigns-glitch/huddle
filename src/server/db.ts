@@ -31,7 +31,8 @@ export function ensureTables(db: D1Database): Promise<void> {
  * `key` should already include what is being limited, e.g. "rooms:203.0.113.7".
  */
 export async function hit(db: D1Database | undefined, key: string, limit: number, windowSec: number): Promise<boolean> {
-  if (!db) return true;
+  // Local dev has no client IP (Cloudflare always sets one in production): don't limit.
+  if (!db || key.endsWith(":local")) return true;
   try {
     await ensureTables(db);
     const win = Math.floor(Date.now() / 1000 / windowSec);
@@ -94,5 +95,7 @@ export async function usageByDay(db: D1Database, days = 14) {
 
 /** Best-effort client IP (Cloudflare sets cf-connecting-ip; local dev has none). */
 export function clientIp(req: Request) {
-  return req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "local";
+  const ip = req.headers.get("cf-connecting-ip") ?? req.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "local";
+  // Local dev reports loopback; production traffic never does.
+  return /^(127\.|::1$|::ffff:127\.|localhost$)/.test(ip) ? "local" : ip;
 }

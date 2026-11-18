@@ -1,70 +1,96 @@
-# Huddle — Handoff Plan for Claude Code
+# Huddle: Handoff for Claude Code
 
-> Paste this whole document into a new Claude Code session that runs on your computer, opened in an empty folder or in the cloned `huddle` repo. First message to send with it: **"Read this handoff, clone the repo if it's not here, get it running at localhost:5173, then start on Phase A."**
+> Open a Claude Code session in the cloned `huddle` repo and say: **"Read HANDOFF.md, get Huddle running at localhost:5173, then continue with the next steps in section 3."**
 
-Repo: https://github.com/lhaigwebdesigns-glitch/huddle (branch `main`, initial commit `8aee97e`)
+Repo: https://github.com/lhaigwebdesigns-glitch/huddle
 
 ---
 
-## 1. Product vision (what we're building)
+## 1. Product vision
 Huddle is a **free, open-source, multiplayer AI workspace**, like Claude.ai/ChatGPT but for groups:
 - Someone creates a **room** and gets a **party code** (e.g. `K7Q-29F`). Friends join with just a name.
 - Everyone chats with the **same AI in real time**: one streamed answer, seen by all, and the AI knows who said what.
-- The AI can **search the web**, **read pages**, use a library of **skills**, and build a **Google-style suite** (Docs, Sheets, Slides, Forms, Whiteboard) that everyone **co-edits live**.
-- Goals: get early users and collect feedback; add payments later.
+- The AI **searches the web**, uses **skills**, and builds a **Google-style suite** that everyone **co-edits live**: Docs, Sheets, Slides, Whiteboards, Forms and Artifacts (mini web apps).
+- Goal now: get early testers and feedback. Payments come later.
 
 ### Hard constraints (do not break)
-- **$0 AI spend.** Only free tiers of hosted open-weight models plus in-browser models. No paid credits and no closed models (no OpenAI/Anthropic/Google paid APIs).
-- **Fully open source.** MIT license. Only MIT/Apache/BSD-licensed libraries: Excalidraw yes, tldraw no; Tiptap core yes, Tiptap paid cloud no.
-- **Hosting:** Cloudflare free plan (Workers, Durable Objects with SQLite, D1, R2, Workers AI, Vectorize) and a `*.workers.dev` domain.
-- **Multiplayer everywhere.** Every feature must sync live between room members.
+- **$0 AI spend.** Only free tiers of hosted open-weight models, a self-hosted model on your own GPU, and in-browser models. No paid or closed models.
+- **Fully open source, MIT.** Only MIT/Apache/BSD dependencies; check the license before adding one (the last full scan was clean).
+- **Hosting:** Cloudflare free plan (Workers, Durable Objects with SQLite, D1, R2, Workers AI) and a `*.workers.dev` domain.
+- **Multiplayer everywhere.** Every feature syncs live between room members.
 
 ---
 
-## 2. What's built (current state — all working and tested)
+## 2. What's built (all working and tested)
 
 ### Stack
-Vite 8 + React 18 + Tailwind 4 frontend. Cloudflare Worker (Hono) + Durable Objects via `partyserver` / `y-partyserver`. Yjs CRDTs, Tiptap 3 editor, WebLLM for local models. Built and served with `@cloudflare/vite-plugin`.
+Vite 8 + React 18 + Tailwind 4. A Cloudflare Worker (Hono) with Durable Objects via `partyserver` / `y-partyserver`. Yjs for every file. Tiptap 3 (docs), a custom grid and formula engine (sheets), a custom slide canvas, Excalidraw (whiteboards), Chart.js, Mermaid, WebLLM (Local mode). Built with `@cloudflare/vite-plugin`.
 
-### Features done
+### Rooms and chat
 | Feature | Where |
 |---|---|
-| Create/join rooms by 6-char party code (no 0/O/1/I/L), invite link `/j/CODE` | `src/shared/code.ts`, `src/server/index.ts` (`POST /api/rooms`, `GET /api/rooms/:code`), `src/client/routes/Home.tsx` |
-| Guest identity (uid/name/color in localStorage), recent rooms | `src/client/lib/identity.ts` |
-| Room Durable Object: presence, typing, host role, lock room, kick, max 12 people, chat log in SQLite | `src/server/room.ts` |
-| Shared AI turns: streamed to all with 40ms delta batching, "always" or "@ai" mode, Stop, queueing of messages sent mid-answer, per-user hourly + per-room daily limits | `src/server/room.ts` (`queueAi`, `aiTurn`) |
-| Free model router: Groq → Cerebras → Workers AI → OpenRouter `:free`, 429 cooldown, falls through only if nothing has streamed yet | `src/server/ai/models.ts`, `src/server/ai/providers.ts` |
-| Agent loop with tool calling (max 6 steps), tool steps shown as chips, sources shown as link chips | `room.ts` + `src/server/ai/tools.ts` |
-| Tools: `web_search` (Tavily → Jina → DuckDuckGo), `fetch_url` (Jina Reader → direct), `load_skill`, `create_doc`, `read_doc`, `edit_doc` | `src/server/ai/tools.ts` |
-| 20 skills in the open Agent Skills `SKILL.md` format, bundled via `import.meta.glob`, toggleable per room | `skills/*/SKILL.md`, `src/server/ai/skills.ts` |
-| Local mode: host's browser runs Qwen3/Llama/Phi with WebLLM, tokens relayed to the room (no tools) | `src/client/lib/local-llm.ts`, `useRoom.ts` (`local_request`), `room.ts` (`localTurn`) |
-| Collaborative Docs: one Doc DO per doc (`ROOMCODE--fileId`), Tiptap + Yjs, live cursors, AI writes Markdown straight into the live Yjs doc, export to Word/Text | `src/server/doc.ts`, `src/server/markdown-yjs.ts`, `src/client/components/DocEditor.tsx` |
-| Chat UI: Markdown, GFM tables, KaTeX math, code blocks with copy, dark mode, mobile layout | `src/client/components/Chat.tsx`, `Markdown.tsx`, `routes/RoomPage.tsx` |
-| Room settings dialog: AI mode, engine (cloud/local), local model, lock, skills, kick | `src/client/components/SettingsDialog.tsx` |
-| Feedback: 👍/👎 plus comment per AI reply, "Send feedback" dialog, D1 storage, `/admin` page (`ADMIN_TOKEN`) | `src/server/index.ts`, `FeedbackDialog.tsx`, `routes/Admin.tsx` |
+| Party codes, invite links `/j/CODE`, guest identity, recent rooms | `shared/code.ts`, `client/lib/identity.ts`, `routes/Home.tsx` |
+| Room DO: presence, typing, host, lock, kick, 12 people max, chat log in SQLite | `server/room.ts` |
+| Shared AI turns, streamed to everyone; Stop (any member); messages sent mid-answer get their own turn, and only if they're really new (`hasUnseenUserMessages`) | `room.ts` (`queueAi`, `aiTurn`) |
+| **Edit & resend** your last message (the AI's answer is replaced), **Regenerate** | `room.ts` (`edit`, `regenerate`), `components/Chat.tsx` |
+| Grouped messages and day separators, clickable starter **suggestions**, **slash commands** (`/doc /search /sheet /slides /whiteboard /form /poll`) | `Chat.tsx`, `client/lib/slash.ts` |
+| **Reactions** and **polls** | `room.ts` (`react`, `poll`, `vote`), `Chat.tsx` |
+| **Mermaid** code blocks render as diagrams | `components/Markdown.tsx` |
+| Markdown, tables, KaTeX, code copy, dark mode, mobile layout, focus rings, ARIA live regions, reduced motion | `Chat.tsx`, `Markdown.tsx`, `styles.css` |
+
+### AI
+| Feature | Where |
+|---|---|
+| Provider router: **your own GPU (Ollama)** → Groq (gpt-oss-120b, then gpt-oss-20b) → Cerebras → Workers AI → OpenRouter `:free`. Waits out short 429s (≤20s), 60s response timeout for self-hosted, stops at `[DONE]` | `server/ai/models.ts`, `server/ai/providers.ts` |
+| Agent loop: 6 steps (15 in **Deep Research** mode); empty replies are retried once | `room.ts` |
+| Tools: `web_search`, `fetch_url`, `load_skill`, docs, sheets, slides, whiteboard, forms, artifacts, `remember` | `server/ai/tools.ts` |
+| Invented-citation guard (unlinks URLs that never appeared in tool results); failed pages are never listed as sources | `server/ai/citations.ts` |
+| Token diet for free tiers: clipped old replies, compacted tool-call payloads, volatile prompt parts last (lets Ollama reuse its cache) | `server/ai/turn.ts`, `room.ts` (`systemPrompt`) |
+| **Room memory** (opt-in): the AI saves facts it sees every turn; anyone can view and delete them in Settings | `room.ts` (`remember`, `forget`), `SettingsDialog.tsx` |
+| 20 skills (`skills/*/SKILL.md`), toggleable per room; the spreadsheet and slide skills teach the real tools | `server/ai/skills.ts` |
+| Local mode (WebLLM in the host's browser, no tools) | `client/lib/local-llm.ts` |
+
+### Files (one Yjs doc per file, in one Durable Object type)
+The `Doc` DO (`server/doc.ts`) is the generic **file server** for every kind: chunked storage (no 128 KB value cap), **version history** (snapshot every 10 min, before AI rewrites, or on demand; last 30 kept; restore can be undone), duplicate and delete. Each kind's Yjs schema is in `shared/files.ts`. Editors are lazy-loaded (`client/editors.ts`) inside `FilePanel.tsx` (rename, 🕘 history). The **Drive** sidebar (`Drive.tsx`) has `+ New`, search, rename, duplicate and delete.
+
+| Kind | Editor | Model + AI tools | Export |
+|---|---|---|---|
+| **Doc** | Tiptap + live cursors (`DocEditor.tsx`) | `markdown-yjs.ts`; `create_doc`, `read_doc`, `edit_doc` | Word, Text |
+| **Sheet** | Virtualized grid, formula bar, keyboard navigation, copy/paste, formats, fills, column resize, others' selections, charts (`SheetEditor.tsx`, `SheetChart.tsx`) | `shared/formula.ts` (35 functions, Excel-style errors), `shared/sheet-model.ts`; `create_sheet`, `read_sheet`, `edit_sheet` (tool results show the sheet back to the model) | CSV, **.xlsx** (write-excel-file); CSV import |
+| **Slides** | Thumbnails with who-is-where dots, inline editing on a 960×540 canvas, 6 layouts, 5 themes, notes, **Present** plus **Follow along** (`SlidesEditor.tsx`, `SlideView.tsx`) | `shared/slides-model.ts` (Y.Text fields merge concurrent typing); `create_slides`, `read_slides`, `edit_slides` | **.pptx** (pptxgenjs), printable HTML→PDF |
+| **Whiteboard** | Excalidraw synced via Yjs plus pointers (`WhiteboardEditor.tsx`) | `shared/whiteboard-model.ts`; `draw_whiteboard` (Mermaid, converted in the browser with deterministic ids, so no duplicates), `read_whiteboard` | PNG |
+| **Form** | Builder (6 question types), live responses with charts (`FormEditor.tsx`); public page `/f/:code/:id` (`routes/PublicForm.tsx`) | `shared/forms-model.ts` (validation); `create_form`, `read_form_responses` | CSV, **Send to a sheet** |
+| **Artifact** | Sandboxed iframe (scripts on, no same-origin), versions, code view (`ArtifactViewer.tsx`) | `shared/artifact-model.ts`; `make_artifact`, `read_artifact` | HTML |
+
+### Launch protection and admin
+- Per-IP rate limits in D1: 20 rooms/hour (`ROOMS_PER_IP_HOUR`), 30 feedback posts/hour, 20 form submits/hour per form. Local dev (loopback) isn't limited.
+- Site-wide daily AI counter in D1 (`GLOBAL_DAILY_AI_LIMIT`, default 5000), plus the per-room limit. When AI is unavailable, everyone sees a room banner, and the host gets a one-click **Switch to Local mode**.
+- `/admin` (`ADMIN_TOKEN`): AI turns per day by provider, plus all feedback.
 
 ### WebSocket protocol
-All message types live in `src/shared/protocol.ts` (`ClientMsg` / `ServerMsg`). **Extend this file first** whenever you add a feature.
+Every message type is in `src/shared/protocol.ts` (`ClientMsg` / `ServerMsg`). **Extend it first** when adding a feature.
 
 ### Tests
-- `npm test`: Vitest. Covers party codes, SKILL.md parsing, Markdown ⇄ Yjs, provider fallback and tool-call assembly. 11 passing.
-- `npm run dev` then `npm run e2e`: Playwright (`tests/e2e.mjs`). Two browsers join by code, chat, AI streaming, AI-created doc, live co-editing, persistence, feedback, bad code. All passing.
-- `npm run typecheck`: clean.
+- `npm test`: 53 unit tests (formula engine, sheet/slides/forms/whiteboard models, version restore and chunking, providers incl. retry/timeout/`[DONE]`, citations, slash commands, …).
+- `npm run typecheck`: clean. `npm run build`: OK (main bundle 685 KB, 209 KB gzipped; editors load on demand).
+- `npm run e2e` with `npm run dev` and `MOCK_AI=true`: **43 checks**, all passing twice in a row. Two browsers (plus a third and a stranger) cover: join, chat, AI streaming, docs co-editing, history, edit and regenerate, slash commands, Drive duplicate/restore/delete, sheets (formulas, chart, live sync), slides (live text, follow presenter), whiteboard (no duplicate AI drawing, live shapes), forms (public submit → live responses → sheet), artifacts (sandbox), Mermaid, reactions, polls, memory, and rate limiting. Each file tool has a mock trigger in `providers.ts` (`MOCK_TOOL_CALLS`).
+- Real-model runs: Groq gpt-oss-120b and the self-hosted Qwen3-14B on an RX 9070 GRE (chat ~2s; files 7–15s; a whole artifact app ~50s).
 
 ### Lessons learned (keep these)
-- Create the Yjs doc and `YProvider` **inside `useEffect`**, not `useMemo`, or React StrictMode destroys them.
-- **Don't mount the Tiptap editor until the first Yjs sync**, and keep it mounted after that (`ready` flag in `DocEditor.tsx`).
-- Tiptap StarterKit: set `trailingNode: false` and `undoRedo: false` (Collaboration provides undo).
-- Building Yjs text before it's attached to a doc: use `applyDelta`, not repeated `insert` (insert positions are ignored until it's attached → reversed text).
-- Playwright: pause about 150ms after clicking into ProseMirror before pressing keys (the browser's `selectionchange` is async).
-- `.npmrc` has `legacy-peer-deps=true` (a peer-dependency conflict between partyserver and workers-types).
-- The Workers AI binding needs a Cloudflare login. Local dev only uses it with `HUDDLE_REMOTE=1` (see `vite.config.ts`).
-- DuckDuckGo blocks cloud IPs, so **a free `TAVILY_API_KEY` or `JINA_API_KEY` is required** for reliable search.
-- **Groq free tier = ~8k tokens/min and 1,000 requests/day per model.** One doc-writing turn uses most of a minute's budget. Mitigations in place: wait up to 20s on short 429s (`providers.ts`), a second Groq model (`GROQ_FALLBACK_MODEL`, default `openai/gpt-oss-20b`), `reasoning_effort: "low"` for gpt-oss, clipped old AI replies in history, and compacted doc Markdown in tool-call history (`ai/turn.ts`). For real multi-user load, add Cerebras/OpenRouter keys.
-- gpt-oss **invents plausible URLs** (e.g. fake article ids). `ai/citations.ts` unlinks any Markdown link whose URL never appeared in tool results or user messages, and `fetch_url` no longer records failed pages as sources.
-- gpt-oss mostly **ignores `system` messages placed after the conversation starts** (harmony format). Put per-turn instructions in the latest user message instead (`withFreshNote` in `ai/turn.ts`).
-- Queued AI turns: only run another turn if a user message arrived after the previous turn read the history (`hasUnseenUserMessages` in `room.ts`), or the AI re-answers.
-- Aborting the provider `fetch` ends the stream cleanly; Stop works for any member (checked with a real model).
+- Create the Yjs doc and provider **inside `useEffect`** (`useYDoc`), and don't mount editors until the first sync.
+- Tiptap StarterKit: `trailingNode: false`, `undoRedo: false`. Build detached Yjs text with `applyDelta`.
+- `.npmrc` has `legacy-peer-deps=true`. Install scripts for esbuild/workerd are blocked by npm's allowlist, and that's fine.
+- The Workers AI binding needs a Cloudflare login (`HUDDLE_REMOTE=1`); without one it fails, and the router cools it down for 24h.
+- **Search needs a free `TAVILY_API_KEY`** (DuckDuckGo blocks cloud IPs).
+- **Groq free tier: ~8k tokens/min and 1,000 requests/day per model**, hence the second Groq model, the waits and the token diet. For real load, add Cerebras/OpenRouter keys, or run Ollama.
+- Models **invent URLs** (the citation guard handles it). gpt-oss/Qwen **ignore late `system` messages**: put per-turn nudges in user-role notes (`withFreshNote`).
+- Models claim work they didn't do (e.g. "added a total row"). Tool results now **echo what the file actually contains**.
+- Qwen3 sends slide bullets as **arrays**; models accept both. Qwen3 "thinking" makes replies ~10× slower; off by default (`OLLAMA_REASONING`).
+- Ollama's default 4k context is too small. `ollama/Modelfile` sets 12k, which fits 100% on a 12 GB GPU (16k spilled to the CPU). Use `127.0.0.1`, not `localhost`, in `OLLAMA_BASE_URL`.
+- Put volatile prompt parts **last** so self-hosted models reuse their cached prefix.
+- Controlled checkboxes that wait for the server break Playwright's `check()`: click, then wait for the round trip.
+- Excalidraw: sync with its `reconcileElements` and version numbers; `remapIds` makes AI conversions deterministic.
+- `DEBUG_AI=1` logs every AI step, tool call and timing.
 
 ### Running locally
 ```
@@ -72,85 +98,39 @@ npm install
 cp .dev.vars.example .dev.vars     # MOCK_AI=true = fake AI, no keys needed
 npm run dev                        # http://localhost:5173
 ```
-For real AI: set `MOCK_AI=false` and add a free `GROQ_API_KEY` (console.groq.com). Optionally add `CEREBRAS_API_KEY`, `OPENROUTER_API_KEY`, `TAVILY_API_KEY` and `ADMIN_TOKEN`.
+For real AI, set `MOCK_AI=false` and add any of:
+- **Your GPU:** install Ollama, run `ollama pull qwen3:14b` and `ollama create huddle -f ollama/Modelfile`, then set `OLLAMA_BASE_URL=http://127.0.0.1:11434` and `OLLAMA_MODEL=huddle`.
+- **Free cloud keys:** `GROQ_API_KEY` (console.groq.com), `TAVILY_API_KEY` (search), optionally `CEREBRAS_API_KEY` and `OPENROUTER_API_KEY`, plus `ADMIN_TOKEN`.
 
 ---
 
-## 3. What to build next (in this order)
-Each phase should end **working, tested (unit + e2e), committed and pushed**, and usable by testers.
+## 3. What's next
 
-### Phase A — Launch-ready beta (do first)
-1. **Real-model smoke test**: add a Groq key, confirm streaming, tool calls (search/doc), and that the `gpt-oss` reasoning field is ignored properly. Tune the system prompt in `room.ts → systemPrompt()`.
-2. **Deploy**: `wrangler login`, `wrangler d1 create huddle` (put the id in `wrangler.jsonc`), `wrangler secret put` for each key, then `npm run deploy`. Add a GitHub Action that deploys on push to `main` (needs a `CLOUDFLARE_API_TOKEN` repo secret).
-3. **Accounts (optional sign-in)**: Better Auth (MIT) on D1 with GitHub/Google OAuth and email magic link. Guests can still join. Signing in is required to **create** rooms (protects quotas) and claims the guest's uid/history. Add a "My rooms" list.
-4. **Abuse/quota protection**: per-IP rate limit on `POST /api/rooms` and `/api/feedback`; a global daily AI counter in D1 shown in `/admin`; a banner when the room falls back to Local mode.
-5. **Polish**:
-   - Edit-and-resend your own message, plus **Regenerate**.
-   - Copy-room-link toast.
-   - Message timestamps grouped.
-   - Empty-state prompt suggestions (clickable).
-   - Slash commands in the composer: `/doc`, `/search`, `/sheet`, `/slides`.
-   - Accessible focus states.
-   - Analytics (PostHog free tier or self-hosted Umami).
+### Needs the owner (accounts and logins)
+1. **Deploy** (Phase A2): `npx wrangler login`, then `npx wrangler d1 create huddle` (put the id in `wrangler.jsonc`), then `wrangler secret put` for each key, then `npm run deploy`. Add a GitHub Action that deploys on push to `main` (needs a `CLOUDFLARE_API_TOKEN` repo secret).
+2. **Self-hosted model online:** expose Ollama with a Cloudflare Tunnel (`cloudflared`), set `OLLAMA_BASE_URL` to the tunnel URL and `OLLAMA_API_KEY` to a shared secret. Ollama itself doesn't check keys, so put the tunnel behind Cloudflare Access or a small auth proxy before going public.
+3. **Accounts** (Phase A3): Better Auth (MIT) on D1 with GitHub/Google OAuth (needs OAuth apps) and email magic links. Guests can still join; signing in is required to create rooms. Add a "My files" list across rooms.
 
-### Phase B — Drive + file model refactor
-- Generalize `RoomFile.kind` to `"doc" | "sheet" | "slides" | "form" | "whiteboard"` (`protocol.ts`, `room.ts` files table).
-- Rename the Doc DO pattern to a generic **File DO** (one Yjs doc per file; the type decides the editor). Keep `Doc` for compatibility or migrate with a new DO migration tag.
-- Add a Drive panel: search, rename, delete and duplicate, plus "My files" across rooms (D1 index) for signed-in users.
-- Version history: snapshot `Y.encodeStateAsUpdate` to DO storage every N minutes, with a restore UI.
-- Comments on Docs (Tiptap comment marks stored in a Y.Map).
+### Code-only follow-ups
+- Comments on Docs (Tiptap marks + a Y.Map); real tables in Docs (Tiptap table extension, MIT); rows/columns insert and shift in Sheets (formula reference rewriting); freeze panes.
+- Code interpreter (Pyodide in the browser, outputs posted to the room).
+- Custom assistants (persona + skills + files, shareable by code); read-only share links for chats and files.
+- Per-user memory (once accounts exist).
+- Analytics (Umami self-hosted or PostHog free), deliberately skipped so far.
 
-### Phase C — Sheets
-- Editor: **Univer** (Apache-2.0). Store the workbook in Yjs (a Y.Map of sheets → Y.Map of cells `{v, f, style}`). Write a small binding between Univer's command events and Yjs. **Fallback** if Univer + Yjs is too heavy: build a custom virtualized grid with `fast-formula-parser` or `formula.js` (both MIT). Avoid HyperFormula: it's GPLv3 or a paid commercial license, which conflicts with the MIT rule.
-- AI tools: `create_sheet(title, csv | cells)`, `read_sheet(file_id, range)`, `edit_sheet(file_id, ops[])` where ops = set cell/formula/format, insert rows, add chart.
-- Charts: Chart.js (MIT) from a range.
-- Export: `.xlsx` with SheetJS CE (Apache-2.0) and CSV. Import CSV/XLSX.
-- New skill: extend `skills/spreadsheet-modeling/SKILL.md` with the tool usage.
+### Needs a deployed account (Workers AI / R2 / Vectorize)
+- Uploads + vision, PDF text; knowledge/RAG per room (`bge` embeddings + Vectorize); voice (Whisper); AI images (FLUX) on slides.
 
-### Phase D — Slides
-- Deck schema in Yjs: `slides: Y.Array<Y.Map>`. Each slide has a layout (title, bullets, two-column, image+text, quote, section), elements (text/image/shape with x/y/w/h), notes and a theme.
-- Editor: custom React canvas with drag/resize (`react-moveable`, MIT), thumbnails rail, theme picker, live cursors via awareness.
-- **Present mode**: full screen, and other members can "follow the presenter" (presenter's slide index in awareness).
-- AI tools: `create_slides(title, outline[])`, `edit_slides(file_id, ops[])`. Use the `slide-deck-design` skill (update it: stop saying "Until the Slides editor ships").
-- Images: Workers AI **FLUX.1-schnell** (`generate_image` tool) stored in R2.
-- Export: `.pptx` via `pptxgenjs` (MIT), and PDF via print CSS.
-
-### Phase E — Forms + Whiteboard
-- **Forms**: builder in Yjs (questions: short, long, multiple choice, checkbox, scale, date), public share link `/f/:id`, responses written to a linked Sheet. AI tool `create_form`.
-- **Whiteboard**: **Excalidraw** (MIT) synced via Yjs (y-excalidraw pattern or a custom elements Y.Map). AI tool `draw_whiteboard(mermaid | elements)`; convert Mermaid with `@excalidraw/mermaid-to-excalidraw` (MIT).
-
-### Phase F — "Top AI site" power features
-1. **Artifacts/Canvas pane**: AI writes HTML/React/SVG and it renders in a sandboxed iframe beside the chat, synced for the room, with versions. Tool: `make_artifact`.
-2. **Code interpreter**: Pyodide in the browser (runs on the requester's device), with output and charts posted back to the room.
-3. **Uploads + vision**: images, PDFs and CSVs go to R2. Vision through a free provider model (e.g. Llama vision on Groq/Workers AI); PDF text via `pdfjs-dist`.
-4. **Knowledge/RAG per room**: chunk uploads, embed with Workers AI `bge` embeddings into **Vectorize** (free tier); tool `search_knowledge`.
-5. **Memory**: opt-in facts per user and per room (`remember` tool), viewable and deletable in settings.
-6. **Deep Research mode**: a toggle that runs the `deep-research` skill with a higher step budget (e.g. 15) and writes a cited Doc.
-7. **Voice**: push-to-talk → Workers AI Whisper; replies read aloud with browser `speechSynthesis`.
-8. **Custom assistants**: saved persona + instructions + skills + files, shareable by code.
-9. **Share links**: read-only public snapshot of a chat or file.
-10. **Reactions + polls** in chat; Mermaid diagram rendering in chat.
-
-### Phase G — Payments (only after testers ask for more)
-- Stripe Checkout + webhook to the Worker. Plans: Free (current limits) and Pro (higher limits, bigger rooms, more searches, priority models). Usage is already counted per room per day (`ai-count:` keys); move it to D1 per user.
-- Keep the code MIT and self-hostable. The hosted version sells limits, not features.
+### Phase G: Payments (only after testers ask)
+Stripe Checkout + webhook. Free vs Pro limits (usage is already counted per room and per day; move it to per user). The code stays MIT and self-hostable; the hosted version sells limits, not features.
 
 ---
 
 ## 4. Rules for the next Claude Code session
-- **Read before changing**: `src/shared/protocol.ts`, `src/server/room.ts`, `src/server/ai/*`, `src/client/lib/useRoom.ts`.
-- New AI ability = tool definition in `TOOL_DEFS` + a `dispatch` case in `tools.ts` + a mock path in `providers.ts` (`mockChat`) so the e2e test can exercise it without keys + an e2e assertion.
-- New file type = `protocol.ts` kind → File DO → editor component → AI tools → export → e2e test (two browsers co-editing).
-- Keep every new dependency MIT/Apache/BSD and check its license before adding it.
-- Never add paid AI. Any new provider must be free-tier and go through `getProviders()` in `models.ts`.
-- Secrets only via `.dev.vars` (gitignored) and `wrangler secret put`; never commit keys.
-- After each phase: `npm test`, `npm run typecheck`, `npm run e2e`, then commit and push to a branch and open a PR.
-
-## 5. Definition of done for the beta (Phase A)
-- Live at `https://huddle.<account>.workers.dev` with a real free model and Tavily search.
-- 3 people can join one room by code from different devices, chat with the AI, and co-write a doc.
-- Feedback shows up in `/admin`.
-- No AI cost on the Cloudflare/Groq dashboards.
-
-## Verification (for this handoff document itself)
-After approval: save this document into the repo as `HANDOFF.md`, link it from `README.md`, then commit and push to `main` so the next session can read it from GitHub.
+- **Read before changing:** `shared/protocol.ts`, `server/room.ts`, `server/ai/*`, `server/doc.ts`, `shared/files.ts`, `client/lib/useRoom.ts`.
+- A new AI ability needs: a definition in `TOOL_DEFS` + a `dispatch` case (`tools.ts`) + a `MOCK_TOOL_CALLS` entry + an e2e assertion + a line in `FILE_GUIDE` (`room.ts`) if it creates files.
+- A new file kind needs: `shared/files.ts` (kind + schema) → a `shared/<kind>-model.ts` with tests → `Doc` RPC methods → an editor registered in `client/editors.ts` → AI tools → export → an e2e test with two browsers.
+- Keep tool descriptions short: every tool definition is sent on every AI request.
+- MIT/Apache/BSD dependencies only. Never add paid AI; new providers go through `getProviders()`.
+- Secrets only in `.dev.vars` (gitignored) and `wrangler secret put`.
+- After each phase: `npm test`, `npm run typecheck`, `npm run build`, `npm run e2e` (mock), then commit, push and open a PR.
