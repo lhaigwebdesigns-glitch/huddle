@@ -1,7 +1,9 @@
-# Huddle's self-hosted model (used when OLLAMA_BASE_URL is set).
+# Huddle's self-hosted model (used when OLLAMA_BASE_URL or the OLLAMA_VPC tunnel is set).
 # Build it once with:   ollama create huddle -f ollama/Modelfile
+#
+# Gemma 4 12B: strong tool calling and long context, and fits a 12 GB GPU (RX 9070 GRE).
+# It replaced Qwen3 14B in Nov 2026. To go back: FROM qwen3:14b and num_ctx 12288.
 # Ollama's default 4k context is too small for Huddle's system prompt, tools and chat
-# history, so raise it. 12k keeps a 14B model 100% on a 12 GB GPU (checked on an RX 9070 GRE
-# with `ollama ps`); 16k spilled ~6% onto the CPU there. With 16 GB+ of VRAM, try 16384.
-FROM qwen3:14b
-PARAMETER num_ctx 12288
+# history, so raise it; check `ollama ps` shows 100% GPU after changing num_ctx.
+FROM gemma4:12b
+PARAMETER num_ctx 16384
