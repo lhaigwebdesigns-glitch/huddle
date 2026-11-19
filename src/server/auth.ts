@@ -91,8 +91,11 @@ export async function sha256(s: string): Promise<string> {
 
 export const randomToken = (bytes = 32) => [...crypto.getRandomValues(new Uint8Array(bytes))].map((b) => b.toString(16).padStart(2, "0")).join("");
 
-/** Only allow same-site relative return paths (no open redirects). */
-export const safeReturn = (p: unknown) => (typeof p === "string" && /^\/(?!\/)[\w\-/.?=&%]*$/.test(p) ? p : "/");
+/** Only allow same-site relative return paths (no open redirects). The landing page sends you to your dashboard. */
+export const safeReturn = (p: unknown) => {
+  const to = typeof p === "string" && /^\/(?!\/)[\w\-/.?=&%]*$/.test(p) ? p : "/";
+  return to === "/" ? "/dashboard" : to;
+};
 
 // ---------- storage ----------
 
@@ -108,6 +111,8 @@ export function ensureAuthTables(db: D1Database) {
         `CREATE TABLE IF NOT EXISTS user_rooms (user_id TEXT, code TEXT, title TEXT, last_at INTEGER, PRIMARY KEY (user_id, code))`,
       ),
     ])
+    // Added later: whether this user hosts the room (1), only joined it (0), or unknown (NULL, older rows).
+    .then(() => db.prepare(`ALTER TABLE user_rooms ADD COLUMN host INTEGER`).run().catch(() => {}))
     .then(() => undefined)
     .catch((e) => {
       ready = null;
@@ -157,13 +162,15 @@ async function startSession(c: Context<{ Bindings: Env }>, userId: string, to: s
   return new Response(null, { status: 302, headers });
 }
 
-export async function rememberRoomForUser(env: Env, user: User, code: string, title: string) {
+export async function rememberRoomForUser(env: Env, user: User, code: string, title: string, host?: boolean) {
   if (!env.DB) return;
   await ensureAuthTables(env.DB);
   await env.DB.prepare(
-    `INSERT INTO user_rooms (user_id, code, title, last_at) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(user_id, code) DO UPDATE SET title = excluded.title, last_at = excluded.last_at`,
+    `INSERT INTO user_rooms (user_id, code, title, last_at, host) VALUES (?1, ?2, ?3, ?4, ?5)
+     ON CONFLICT(user_id, code) DO UPDATE SET title = excluded.title, last_at = excluded.last_at,
+       host = COALESCE(MAX(user_rooms.host, excluded.host), user_rooms.host, excluded.host)`,
   )
-    .bind(user.id, code, title.slice(0, 80), Date.now())
+    .bind(user.id, code, title.slice(0, 80), Date.now(), host === undefined ? null : host ? 1 : 0)
     .run();
 }
 
@@ -240,11 +247,43 @@ auth.post("/logout", async (c) => {
   });
 });
 
+/** Your rooms for the dashboard: whether you host each one, and who's in it right now. */
 auth.get("/rooms", async (c) => {
   const user = await currentUser(c.env, c.req.raw);
   if (!user || !c.env.DB) return c.json({ rooms: [] });
-  const { results } = await c.env.DB.prepare(`SELECT code, title, last_at FROM user_rooms WHERE user_id = ?1 ORDER BY last_at DESC LIMIT 50`).bind(user.id).all();
-  return c.json({ rooms: results });
+  await ensureAuthTables(c.env.DB);
+  // Loaded here so this module stays importable in unit tests (partyserver needs the Workers runtime).
+  const { getServerByName } = await import("partyserver");
+  const { results } = await c.env.DB.prepare(`SELECT code, title, last_at, host FROM user_rooms WHERE user_id = ?1 ORDER BY last_at DESC LIMIT 100`)
+    .bind(user.id)
+    .all<{ code: string; title: string; last_at: number; host: number | null }>();
+  const rooms = await Promise.all(
+    results.map(async (r) => {
+      const stub = await getServerByName(c.env.Room, r.code);
+      const info = await stub.info().catch(() => null);
+      if (!info?.exists) return null; // deleted by its host
+      let host = r.host;
+      if (host === null) {
+        host = (await stub.isHost(user.uid).catch(() => false)) ? 1 : 0;
+        c.executionCtx.waitUntil(c.env.DB!.prepare(`UPDATE user_rooms SET host = ?1 WHERE user_id = ?2 AND code = ?3`).bind(host, user.id, r.code).run());
+      }
+      return { code: r.code, title: info.title || r.title, lastAt: r.last_at, isHost: host === 1, online: info.members, locked: info.locked };
+    }),
+  );
+  const gone = results.filter((_, i) => !rooms[i]).map((r) => r.code);
+  if (gone.length)
+    c.executionCtx.waitUntil(
+      c.env.DB.batch(gone.map((code) => c.env.DB!.prepare(`DELETE FROM user_rooms WHERE user_id = ?1 AND code = ?2`).bind(user.id, code))),
+    );
+  return c.json({ rooms: rooms.filter(Boolean) });
+});
+
+/** Take a room off your dashboard (doesn't affect the room or anyone else). */
+auth.delete("/rooms/:code", async (c) => {
+  const user = await currentUser(c.env, c.req.raw);
+  if (!user || !c.env.DB) return c.json({ ok: false }, 401);
+  await c.env.DB.prepare(`DELETE FROM user_rooms WHERE user_id = ?1 AND code = ?2`).bind(user.id, c.req.param("code").toUpperCase()).run();
+  return c.json({ ok: true });
 });
 
 auth.post("/rooms", async (c) => {

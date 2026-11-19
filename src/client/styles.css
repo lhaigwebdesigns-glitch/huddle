@@ -141,3 +141,66 @@ input, textarea { caret-color: var(--fg); }
 .typing-dot { animation: blink 1.2s infinite both; }
 .typing-dot:nth-child(2) { animation-delay: .2s; } .typing-dot:nth-child(3) { animation-delay: .4s; }
 @keyframes blink { 0%,80%,100% { opacity: .2 } 40% { opacity: 1 } }
+
+/* Live pointers (LivePointers.tsx): glide between updates, ripple on click, fade when idle. */
+.live-pointer {
+  transition: transform 110ms linear, opacity 300ms var(--ease-out);
+  will-change: transform;
+}
+.live-pointer-name {
+  position: absolute; left: 14px; top: 16px; white-space: nowrap;
+  background: var(--c); color: #fff; font-size: 11px; font-weight: 600; line-height: 1;
+  padding: 4px 7px; border-radius: 999px 999px 999px 4px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
+}
+.live-pointer-ripple {
+  position: absolute; left: -9px; top: -9px; width: 20px; height: 20px; border-radius: 999px;
+  border: 2px solid var(--c); opacity: 0; transform: scale(0.4);
+}
+.live-pointer[data-click="1"] .live-pointer-ripple { animation: pointer-ripple 500ms var(--ease-out); }
+@keyframes pointer-ripple { from { opacity: 0.9; transform: scale(0.4); } to { opacity: 0; transform: scale(1.8); } }
+@media (prefers-reduced-motion: reduce) { .live-pointer { transition: opacity 150ms ease; } }
+
+/*
+ * Motion system (Apple-style: quick, physical, quiet). One entrance per thing, never on typing
+ * or keyboard actions. Reduced motion turns movement into short fades (rule at the top).
+ */
+:root { --dur-1: 150ms; --dur-2: 220ms; --dur-3: 320ms; --spring: cubic-bezier(0.34, 1.32, 0.64, 1); }
+
+/* New chat messages arrive with a small rise. */
+@keyframes msg-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.msg-in { animation: msg-in var(--dur-3) var(--ease-out) both; }
+
+/* Thought bubble: springs out of the avatar; the dots pulse in a wave. */
+@keyframes thought-in { from { opacity: 0; transform: scale(0.85) translateY(4px); } to { opacity: 1; transform: none; } }
+.thought-in { animation: thought-in var(--dur-3) var(--spring) both; transform-origin: bottom left; }
+@keyframes thought-dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.45; } 30% { transform: translateY(-3px); opacity: 1; } }
+.thought-dot { animation: thought-dot 1.2s ease-in-out infinite; }
+.thought-dot:nth-child(2) { animation-delay: 0.15s; } .thought-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/* Lists fade up in a short stagger on first load (delay set inline, capped). */
+@keyframes stagger-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.stagger { animation: stagger-in var(--dur-3) var(--ease-out) both; }
+
+/* Side sheets slide in; scrims fade; toasts rise. */
+@keyframes sheet-in { from { transform: translateX(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.sheet { animation: sheet-in var(--dur-3) var(--ease-drawer) both; }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.fade { animation: fade-in var(--dur-2) ease both; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 10px) scale(0.98); } to { opacity: 1; transform: translate(-50%, 0); } }
+.toast { animation: toast-in var(--dur-3) var(--spring) both; }
+
+/* The file panel eases in from the right when a file opens. */
+@keyframes panel-in { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+.panel-in { animation: panel-in var(--dur-3) var(--ease-drawer) both; }
+
+/* Landing sections reveal once as they scroll into view (Home adds .is-visible). */
+.reveal { opacity: 0; transform: translateY(16px); transition: opacity 700ms var(--ease-out), transform 700ms var(--ease-out); }
+.reveal.is-visible { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; } }
+
+/* Theme switches crossfade instead of snapping. */
+.theme-fade, .theme-fade * { transition: background-color 240ms ease, border-color 240ms ease, color 240ms ease !important; }
+
+/* Doc carets: labels styled like the live-pointer name pills. */
+.collaboration-carets__label { border-radius: 999px 999px 999px 4px; padding: 3px 7px; top: -1.6em; box-shadow: 0 2px 8px rgb(0 0 0 / 0.15); }

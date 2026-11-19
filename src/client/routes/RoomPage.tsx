@@ -9,7 +9,7 @@ import { Drive } from "../components/Drive";
 import { setEditorSender } from "../lib/editorBridge";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { FeedbackDialog } from "../components/FeedbackDialog";
-import { ArrowLeft, ArrowRight, Check, Cloud, Copy, Cpu, Link2, Menu, MessageSquare, Settings, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Cloud, Copy, Cpu, DoorOpen, Link2, Menu, MessageSquare, Settings, Trash2, X } from "lucide-react";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 
 const ROW = "press flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13.5px] text-fg-muted hover:bg-accent-soft hover:text-fg";
@@ -92,12 +92,28 @@ function Room({ code, me }: { code: string; me: Identity }) {
 
   if (state.status === "closed")
     return (
-      <div className="flex min-h-full flex-col items-center justify-center gap-4 p-6 text-center">
-        <Logo className="h-10 w-10" />
-        <p className="text-lg font-medium">{state.closeReason ?? "Disconnected"}</p>
-        <Link to="/" className="press inline-flex h-10 items-center gap-2 rounded-full bg-primary px-5 text-sm font-medium text-primary-fg hover:bg-primary-hover">
-          <ArrowLeft className="h-4 w-4" /> Back home
-        </Link>
+      <div className="flex min-h-full flex-col items-center justify-center gap-3 p-6 text-center" role="alert" data-testid="room-closed">
+        <div className="pop flex h-14 w-14 items-center justify-center rounded-2xl bg-accent-soft" style={{ ["--origin" as string]: "center" }}>
+          {state.closeKind === "deleted" ? <Trash2 className="h-6 w-6 text-fg-muted" /> : state.closeKind ? <DoorOpen className="h-6 w-6 text-fg-muted" /> : <Logo className="h-8 w-8" />}
+        </div>
+        <p className="rise mt-2 text-lg font-semibold">{state.closeReason ?? "Disconnected"}</p>
+        <p className="rise rise-1 max-w-sm text-sm text-fg-muted">
+          {state.closeKind === "deleted"
+            ? "Its chat and files were erased."
+            : state.closeKind === "kick"
+              ? "You can rejoin with the party code if you were invited back."
+              : state.closeKind === "ban"
+                ? "Only the host can let you back in."
+                : "Check your connection and try again."}
+        </p>
+        <div className="rise rise-2 mt-3 flex gap-2">
+          {state.closeKind === "kick" && (
+            <Button variant="secondary" onClick={() => location.reload()}>Rejoin</Button>
+          )}
+          <Link to="/dashboard" className="press inline-flex h-10 items-center gap-2 rounded-full bg-primary px-5 text-sm font-medium text-primary-fg hover:bg-primary-hover">
+            <ArrowLeft className="h-4 w-4" /> Back to your rooms
+          </Link>
+        </div>
       </div>
     );
 
@@ -297,6 +313,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
           members={state.members}
           me={state.you}
           memory={state.memory}
+          bans={state.bans}
           send={send}
           onClose={() => setShowSettings(false)}
         />

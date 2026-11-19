@@ -7,38 +7,46 @@ import YProvider from "y-partyserver/provider";
 import type { RoomFile } from "../../shared/protocol";
 import type { Identity } from "../lib/identity";
 import { download } from "../lib/download";
+import { Bold, Code2, Download, Heading1, Heading2, Heading3, Italic, List, ListOrdered, Quote, Redo2, Strikethrough, Undo2 } from "lucide-react";
 
 function Btn({ on, active, children, title }: { on: () => void; active?: boolean; children: React.ReactNode; title: string }) {
   return (
     <button
       type="button"
       title={title}
+      aria-label={title}
+      aria-pressed={active}
       onMouseDown={(e) => e.preventDefault()}
       onClick={on}
-      className={`rounded px-2 py-1 text-sm hover:bg-zinc-200 dark:hover:bg-zinc-800 ${active ? "bg-zinc-200 dark:bg-zinc-800" : ""}`}
+      className={`press flex h-8 min-w-8 items-center justify-center rounded-md px-1.5 text-fg-muted hover:bg-accent-soft hover:text-fg ${active ? "bg-accent-soft text-fg" : ""}`}
     >
       {children}
     </button>
   );
 }
 
+const ic = "h-4 w-4";
+
 function Toolbar({ editor }: { editor: Editor }) {
   const c = () => editor.chain().focus();
+  const sep = <span className="mx-1 my-1.5 w-px bg-line" aria-hidden />;
   return (
-    <div className="flex flex-wrap gap-0.5 border-b border-zinc-200 px-2 py-1 dark:border-zinc-800">
-      <Btn title="Undo" on={() => c().undo().run()}>↶</Btn>
-      <Btn title="Redo" on={() => c().redo().run()}>↷</Btn>
-      <span className="mx-1 w-px bg-zinc-200 dark:bg-zinc-800" />
-      <Btn title="Heading 1" active={editor.isActive("heading", { level: 1 })} on={() => c().toggleHeading({ level: 1 }).run()}>H1</Btn>
-      <Btn title="Heading 2" active={editor.isActive("heading", { level: 2 })} on={() => c().toggleHeading({ level: 2 }).run()}>H2</Btn>
-      <Btn title="Heading 3" active={editor.isActive("heading", { level: 3 })} on={() => c().toggleHeading({ level: 3 }).run()}>H3</Btn>
-      <Btn title="Bold" active={editor.isActive("bold")} on={() => c().toggleBold().run()}><b>B</b></Btn>
-      <Btn title="Italic" active={editor.isActive("italic")} on={() => c().toggleItalic().run()}><i>I</i></Btn>
-      <Btn title="Strikethrough" active={editor.isActive("strike")} on={() => c().toggleStrike().run()}><s>S</s></Btn>
-      <Btn title="Bullet list" active={editor.isActive("bulletList")} on={() => c().toggleBulletList().run()}>• List</Btn>
-      <Btn title="Numbered list" active={editor.isActive("orderedList")} on={() => c().toggleOrderedList().run()}>1. List</Btn>
-      <Btn title="Quote" active={editor.isActive("blockquote")} on={() => c().toggleBlockquote().run()}>❝</Btn>
-      <Btn title="Code block" active={editor.isActive("codeBlock")} on={() => c().toggleCodeBlock().run()}>{"</>"}</Btn>
+    <div className="flex flex-wrap items-center gap-0.5 border-b border-line px-2 py-1" role="toolbar" aria-label="Formatting">
+      <Btn title="Undo" on={() => c().undo().run()}><Undo2 className={ic} /></Btn>
+      <Btn title="Redo" on={() => c().redo().run()}><Redo2 className={ic} /></Btn>
+      {sep}
+      <Btn title="Heading 1" active={editor.isActive("heading", { level: 1 })} on={() => c().toggleHeading({ level: 1 }).run()}><Heading1 className={ic} /></Btn>
+      <Btn title="Heading 2" active={editor.isActive("heading", { level: 2 })} on={() => c().toggleHeading({ level: 2 }).run()}><Heading2 className={ic} /></Btn>
+      <Btn title="Heading 3" active={editor.isActive("heading", { level: 3 })} on={() => c().toggleHeading({ level: 3 }).run()}><Heading3 className={ic} /></Btn>
+      {sep}
+      <Btn title="Bold" active={editor.isActive("bold")} on={() => c().toggleBold().run()}><Bold className={ic} /></Btn>
+      <Btn title="Italic" active={editor.isActive("italic")} on={() => c().toggleItalic().run()}><Italic className={ic} /></Btn>
+      <Btn title="Strikethrough" active={editor.isActive("strike")} on={() => c().toggleStrike().run()}><Strikethrough className={ic} /></Btn>
+      {sep}
+      <Btn title="Bullet list" active={editor.isActive("bulletList")} on={() => c().toggleBulletList().run()}><List className={ic} /></Btn>
+      <Btn title="Numbered list" active={editor.isActive("orderedList")} on={() => c().toggleOrderedList().run()}><ListOrdered className={ic} /></Btn>
+      <Btn title="Quote" active={editor.isActive("blockquote")} on={() => c().toggleBlockquote().run()}><Quote className={ic} /></Btn>
+      <Btn title="Code block" active={editor.isActive("codeBlock")} on={() => c().toggleCodeBlock().run()}><Code2 className={ic} /></Btn>
     </div>
   );
 }
@@ -71,11 +79,14 @@ export function DocEditor({
   const safeName = file.title.replace(/[^\w\- ]+/g, "").trim() || "document";
   return (
     <>
-      <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-3 py-1 text-xs text-zinc-500 dark:border-zinc-800">
-        <span>{synced ? "● Live — edits sync for everyone" : "Connecting…"}</span>
+      <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-1.5 text-xs text-fg-subtle">
+        <span className="flex items-center gap-1.5">
+          <span className={`h-1.5 w-1.5 rounded-full ${synced ? "bg-emerald-500" : "bg-fg-subtle"}`} aria-hidden />
+          {synced ? "Live, edits sync for everyone" : "Connecting…"}
+        </span>
         <span className="flex gap-2">
           <button
-            className="hover:text-zinc-900 dark:hover:text-zinc-100"
+            className="press inline-flex items-center gap-1 rounded px-1 hover:text-fg"
             onClick={() =>
               download(
                 `${safeName}.doc`,
@@ -84,13 +95,13 @@ export function DocEditor({
               )
             }
           >
-            ⬇ Word
+            <Download className="h-3.5 w-3.5" /> Word
           </button>
           <button
-            className="hover:text-zinc-900 dark:hover:text-zinc-100"
+            className="press inline-flex items-center gap-1 rounded px-1 hover:text-fg"
             onClick={() => download(`${safeName}.txt`, "text/plain", editor.getText({ blockSeparator: "\n\n" }))}
           >
-            ⬇ Text
+            <Download className="h-3.5 w-3.5" /> Text
           </button>
         </span>
       </div>

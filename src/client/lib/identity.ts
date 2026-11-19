@@ -39,16 +39,25 @@ export function setName(name: string) {
   safeSet("huddle.name", name.trim().slice(0, 32));
 }
 
+/** Guests keep a short list on this device: the last 3 rooms from the past 30 days. Signed-in people get the dashboard. */
+export const RECENT_MAX = 3;
+const RECENT_DAYS = 30;
+
 export function rememberRoom(code: string, title: string) {
   const list = recentRooms().filter((r) => r.code !== code);
   list.unshift({ code, title, at: Date.now() });
-  safeSet("huddle.recent", JSON.stringify(list.slice(0, 8)));
+  safeSet("huddle.recent", JSON.stringify(list.slice(0, RECENT_MAX)));
 }
 
-export function recentRooms(): { code: string; title: string; at: number }[] {
+export function recentRooms(now = Date.now()): { code: string; title: string; at: number }[] {
   try {
-    return JSON.parse(safeGet("huddle.recent") ?? "[]");
+    const list = JSON.parse(safeGet("huddle.recent") ?? "[]") as { code: string; title: string; at: number }[];
+    return list.filter((r) => now - (r.at ?? 0) < RECENT_DAYS * 86_400_000).slice(0, RECENT_MAX);
   } catch {
     return [];
   }
+}
+
+export function forgetRoom(code: string) {
+  safeSet("huddle.recent", JSON.stringify(recentRooms().filter((r) => r.code !== code)));
 }

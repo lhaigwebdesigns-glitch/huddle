@@ -12,6 +12,14 @@ const ok = (cond, msg) => {
   console.log("✓", msg);
 };
 
+/** Waits until `page` shows a visible live pointer labelled `name`. */
+const seePointer = (page, name) =>
+  page.waitForFunction(
+    (n) => [...document.querySelectorAll('[data-testid="live-pointer"]')].some((el) => el.textContent.includes(n) && getComputedStyle(el).opacity === "1"),
+    name,
+    { timeout: 8000 },
+  );
+
 try {
   const alice = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
   const bob = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
@@ -60,6 +68,11 @@ try {
   const bobHtml = await bob.getByTestId("doc-editor").innerHTML();
   ok(/Second point[\s\S]*Alice added this line live/.test(bobHtml), "edit landed where Alice clicked (after 'Second point')");
   ok(true, "Bob sees Alice's doc edits in real time");
+  const docBox = await alice.getByTestId("doc-editor").boundingBox();
+  await alice.mouse.move(docBox.x + 120, docBox.y + 60, { steps: 4 });
+  await alice.mouse.move(docBox.x + 160, docBox.y + 80, { steps: 4 });
+  await seePointer(bob, "Alice");
+  ok(true, "Bob sees Alice's live pointer in the doc");
 
   // Persistence: reload Bob, history and doc are still there
   await bob.reload();
@@ -179,6 +192,11 @@ try {
   await alice.keyboard.press("Enter");
   await bob.locator('[data-cell="C2"]').getByText("40").waitFor({ timeout: 10000 });
   ok(true, "a formula Alice types computes live for Bob");
+  const cellBox = await bob.locator('[data-cell="A3"]').boundingBox();
+  await bob.mouse.move(cellBox.x + 10, cellBox.y + 5, { steps: 4 });
+  await bob.mouse.move(cellBox.x + 30, cellBox.y + 8, { steps: 4 });
+  await seePointer(alice, "Bob");
+  ok(true, "Alice sees Bob's live pointer in the sheet");
   await alice.locator('[data-cell="C2"]').click();
   ok((await alice.getByTestId("formula-bar").inputValue()) === "=B2*2", "formula bar shows the formula");
 
@@ -346,20 +364,70 @@ try {
   ok((await shared.getByTestId("shared-message").count()) > 5, "read-only share link shows the chat");
   await shared.close();
 
-  // Accounts (dev sign-in, local only): sign in, create a room, see it under "My rooms".
+  // Accounts (dev sign-in, local only): signing in lands on the dashboard, which lists your rooms.
   const erin = await (await browser.newContext()).newPage();
   await erin.goto(`${BASE}/api/auth/login/dev?name=Erin&return=/`);
-  await erin.getByTestId("account-button").getByText("Erin").waitFor();
-  await erin.getByPlaceholder("e.g. Sam").fill("Erin");
-  await erin.getByPlaceholder(/Room name/).fill("Erin's room");
-  await erin.locator("#start").getByRole("button", { name: /Start a room/ }).click();
+  await erin.waitForURL(/\/dashboard$/);
+  await erin.getByPlaceholder("New room name").fill("Erin's room");
+  await erin.getByRole("button", { name: /Start a room/ }).click();
   await erin.waitForURL(/\/r\/[A-Z0-9]{6}$/);
   const erinCode = erin.url().slice(-6);
-  await erin.goto(BASE);
-  await erin.getByTestId("rooms-heading").getByText("My rooms").waitFor();
-  // Match this run's room by its code (earlier local runs leave other "Erin's room"s behind).
-  await erin.getByRole("button", { name: `Erin's room ${erinCode.slice(0, 3)}-${erinCode.slice(3)}` }).waitFor();
-  ok(true, "signed-in user sees their rooms under My rooms");
+  const pretty = `${erinCode.slice(0, 3)}-${erinCode.slice(3)}`;
+  await erin.goto(`${BASE}/dashboard`);
+  const erinRow = erin.getByTestId("dash-room").filter({ hasText: pretty });
+  await erinRow.getByTestId("host-badge").waitFor();
+  ok(true, "sign-in lands on the dashboard, which lists the room with a Host badge");
+
+  // Moderation: Frank joins Erin's room; kick lets him rejoin, ban blocks him, unban lets him back.
+  const frank = await (await browser.newContext()).newPage();
+  await frank.goto(BASE);
+  await frank.evaluate(() => localStorage.setItem("huddle.name", "Frank"));
+  const frankJoin = () => frank.goto(`${BASE}/r/${erinCode}`);
+  await frankJoin();
+  await erin.goto(`${BASE}/r/${erinCode}`);
+  await erin.getByTestId("members").getByText("Frank").waitFor();
+  await erin.getByRole("button", { name: /Room settings/ }).click();
+  const party = erin.getByTestId("manage-party");
+  await party.getByRole("button", { name: "Kick" }).click();
+  await frank.getByTestId("room-closed").getByText("The host removed you from this room.").waitFor();
+  await frank.getByRole("button", { name: "Rejoin" }).click();
+  await erin.getByTestId("members").getByText("Frank").waitFor();
+  ok(true, "kick removes someone, and they can rejoin");
+  await party.getByRole("button", { name: "Ban" }).click();
+  await party.getByRole("button", { name: "Ban" }).click(); // confirm
+  await frank.getByTestId("room-closed").getByText("The host banned you from this room.").waitFor();
+  await frankJoin();
+  await frank.getByText("The host banned you from this room.").waitFor();
+  ok(true, "ban removes someone and blocks them from rejoining");
+  await party.getByTestId("party-bans").getByRole("button", { name: "Unban" }).click();
+  await party.getByTestId("party-bans").getByText("No one is banned.").waitFor();
+  await frankJoin();
+  await erin.getByTestId("members").getByText("Frank").waitFor();
+  ok(true, "unban lets them back in");
+  await erin.getByRole("button", { name: "Close settings" }).click();
+
+  // Delete: Erin deletes the room from her dashboard while Frank is inside.
+  await erin.goto(`${BASE}/dashboard`);
+  await erinRow.getByRole("button", { name: /Options for/ }).click();
+  await erin.getByRole("menuitem", { name: "Delete room" }).click();
+  await erin.getByLabel(/Type the code/).fill(erinCode);
+  await erin.getByTestId("confirm-delete").click();
+  await frank.getByTestId("room-closed").getByText("The host deleted this room.").waitFor();
+  await erinRow.waitFor({ state: "detached" });
+  const gone = await erin.evaluate(async (c) => (await fetch(`/api/rooms/${c}`)).status, erinCode);
+  ok(gone === 404, "deleting a room sends everyone out and erases it");
+
+  // Guests keep only their last 3 rooms on the landing page.
+  const gina = await (await browser.newContext()).newPage();
+  await gina.goto(BASE);
+  await gina.evaluate(() => {
+    const now = Date.now();
+    const list = ["AAAAA1", "AAAAA2", "AAAAA3", "AAAAA4", "AAAAA5"].map((code, i) => ({ code, title: `Room ${i + 1}`, at: now - i * 1000 }));
+    localStorage.setItem("huddle.recent", JSON.stringify(list));
+  });
+  await gina.reload();
+  await gina.getByTestId("recent-rooms").waitFor();
+  ok((await gina.getByTestId("recent-rooms").locator("li").count()) === 3, "guests see at most 3 recent rooms");
 
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
   const statuses = await alice.evaluate(async () => {

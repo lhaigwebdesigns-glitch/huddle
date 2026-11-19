@@ -18,7 +18,8 @@ import { FILE_INFO, isFileKind, type FileKind } from "../shared/files";
 import { colName } from "../shared/formula";
 import { chunkText, ftsQuery } from "../shared/knowledge";
 import { parseCsv } from "../shared/sheet-model";
-import type { Attachment } from "../shared/protocol";
+import type { Attachment, Ban, ModerationAction, PartyPerson } from "../shared/protocol";
+import { deleteBlob } from "./blobs";
 import { SKILLS } from "./ai/skills";
 import { runTool, TOOL_DEFS } from "./ai/tools";
 import { collectUrls, stripUnverifiedLinks } from "./ai/citations";
@@ -213,6 +214,91 @@ export class Room extends Server<Env> {
     return (await getServerByName(this.env.Doc, `${this.name}--${f.id}`)).submitForm(f.title, answers);
   }
 
+  // ---------- RPC: Manage party (host only) ----------
+
+  async isHost(uid: string) {
+    return !!this.settings && uid === this.settings.hostId;
+  }
+
+  /** Everyone who has been here, who's online now, and who's banned. */
+  async manageState(uid: string) {
+    if (!(await this.isHost(uid))) return null;
+    const online = new Set(this.members().map((m) => m.uid));
+    const people = Object.entries((await this.ctx.storage.get<Record<string, Omit<PartyPerson, "uid">>>("people")) ?? {})
+      .map(([id, p]) => ({ uid: id, ...p, online: online.has(id), isHost: id === this.settings!.hostId }))
+      .sort((a, b) => Number(b.online) - Number(a.online) || b.lastSeen - a.lastSeen)
+      .slice(0, 200);
+    return { title: this.settings!.title, people, bans: await this.bans() };
+  }
+
+  /** Kick (can rejoin with the code), ban (blocked from rejoining) or unban. Host only. */
+  async moderate(byUid: string, action: ModerationAction, target: string) {
+    if (!this.settings || byUid !== this.settings.hostId || !target || target === this.settings.hostId) return { ok: false };
+    const bans = await this.bans();
+    if (action === "unban") {
+      await this.ctx.storage.put("bans", bans.filter((b) => b.uid !== target));
+    } else {
+      if (action === "ban" && !bans.some((b) => b.uid === target)) {
+        const people = (await this.ctx.storage.get<Record<string, { name: string }>>("people")) ?? {};
+        bans.push({ uid: target, name: people[target]?.name ?? "Guest", at: Date.now() });
+        await this.ctx.storage.put("bans", bans.slice(-500));
+      }
+      for (const c of this.getConnections<ConnState>()) {
+        if (c.state?.uid !== target) continue;
+        this.send(c, { t: "kicked", reason: action });
+        c.close(4003, action === "ban" ? "The host banned you from this room." : "The host removed you from this room.");
+      }
+      this.broadcastPresence();
+    }
+    const now = await this.bans();
+    for (const c of this.getConnections<ConnState>()) if (c.state?.uid === this.settings.hostId) this.send(c, { t: "bans", bans: now });
+    return { ok: true };
+  }
+
+  /**
+   * Delete the room for good (host only): everyone inside is sent out, then every file,
+   * upload and message is erased. Returns false if `uid` isn't the host.
+   */
+  async destroy(uid: string) {
+    if (!(await this.isHost(uid))) return false;
+    for (const c of this.getConnections<ConnState>()) {
+      this.send(c, { t: "kicked", reason: "deleted" });
+      c.close(4003, "The host deleted this room.");
+    }
+    this.abort?.abort();
+    const files = this.files();
+    const uploads = new Set<string>();
+    const re = new RegExp(`/api/rooms/${this.name}/blobs/([a-z0-9]{16})`, "g");
+    for (const r of this.sql<{ content: string; meta: string | null }>`SELECT content, meta FROM messages`)
+      for (const m of `${r.content} ${r.meta ?? ""}`.matchAll(re)) uploads.add(m[1]);
+    await Promise.all([
+      ...files.map((f) => getServerByName(this.env.Doc, `${this.name}--${f.id}`).then((s) => s.wipe()).catch(() => {})),
+      ...[...uploads].map((id) => deleteBlob(this.env, `rooms/${this.name}/${id}`).catch(() => {})),
+    ]);
+    await this.ctx.storage.deleteAll();
+    this.settings = null;
+    return true;
+  }
+
+  private async bans(): Promise<Ban[]> {
+    let bans = await this.ctx.storage.get<Ban[]>("bans");
+    if (!bans) {
+      // Rooms from before kick/ban were split: their "kicked" list was really a ban list.
+      const old = (await this.ctx.storage.get<string[]>("kicked")) ?? [];
+      bans = old.map((uid) => ({ uid, name: "Guest", at: 0 }));
+      await this.ctx.storage.put("bans", bans);
+    }
+    return bans;
+  }
+
+  private async rememberPerson(uid: string, name: string, color: string) {
+    const people = (await this.ctx.storage.get<Record<string, Omit<PartyPerson, "uid">>>("people")) ?? {};
+    people[uid] = { name, color, lastSeen: Date.now() };
+    const ids = Object.keys(people);
+    if (ids.length > 500) for (const id of ids.sort((a, b) => people[a].lastSeen - people[b].lastSeen).slice(0, ids.length - 500)) delete people[id];
+    await this.ctx.storage.put("people", people);
+  }
+
   // ---------- connections ----------
 
   async onConnect(conn: Connection<ConnState>, ctx: ConnectionContext) {
@@ -225,14 +311,14 @@ export class Room extends Server<Env> {
 
     if (!this.settings) return conn.close(4004, "Room not found");
     if (!uid) return conn.close(4000, "Missing user id");
-    const kicked = (await this.ctx.storage.get<string[]>("kicked")) ?? [];
-    if (kicked.includes(uid)) return conn.close(4003, "You were removed from this room");
+    if ((await this.bans()).some((b) => b.uid === uid)) return conn.close(4003, "The host banned you from this room.");
     const known = (await this.ctx.storage.get<string[]>("members")) ?? [];
     if (this.settings.locked && uid !== this.settings.hostId && !known.includes(uid))
       return conn.close(4003, "This room is locked");
     if (this.members().filter((m) => m.uid !== uid).length >= MAX_ROOM_SIZE)
       return conn.close(4001, "Room is full");
     if (!known.includes(uid)) await this.ctx.storage.put("members", [...known, uid].slice(-500));
+    await this.rememberPerson(uid, name, color);
 
     conn.setState({ uid, name, color });
     const messages = this.loadMessages(200);
@@ -248,6 +334,7 @@ export class Room extends Server<Env> {
       providers: availableProviders(this.env).map((p) => `${p.label} · ${p.model}`),
       memory: (await this.ctx.storage.get<string[]>("memory")) ?? [],
     });
+    if (uid === this.settings.hostId) this.send(conn, { t: "bans", bans: await this.bans() });
     this.broadcastPresence();
   }
 
@@ -484,17 +571,10 @@ export class Room extends Server<Env> {
         this.ctx.waitUntil(getServerByName(this.env.Doc, `${this.name}--${f.id}`).then((s) => s.wipe()));
         return;
       }
-      case "kick": {
-        if (!isHost || msg.uid === me.uid) return;
-        const kicked = (await this.ctx.storage.get<string[]>("kicked")) ?? [];
-        await this.ctx.storage.put("kicked", [...kicked, msg.uid]);
-        for (const c of this.getConnections<ConnState>()) {
-          if (c.state?.uid === msg.uid) {
-            this.send(c, { t: "kicked" });
-            c.close(4003, "Removed by host");
-          }
-        }
-        this.broadcastPresence();
+      case "kick":
+      case "ban":
+      case "unban": {
+        await this.moderate(me.uid, msg.t, String(msg.uid ?? ""));
         return;
       }
       case "local_delta": {

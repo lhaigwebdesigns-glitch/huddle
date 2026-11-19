@@ -23,6 +23,12 @@ function apply() {
 }
 
 export function setTheme(t: ThemeChoice) {
+  // Crossfade the colors for a moment instead of snapping (skipped with reduced motion).
+  const root = document.documentElement;
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    root.classList.add("theme-fade");
+    setTimeout(() => root.classList.remove("theme-fade"), 300);
+  }
   try {
     if (t === "system") localStorage.removeItem(KEY);
     else localStorage.setItem(KEY, t);

@@ -5,6 +5,7 @@ import { History as HistoryIcon, X } from "lucide-react";
 import { FileIcon } from "./FileIcon";
 import type { Identity } from "../lib/identity";
 import { useYDoc, type YConn } from "../lib/useYDoc";
+import { LivePointers } from "./LivePointers";
 
 export interface EditorProps extends YConn {
   room: string;
@@ -84,7 +85,10 @@ function Body({ room, file, me }: { room: string; file: RoomFile; me: Identity }
   if (!conn) return <div className="p-6 text-sm text-fg-subtle">Connecting to {FILE_INFO[file.kind].label.toLowerCase()}…</div>;
   return (
     <Suspense fallback={<div className="p-6 text-sm text-fg-subtle">Loading editor…</div>}>
-      <Editor {...conn} room={room} file={file} me={me} synced={synced} />
+      {/* Whiteboards draw their own live pointers on the canvas. */}
+      <LivePointers provider={conn.provider} enabled={file.kind !== "whiteboard"}>
+        <Editor {...conn} room={room} file={file} me={me} synced={synced} />
+      </LivePointers>
     </Suspense>
   );
 }
@@ -107,7 +111,7 @@ export const FilePanel = memo(function FilePanel({
   useEffect(() => setTitle(file.title), [file.title]);
   useEffect(() => setHistory(false), [file.id]);
   return (
-    <div className="flex h-full min-h-0 flex-col bg-bg" data-testid="file-panel" data-kind={file.kind}>
+    <div className="panel-in flex h-full min-h-0 flex-col bg-bg" data-testid="file-panel" data-kind={file.kind}>
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
         <FileIcon kind={file.kind} className="h-4 w-4 shrink-0 text-fg-muted" />
         <input

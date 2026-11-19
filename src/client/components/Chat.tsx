@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { REACTIONS, type ChatMessage, type ClientMsg, type Member, type Poll, type RoomSettings } from "../../shared/protocol";
 import { Markdown } from "./Markdown";
+import { ThoughtBubble } from "./ThoughtBubble";
 import { expandSlash, matchSlash, parsePoll } from "../lib/slash";
 import type { Attachment } from "../../shared/protocol";
 import { uploadFile } from "../lib/uploads";
@@ -355,10 +356,9 @@ function MessageView({
               <Markdown text={m.content} />
             </div>
           ) : (
-            <div className="mt-2 flex gap-1" aria-label="AI is thinking">
-              <span className="typing-dot h-1.5 w-1.5 rounded-full bg-fg-subtle" />
-              <span className="typing-dot h-1.5 w-1.5 rounded-full bg-fg-subtle" />
-              <span className="typing-dot h-1.5 w-1.5 rounded-full bg-fg-subtle" />
+            <div className="mt-2">
+              {/* What it's doing (searching, reading…) shows in the step pills above. */}
+              <ThoughtBubble ariaLabel="AI is thinking" />
             </div>
           )
         ) : editing ? (
@@ -490,6 +490,8 @@ export function Chat({
   const isTyping = useRef(false);
   const streaming = messages.some((m) => m.meta?.streaming);
   const typers = members.filter((m) => m.typing && m.uid !== me.uid);
+  // Only messages that arrive while you're here animate in (not the history on load).
+  const openedAt = useRef(Date.now());
   const menu = matchSlash(text);
   const last = messages[messages.length - 1];
   const lastUserIdx = messages.map((m) => m.role).lastIndexOf("user");
@@ -589,7 +591,7 @@ export function Chat({
             const grouped =
               !newDay && !!prev && prev.authorId === m.authorId && m.createdAt - prev.createdAt < GROUP_MS && !prev.meta?.steps?.length && !m.meta?.steps?.length;
             return (
-              <div key={m.id}>
+              <div key={m.id} className={m.createdAt > openedAt.current ? "msg-in" : undefined}>
                 {newDay && (
                   <div className="mb-1 mt-6 text-center text-xs font-medium text-fg-subtle" role="separator">
                     {dayLabel(m.createdAt)}
@@ -608,6 +610,15 @@ export function Chat({
               </div>
             );
           })}
+          {typers.length > 0 && (
+            <div className="px-4 pt-3 sm:px-6">
+              <ThoughtBubble
+                people={typers}
+                ariaLabel={`${typers.map((t) => t.name).join(", ")} ${typers.length > 1 ? "are" : "is"} typing`}
+                label={typers.length === 1 ? `${typers[0].name} is typing` : `${typers.length} people are typing`}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -638,9 +649,7 @@ export function Chat({
           <div className="h-6 px-2 text-xs text-fg-subtle" aria-live="polite">
             {localProgress
               ? `Loading local model on your device… ${Math.round(localProgress.pct * 100)}%`
-              : typers.length > 0
-                ? `${typers.map((t) => t.name).join(", ")} ${typers.length > 1 ? "are" : "is"} typing…`
-                : settings.aiMode === "mention"
+              : settings.aiMode === "mention"
                   ? "Mention @ai to get the AI's attention"
                   : ""}
           </div>
