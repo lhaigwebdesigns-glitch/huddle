@@ -152,20 +152,32 @@ export default function Admin() {
   const [health, setHealth] = useState<any>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
+  /** Signed in with an admin Google account: no password needed (the session cookie is enough). */
+  const [viaAccount, setViaAccount] = useState<boolean | null>(null);
 
   const load = async (t = token) => {
     setErr("");
     setBusy(true);
     const res = await fetch("/api/admin/feedback", { headers: { "x-admin-token": t } }).catch(() => null);
     setBusy(false);
-    if (!res?.ok) return setErr("That admin password didn't work.");
-    sessionStorage.setItem("huddle.admin", t);
+    if (!res?.ok) return setErr(t ? "That admin password didn't work." : "");
+    if (t) sessionStorage.setItem("huddle.admin", t);
     setRows(((await res.json()) as { items: Row[] }).items);
   };
   useEffect(() => {
     document.title = "Admin · Huddle";
     fetch("/api/health").then((r) => r.json()).then(setHealth);
-    if (token) load();
+    fetch("/api/auth/me")
+      .then((r) => r.json() as Promise<{ isAdmin?: boolean }>)
+      .then((d) => {
+        setViaAccount(!!d.isAdmin);
+        if (d.isAdmin) load("");
+        else if (token) load();
+      })
+      .catch(() => {
+        setViaAccount(false);
+        if (token) load();
+      });
   }, []);
 
   const signOut = () => {
@@ -174,13 +186,16 @@ export default function Admin() {
     setToken("");
   };
 
+  if (!rows && (viaAccount === null || (viaAccount && busy)))
+    return <div className="flex min-h-full items-center justify-center text-sm text-fg-muted">Loading admin…</div>;
+
   if (!rows)
     return (
       <div className="flex min-h-full items-center justify-center bg-sidebar p-4">
         <form className="rise w-full max-w-sm rounded-[24px] border border-line bg-bg p-7 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.18)]" onSubmit={(e) => (e.preventDefault(), load())}>
           <Logo className="h-9 w-9" />
           <h1 className="mt-5 text-2xl font-semibold tracking-tight">Huddle admin</h1>
-          <p className="mt-1.5 text-[15px] text-fg-muted">Enter the admin password (the ADMIN_TOKEN secret).</p>
+          <p className="mt-1.5 text-[15px] text-fg-muted">Sign in with your admin Google account on the home page, or enter the admin password.</p>
           <Input type="password" autoFocus aria-label="Admin password" placeholder="Admin password" value={token} onChange={(e) => setToken(e.target.value)} className="mt-5 h-11" />
           {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">{err}</p>}
           <Button className="mt-3 w-full" size="lg" disabled={busy || !token}>{busy ? "Checking…" : "Open admin"}</Button>
@@ -201,7 +216,7 @@ export default function Admin() {
           <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-fg-muted">Admin</span>
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
-            <Button variant="ghost" size="sm" onClick={signOut}>Lock</Button>
+            {!viaAccount && <Button variant="ghost" size="sm" onClick={signOut}>Lock</Button>}
           </div>
         </div>
       </header>

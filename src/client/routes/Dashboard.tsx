@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   Plus,
   Search,
+  Shield,
   Trash2,
   Users,
   X,
@@ -172,6 +173,13 @@ export default function Dashboard() {
             </Button>
           </div>
         </form>
+        {account.isAdmin && (
+          <div className="mt-6 px-3">
+            <Link to="/admin" className="press flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-fg-muted hover:bg-accent-soft hover:text-fg" data-testid="sidebar-admin">
+              <Shield className="h-4 w-4" /> Admin
+            </Link>
+          </div>
+        )}
         <div className="mt-auto flex items-center justify-between gap-2 border-t border-line p-3">
           <AccountMenu user={account.user} providers={account.providers} />
           <ThemeToggle />

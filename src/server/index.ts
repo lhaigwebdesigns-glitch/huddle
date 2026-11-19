@@ -8,7 +8,7 @@ import { checkKeys } from "./keyhealth";
 import { bump, readStats } from "./stats";
 import { aiEnv, hasPc, pcAiEnabled, pcStatus, setPcAi, unloadPcModels } from "./ai/pc";
 import { clientIp, ensureTables, hit, usageByDay } from "./db";
-import { auth, currentUser, enabledProviders, rememberRoomForUser } from "./auth";
+import { auth, currentUser, enabledProviders, isAdminUser, rememberRoomForUser } from "./auth";
 import { MAX_UPLOAD_BYTES, safeFileName, UPLOAD_TYPES } from "../shared/knowledge";
 import { getBlob, putBlob } from "./blobs";
 
@@ -255,9 +255,18 @@ app.post("/api/feedback", async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * Admin access: the ADMIN_TOKEN password (x-admin-token header), or being signed in with a
+ * Google account listed in ADMIN_EMAILS. The session cookie is SameSite=Lax, so other sites
+ * can't make admin POSTs on your behalf.
+ */
+async function isAdmin(c: { env: Env; req: { raw: Request; header: (n: string) => string | undefined } }) {
+  if (c.env.ADMIN_TOKEN && (c.req.header("x-admin-token") ?? "") === c.env.ADMIN_TOKEN) return true;
+  return isAdminUser(c.env, await currentUser(c.env, c.req.raw));
+}
+
 app.get("/api/admin/feedback", async (c) => {
-  const token = c.req.header("x-admin-token") ?? "";
-  if (!c.env.ADMIN_TOKEN || token !== c.env.ADMIN_TOKEN) return c.json({ error: "unauthorized" }, 401);
+  if (!(await isAdmin(c))) return c.json({ error: "unauthorized" }, 401);
   if (!c.env.DB) return c.json({ items: [] });
   await ensureTables(c.env.DB);
   const { results } = await c.env.DB.prepare(`SELECT * FROM feedback ORDER BY id DESC LIMIT 500`).all();
@@ -265,24 +274,21 @@ app.get("/api/admin/feedback", async (c) => {
 });
 
 app.get("/api/admin/usage", async (c) => {
-  const token = c.req.header("x-admin-token") ?? "";
-  if (!c.env.ADMIN_TOKEN || token !== c.env.ADMIN_TOKEN) return c.json({ error: "unauthorized" }, 401);
+  if (!(await isAdmin(c))) return c.json({ error: "unauthorized" }, 401);
   if (!c.env.DB) return c.json({ rows: [], limit: 0 });
   return c.json({ rows: await usageByDay(c.env.DB), limit: Number(c.env.GLOBAL_DAILY_AI_LIMIT || 5000) });
 });
 
 // "Use my PC for AI" switch: off frees the GPU (for games) and skips Ollama everywhere.
-const isAdmin = (c: { env: Env; req: { header: (n: string) => string | undefined } }) =>
-  Boolean(c.env.ADMIN_TOKEN) && (c.req.header("x-admin-token") ?? "") === c.env.ADMIN_TOKEN;
 
 app.get("/api/admin/pc", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+  if (!(await isAdmin(c))) return c.json({ error: "unauthorized" }, 401);
   if (!hasPc(c.env)) return c.json({ configured: false, enabled: false, online: false, loaded: [] });
   return c.json({ configured: true, enabled: await pcAiEnabled(c.env), ...(await pcStatus(c.env)) });
 });
 
 app.post("/api/admin/pc", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+  if (!(await isAdmin(c))) return c.json({ error: "unauthorized" }, 401);
   if (!hasPc(c.env)) return c.json({ error: "No PC is connected to this site." }, 400);
   const { enabled } = (await c.req.json().catch(() => ({}))) as { enabled?: boolean };
   await setPcAi(c.env, enabled !== false);
@@ -293,7 +299,7 @@ app.post("/api/admin/pc", async (c) => {
 
 // Usage analytics for the admin dashboard (?days=7|30|90).
 app.get("/api/admin/stats", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+  if (!(await isAdmin(c))) return c.json({ error: "unauthorized" }, 401);
   if (!c.env.DB) return c.json({ error: "No database" }, 503);
   const days = [7, 30, 90].includes(Number(c.req.query("days"))) ? Number(c.req.query("days")) : 30;
   return c.json(await readStats(c.env, days));
@@ -301,7 +307,7 @@ app.get("/api/admin/stats", async (c) => {
 
 // Test every configured API key (results only; key values never leave the server).
 app.post("/api/admin/keys", async (c) => {
-  if (!isAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+  if (!(await isAdmin(c))) return c.json({ error: "unauthorized" }, 401);
   return c.json({ checks: await checkKeys(c.env, new URL(c.req.url).origin) });
 });
 

@@ -20,6 +20,7 @@ export function useAccount() {
   const [user, setUser] = useState<Account | null | undefined>(undefined); // undefined = loading
   const [providers, setProviders] = useState<string[]>([]);
   const [requireSignIn, setRequireSignIn] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => {
     fetch("/api/auth/providers")
       .then((r) => r.json() as Promise<{ providers: string[]; requireSignInToCreate: boolean }>)
@@ -29,7 +30,7 @@ export function useAccount() {
       })
       .catch(() => {});
     fetch("/api/auth/me", { credentials: "same-origin" })
-      .then((r) => r.json() as Promise<{ user: Account | null }>)
+      .then((r) => r.json() as Promise<{ user: Account | null; isAdmin?: boolean }>)
       .then((d) => {
         if (d.user) {
           try {
@@ -39,11 +40,12 @@ export function useAccount() {
             /* private mode */
           }
         }
+        setIsAdmin(!!d.isAdmin);
         setUser(d.user);
       })
       .catch(() => setUser(null));
   }, []);
-  return { user, providers, requireSignIn };
+  return { user, providers, requireSignIn, isAdmin };
 }
 
 export function signInUrl(provider: string, returnTo = location.pathname) {
