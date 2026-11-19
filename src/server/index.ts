@@ -4,6 +4,7 @@ import type { Env } from "./env";
 import { isValidCode, makeCode, normalizeCode } from "../shared/code";
 import { availableProviders } from "./ai/providers";
 import { SKILLS } from "./ai/skills";
+import { checkKeys } from "./keyhealth";
 import { aiEnv, hasPc, pcAiEnabled, pcStatus, setPcAi, unloadPcModels } from "./ai/pc";
 import { clientIp, ensureTables, hit, usageByDay } from "./db";
 import { auth, currentUser, enabledProviders, rememberRoomForUser } from "./auth";
@@ -251,6 +252,12 @@ app.post("/api/admin/pc", async (c) => {
   // Turning it off also empties the GPU now instead of after Ollama's 5-minute idle timer.
   const unloaded = enabled === false ? await unloadPcModels(c.env) : 0;
   return c.json({ configured: true, enabled: enabled !== false, unloaded, ...(await pcStatus(c.env)) });
+});
+
+// Test every configured API key (results only; key values never leave the server).
+app.post("/api/admin/keys", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+  return c.json({ checks: await checkKeys(c.env, new URL(c.req.url).origin) });
 });
 
 app.all("/api/*", (c) => c.json({ error: "not found" }, 404));

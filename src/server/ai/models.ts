@@ -128,7 +128,8 @@ export function getProviders(env: Env): ProviderConfig[] {
       baseUrl: "https://openrouter.ai/api/v1",
       apiKey: env.OPENROUTER_API_KEY,
       // Only ":free" variants cost $0. Check https://openrouter.ai/models?max_price=0
-      model: env.OPENROUTER_MODEL || "deepseek/deepseek-chat-v3.1:free",
+      // Free open models with tool support (Nov 2026): nemotron-3-ultra, gemma-4-31b-it.
+      model: env.OPENROUTER_MODEL || "nvidia/nemotron-3-ultra-550b-a55b:free",
       supportsTools: true,
       extraHeaders: { "X-Title": "Huddle" },
     });

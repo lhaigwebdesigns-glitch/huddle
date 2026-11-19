@@ -84,6 +84,65 @@ function PcSwitch({ token, onChanged }: { token: string; onChanged: () => void }
 }
 
 
+interface KeyCheck {
+  name: string;
+  what: string;
+  status: "ok" | "problem" | "warning" | "not set";
+  detail: string;
+}
+
+const STATUS_STYLE: Record<KeyCheck["status"], [string, string]> = {
+  ok: ["bg-emerald-500", "OK"],
+  warning: ["bg-amber-500", "Check"],
+  problem: ["bg-red-500", "Problem"],
+  "not set": ["bg-zinc-400", "Not set"],
+};
+
+/** Tests every API key the site has, on the server (key values are never sent to the browser). */
+function KeyHealth({ token }: { token: string }) {
+  const [checks, setChecks] = useState<KeyCheck[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async () => {
+    setBusy(true);
+    const r = await fetch("/api/admin/keys", { method: "POST", headers: { "x-admin-token": token } });
+    setBusy(false);
+    if (r.ok) setChecks(((await r.json()) as { checks: KeyCheck[] }).checks);
+  };
+  const problems = checks?.filter((c) => c.status === "problem").length ?? 0;
+  return (
+    <div className="mt-4 rounded-lg border border-line p-4" data-testid="key-health">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="font-medium">API keys</div>
+          <p className="mt-0.5 text-sm text-fg-muted">
+            {checks ? (problems ? `${problems} key${problems > 1 ? "s need" : " needs"} attention.` : "Every key that's set is working.") : "Test every key with a tiny request. Takes a few seconds."}
+          </p>
+        </div>
+        <button onClick={run} disabled={busy} className="press shrink-0 rounded-lg border border-line-strong px-3 py-1.5 text-sm font-medium hover:bg-accent-soft disabled:opacity-60">
+          {busy ? "Checking…" : checks ? "Check again" : "Check API keys"}
+        </button>
+      </div>
+      {checks && (
+        <ul className="mt-3 divide-y divide-line text-sm">
+          {checks.map((c) => (
+            <li key={c.name} className="flex items-start gap-3 py-2">
+              <span className={`mt-1.5 inline-block h-2 w-2 shrink-0 rounded-full ${STATUS_STYLE[c.status][0]}`} aria-hidden />
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="font-medium">{c.what}</span>
+                  <span className="font-mono text-xs text-fg-subtle">{c.name}</span>
+                </div>
+                <div className="text-fg-muted">{c.detail}</div>
+              </div>
+              <span className="shrink-0 text-xs font-medium text-fg-muted">{STATUS_STYLE[c.status][1]}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export default function Admin() {
   const [token, setToken] = useState(() => sessionStorage.getItem("huddle.admin") ?? "");
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -139,6 +198,7 @@ export default function Admin() {
         </form>
       )}
       {err && <p className="mt-2 text-red-600">{err}</p>}
+      {rows && <KeyHealth token={token} />}
       {rows && <PcSwitch token={token} onChanged={() => fetch("/api/health").then((r) => r.json()).then(setHealth)} />}
       {usage && (
         <div className="mt-4 rounded-lg border border-zinc-200 p-3 text-sm dark:border-zinc-800" data-testid="usage">
