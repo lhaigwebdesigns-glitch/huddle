@@ -154,6 +154,22 @@ app.get("/api/rooms/:code/blobs/:id", async (c) => {
   });
 });
 
+// ---- Profile pictures uploaded on the profile page (public, like any avatar URL) ----
+app.get("/api/avatars/:user/:id", async (c) => {
+  const { user, id } = c.req.param();
+  if (!/^[\w-]{6,32}$/.test(user) || !/^[a-z0-9]{1,16}$/.test(id)) return c.text("Not found", 404);
+  const obj = await getBlob(c.env, `avatars/${user}/${id}`);
+  if (!obj) return c.text("Not found", 404);
+  return new Response(obj.bytes as Uint8Array<ArrayBuffer>, {
+    headers: {
+      "content-type": obj.type,
+      "x-content-type-options": "nosniff",
+      "content-security-policy": "default-src 'none'; sandbox",
+      "cache-control": "public, max-age=31536000, immutable",
+    },
+  });
+});
+
 // ---- Custom assistants, shareable by a 6-character code ----
 
 app.post("/api/assistants", async (c) => {

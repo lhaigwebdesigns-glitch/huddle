@@ -135,7 +135,7 @@ export function useRoom(code: string, me: Identity) {
       host: location.host,
       party: "room",
       room: code,
-      query: { uid: me.uid, name: me.name, color: me.color },
+      query: { uid: me.uid, name: me.name, color: me.color, ...(me.avatar ? { avatar: me.avatar } : {}) },
     });
     sock.current = ws;
     let opened = false;
@@ -175,7 +175,7 @@ export function useRoom(code: string, me: Identity) {
       } else dispatch({ type: "status", status: opened ? "reconnecting" : "connecting" });
     });
     return () => ws.close();
-  }, [code, me.uid, me.name, me.color]);
+  }, [code, me.uid, me.name, me.color, me.avatar]);
 
   const send = useCallback((m: ClientMsg) => {
     if (m.t === "stop") interruptLocal();

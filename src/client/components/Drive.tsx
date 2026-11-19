@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { MoreHorizontal, Plus, Search } from "lucide-react";
 import type { ClientMsg, RoomFile } from "../../shared/protocol";
 import { CREATABLE_KINDS, FILE_INFO } from "../../shared/files";
@@ -7,11 +8,14 @@ import { FileIcon } from "./FileIcon";
 const MENU = "pop absolute z-30 mt-1 overflow-hidden rounded-xl border border-line bg-surface p-1 text-[13.5px] shadow-[0_16px_40px_-12px_rgba(0,0,0,0.25)]";
 const ITEM = "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-fg transition-colors hover:bg-surface-2";
 
-function useOutside(open: boolean, close: () => void) {
+function useOutside(open: boolean, close: () => void, also?: React.RefObject<HTMLElement | null>) {
   const ref = useRef<HTMLDivElement & HTMLLIElement>(null);
   useEffect(() => {
     if (!open) return;
-    const onDown = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && close();
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!ref.current?.contains(t) && !also?.current?.contains(t)) close();
+    };
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && close();
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -39,7 +43,25 @@ function FileRow({
   const [menu, setMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [name, setName] = useState(f.title);
-  const ref = useOutside(menu, () => setMenu(false));
+  const menuRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number; up: boolean } | null>(null);
+  const ref = useOutside(menu, () => setMenu(false), menuRef);
+  // The file list scrolls, so the menu is drawn above the page (a portal) next to its button,
+  // opening upward when there's no room below. Scrolling or resizing closes it.
+  useLayoutEffect(() => {
+    if (!menu || !btnRef.current) return setPos(null);
+    const r = btnRef.current.getBoundingClientRect();
+    const up = window.innerHeight - r.bottom < 150;
+    setPos(up ? { bottom: window.innerHeight - r.top + 4, left: Math.max(8, r.right - 160), up } : { top: r.bottom + 4, left: Math.max(8, r.right - 160), up });
+    const close = () => setMenu(false);
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [menu]);
   useEffect(() => setName(f.title), [f.title]);
   if (renaming)
     return (
@@ -74,15 +96,22 @@ function FileRow({
         <span className="truncate">{f.title}</span>
       </button>
       <button
+        ref={btnRef}
         onClick={() => setMenu((m) => !m)}
-        className={`absolute right-1 rounded-md p-1 text-fg-subtle hover:bg-surface-2 hover:text-fg focus:opacity-100 group-hover:opacity-100 ${menu ? "opacity-100" : "opacity-0"}`}
+        className={`absolute right-1 rounded-md p-1 text-fg-subtle hover:bg-surface-2 hover:text-fg focus:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100 ${menu ? "opacity-100" : "opacity-0"}`}
         aria-label={`More actions for ${f.title}`}
         aria-expanded={menu}
       >
         <MoreHorizontal className="h-4 w-4" />
       </button>
-      {menu && (
-        <div className={`${MENU} right-0 top-full w-40`} role="menu">
+      {menu && pos && createPortal(
+        <div
+          ref={menuRef}
+          className={MENU.replace("absolute", "fixed").replace("mt-1 ", "") + " w-40"}
+          style={{ top: pos.top, bottom: pos.bottom, left: pos.left, ["--origin" as string]: pos.up ? "bottom right" : "top right" }}
+          role="menu"
+          data-testid="file-menu"
+        >
           <button role="menuitem" className={ITEM} onClick={() => (setMenu(false), setRenaming(true))}>
             Rename
           </button>
@@ -101,7 +130,9 @@ function FileRow({
               Delete
             </button>
           )}
-        </div>
+          {!canDelete && <p className="px-2.5 py-1.5 text-xs text-fg-subtle">Only the host or the file's creator can delete it.</p>}
+        </div>,
+        document.body,
       )}
     </li>
   );

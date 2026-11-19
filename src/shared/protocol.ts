@@ -72,10 +72,16 @@ export interface Ban {
 }
 export type ModerationAction = "kick" | "ban" | "unban";
 
+/** Profile pictures rooms will show: ones uploaded to Huddle, or Google/GitHub's. */
+export const AVATAR_URL_RE =
+  /^(\/api\/avatars\/[\w-]{6,32}\/[a-z0-9]{1,16}|https:\/\/(lh\d\.googleusercontent\.com|avatars\.githubusercontent\.com)\/[\w\-./?=&%]{1,400})$/;
+
 export interface Member {
   uid: string;
   name: string;
   color: string;
+  /** Profile picture URL (signed-in people who have one). */
+  avatar?: string;
   isHost: boolean;
   typing?: boolean;
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getIdentity, setName } from "./identity";
+import { getIdentity, setAvatar, setColor, setName } from "./identity";
 
 export interface Account {
   id: string;
@@ -8,6 +8,14 @@ export interface Account {
   email: string | null;
   avatar: string | null;
   provider: string;
+  color?: string | null;
+}
+
+/** Copy the account's profile onto this device's room identity (name, color, picture). */
+export function applyProfile(u: Account) {
+  setName(u.name);
+  if (u.color) setColor(u.color);
+  setAvatar(u.avatar);
 }
 
 export const PROVIDER_LABEL: Record<string, string> = { github: "GitHub", google: "Google", dev: "Dev login (local only)" };
@@ -35,7 +43,7 @@ export function useAccount() {
         if (d.user) {
           try {
             if (localStorage.getItem("huddle.uid") !== d.user.uid) localStorage.setItem("huddle.uid", d.user.uid);
-            if (!getIdentity().name) setName(d.user.name);
+            applyProfile(d.user);
           } catch {
             /* private mode */
           }
@@ -45,7 +53,12 @@ export function useAccount() {
       })
       .catch(() => setUser(null));
   }, []);
-  return { user, providers, requireSignIn, isAdmin };
+  /** After a profile edit: update this page and this device's room identity. */
+  const update = (u: Account) => {
+    applyProfile(u);
+    setUser(u);
+  };
+  return { user, providers, requireSignIn, isAdmin, update };
 }
 
 export function signInUrl(provider: string, returnTo = location.pathname) {

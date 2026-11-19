@@ -8,6 +8,7 @@ import { FilePanel } from "../components/FilePanel";
 import { Drive } from "../components/Drive";
 import { setEditorSender } from "../lib/editorBridge";
 import { SettingsDialog } from "../components/SettingsDialog";
+import { PersonAvatar } from "../components/PersonAvatar";
 import { FeedbackDialog } from "../components/FeedbackDialog";
 import { ArrowLeft, ArrowRight, Check, Cloud, Copy, Cpu, DoorOpen, Link2, Menu, MessageSquare, Settings, Trash2, X } from "lucide-react";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
@@ -166,9 +167,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
         <ul className="mt-1.5 space-y-0.5" data-testid="members">
           {state.members.map((m) => (
             <li key={m.uid} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1 text-[13.5px] text-fg">
-              <span className="relative flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white" style={{ background: m.color }}>
-                {m.name.slice(0, 1).toUpperCase()}
-              </span>
+              <PersonAvatar name={m.name} color={m.color} avatar={m.avatar} className="h-5 w-5 text-[10px]" />
               <span className="truncate">
                 {m.name}
                 {m.uid === me.uid && <span className="text-fg-subtle"> (you)</span>}
