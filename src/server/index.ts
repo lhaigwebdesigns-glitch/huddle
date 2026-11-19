@@ -5,6 +5,7 @@ import { isValidCode, makeCode, normalizeCode } from "../shared/code";
 import { availableProviders } from "./ai/providers";
 import { SKILLS } from "./ai/skills";
 import { checkKeys } from "./keyhealth";
+import { bump, readStats } from "./stats";
 import { aiEnv, hasPc, pcAiEnabled, pcStatus, setPcAi, unloadPcModels } from "./ai/pc";
 import { clientIp, ensureTables, hit, usageByDay } from "./db";
 import { auth, currentUser, enabledProviders, rememberRoomForUser } from "./auth";
@@ -43,6 +44,7 @@ app.post("/api/rooms", async (c) => {
     const res = await stub.init(uid, String(body.title ?? ""));
     if (res.ok) {
       if (user) c.executionCtx.waitUntil(rememberRoomForUser(c.env, user, code, String(body.title ?? ""), true));
+      c.executionCtx.waitUntil(bump(c.env, "rooms_created"));
       return c.json({ code });
     }
   }
@@ -126,6 +128,7 @@ app.post("/api/rooms/:code/upload", async (c) => {
   const id = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
   const name = safeFileName(file.name);
   await putBlob(c.env, `rooms/${code}/${id}`, new Uint8Array(await file.arrayBuffer()), type, name);
+  c.executionCtx.waitUntil(bump(c.env, "uploads"));
   const text = String(form?.get("text") ?? "");
   let indexed = false;
   if (UPLOAD_TYPES[type].text && text.trim()) indexed = (await room.indexText(id, name, text)) > 0;
@@ -286,6 +289,14 @@ app.post("/api/admin/pc", async (c) => {
   // Turning it off also empties the GPU now instead of after Ollama's 5-minute idle timer.
   const unloaded = enabled === false ? await unloadPcModels(c.env) : 0;
   return c.json({ configured: true, enabled: enabled !== false, unloaded, ...(await pcStatus(c.env)) });
+});
+
+// Usage analytics for the admin dashboard (?days=7|30|90).
+app.get("/api/admin/stats", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+  if (!c.env.DB) return c.json({ error: "No database" }, 503);
+  const days = [7, 30, 90].includes(Number(c.req.query("days"))) ? Number(c.req.query("days")) : 30;
+  return c.json(await readStats(c.env, days));
 });
 
 // Test every configured API key (results only; key values never leave the server).
