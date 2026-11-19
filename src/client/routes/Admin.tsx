@@ -11,6 +11,79 @@ interface Row {
   page: string;
 }
 
+interface PcState {
+  configured: boolean;
+  enabled: boolean;
+  online: boolean;
+  loaded: string[];
+  unloaded?: number;
+}
+
+/** "Use my PC for AI": off skips Ollama everywhere and frees the GPU right away (for games). */
+function PcSwitch({ token, onChanged }: { token: string; onChanged: () => void }) {
+  const [pc, setPc] = useState<PcState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
+  const refresh = () =>
+    fetch("/api/admin/pc", { headers: { "x-admin-token": token } })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => d && setPc(d as PcState));
+  useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 15_000);
+    return () => clearInterval(t);
+  }, [token]);
+  if (!pc) return null;
+  if (!pc.configured)
+    return <p className="mt-4 rounded-lg border border-line p-3 text-sm text-fg-muted">No PC is connected to this site for AI.</p>;
+
+  const toggle = async () => {
+    setBusy(true);
+    setNote("");
+    const r = await fetch("/api/admin/pc", {
+      method: "POST",
+      headers: { "x-admin-token": token, "content-type": "application/json" },
+      body: JSON.stringify({ enabled: !pc.enabled }),
+    });
+    const d = (await r.json()) as PcState & { error?: string };
+    setBusy(false);
+    if (!r.ok) return setNote(d.error ?? "Couldn't change it.");
+    setPc(d);
+    setNote(d.enabled ? "On: rooms use your PC first." : d.unloaded ? "Off: the model was cleared from your graphics card." : "Off: rooms use the hosted free models.");
+    onChanged();
+  };
+  const status = !pc.online ? "PC offline (Ollama or the tunnel isn't running)" : pc.loaded.length ? `Online · ${pc.loaded.join(", ")} loaded in GPU memory` : "Online · nothing loaded in GPU memory";
+
+  return (
+    <div className="mt-4 flex items-start justify-between gap-4 rounded-lg border border-line p-4" data-testid="pc-switch">
+      <div>
+        <div className="font-medium">Use my PC for AI</div>
+        <p className="mt-0.5 text-sm text-fg-muted">
+          Turn off to game: Huddle stops sending prompts to Ollama and empties your graphics card. Rooms keep working on Groq and Cloudflare.
+        </p>
+        <p className="mt-2 flex items-center gap-2 text-xs text-fg-subtle">
+          <span className={`inline-block h-2 w-2 rounded-full ${pc.online ? "bg-emerald-500" : "bg-zinc-400"}`} aria-hidden />
+          {status}
+        </p>
+        {note && <p className="mt-1 text-xs text-fg-muted" role="status">{note}</p>}
+      </div>
+      <button
+        role="switch"
+        aria-checked={pc.enabled}
+        aria-label="Use my PC for AI"
+        disabled={busy}
+        onClick={toggle}
+        className={`press relative mt-1 h-7 w-12 shrink-0 rounded-full transition-colors disabled:opacity-60 ${pc.enabled ? "bg-primary" : "bg-zinc-300 dark:bg-zinc-700"}`}
+      >
+        <span
+          className={`absolute top-1 left-1 h-5 w-5 rounded-full shadow transition-transform duration-200 ease-out ${pc.enabled ? "translate-x-5 bg-primary-fg" : "bg-white"}`}
+        />
+      </button>
+    </div>
+  );
+}
+
+
 export default function Admin() {
   const [token, setToken] = useState(() => sessionStorage.getItem("huddle.admin") ?? "");
   const [rows, setRows] = useState<Row[] | null>(null);
@@ -66,6 +139,7 @@ export default function Admin() {
         </form>
       )}
       {err && <p className="mt-2 text-red-600">{err}</p>}
+      {rows && <PcSwitch token={token} onChanged={() => fetch("/api/health").then((r) => r.json()).then(setHealth)} />}
       {usage && (
         <div className="mt-4 rounded-lg border border-zinc-200 p-3 text-sm dark:border-zinc-800" data-testid="usage">
           <b>Cloud AI turns per day</b> <span className="text-zinc-500">(site-wide limit {usage.limit}/day; Local mode isn't counted)</span>

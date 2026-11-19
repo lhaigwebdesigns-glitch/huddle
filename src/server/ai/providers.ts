@@ -21,6 +21,125 @@ export interface ChatResult {
   toolCalls: ToolCall[];
   provider: string;
   model: string;
+  /**
+   * The model wrote a tool call as text after some prose had already streamed. `content` is
+   * now the reply without that text, so the caller should replace what it streamed this step.
+   */
+  replacedContent?: boolean;
+}
+
+/** Index just past the JSON object/array that starts at `start`, or -1 if it never closes. */
+function jsonEnd(s: string, start: number): number {
+  let depth = 0;
+  let inStr = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s[i];
+    if (inStr) {
+      if (c === "\\") i++;
+      else if (c === '"') inStr = false;
+    } else if (c === '"') inStr = true;
+    else if (c === "{" || c === "[") depth++;
+    else if (c === "}" || c === "]") {
+      depth--;
+      if (depth === 0) return i + 1;
+    }
+  }
+  return -1;
+}
+
+/** JSON.parse that also accepts raw line breaks/tabs inside strings, which models often write. */
+function parseLooseJson(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    let out = "";
+    let inStr = false;
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+      if (inStr && c === "\\") {
+        out += c + (text[++i] ?? "");
+        continue;
+      }
+      if (c === '"') inStr = !inStr;
+      out += inStr && c === "\n" ? "\\n" : inStr && c === "\r" ? "\\r" : inStr && c === "\t" ? "\\t" : c;
+    }
+    return JSON.parse(out);
+  }
+}
+
+function toCall(obj: any, toolNames: Set<string>, nameHint?: string): ToolCall | null {
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return null;
+  const name = nameHint ?? obj.name ?? obj.function?.name ?? obj.tool;
+  if (typeof name !== "string" || !toolNames.has(name)) return null;
+  const raw = nameHint ? obj : obj.parameters ?? obj.arguments ?? obj.function?.arguments ?? obj.args ?? obj.input ?? {};
+  const args = typeof raw === "string" ? raw : JSON.stringify(raw);
+  return { id: `text_${crypto.randomUUID().slice(0, 8)}`, type: "function", function: { name, arguments: args } };
+}
+
+/**
+ * Some open models (Llama 3.x especially) sometimes write a tool call into their reply as text,
+ * e.g. {"type": "function", "name": "create_doc", "parameters": {…}} or <function=create_doc>{…}</function>,
+ * instead of using the tool-calling API. Find those, turn them into real calls, and return the
+ * reply with them removed. Only names in `toolNames` count, so ordinary JSON in an answer is left alone.
+ */
+export function recoverTextToolCalls(content: string, toolNames: Set<string>): { calls: ToolCall[]; rest: string } {
+  const calls: ToolCall[] = [];
+  const cut: [number, number][] = [];
+  let i = 0;
+  while (i < content.length) {
+    const fn = /^<function=([\w-]+)>/.exec(content.slice(i, i + 80));
+    const brace = fn ? content.indexOf("{", i + fn[0].length) : content[i] === "{" ? i : -1;
+    if (brace < 0 || (fn && content.slice(i + fn[0].length, brace).trim())) {
+      i++;
+      continue;
+    }
+    const end = jsonEnd(content, brace);
+    if (end < 0) {
+      i++;
+      continue;
+    }
+    let obj: any;
+    try {
+      obj = parseLooseJson(content.slice(brace, end));
+    } catch {
+      i++;
+      continue;
+    }
+    const call = toCall(obj, toolNames, fn?.[1]);
+    if (!call) {
+      i = fn ? i + 1 : end;
+      continue;
+    }
+    calls.push(call);
+    let stop = end;
+    if (fn) {
+      const close = /^\s*<\/function>/.exec(content.slice(stop));
+      if (close) stop += close[0].length;
+    }
+    cut.push([i, stop]);
+    i = stop;
+  }
+  if (!calls.length) return { calls, rest: content };
+  let rest = "";
+  let from = 0;
+  for (const [a, b] of cut) {
+    rest += content.slice(from, a);
+    from = b;
+  }
+  rest += content.slice(from);
+  // Drop the wrappers the calls came in: code fences, <tool_call> tags, python_tag, separators.
+  rest = rest
+    .replace(/```(?:json)?\s*```/g, "")
+    .replace(/<\/?tool_call>|<\|python_tag\|>|<\|eom_id\|>|<\|eot_id\|>/g, "")
+    .replace(/^[\s;,]+$/gm, "")
+    .trim();
+  return { calls, rest };
+}
+
+/** Markers a text-written tool call can start with; while a reply could still be one, it's held back. */
+const CALL_STARTS = ["{", "```json", "<function=", "<tool_call>", "<|python_tag|>"];
+function mightBeCallStart(s: string) {
+  return CALL_STARTS.some((m) => m.startsWith(s.slice(0, m.length)));
 }
 interface ChatArgs {
   messages: LlmMessage[];
@@ -64,6 +183,8 @@ const sleep = (ms: number, signal?: AbortSignal) =>
 
 // Providers that hit a rate limit are skipped for a while (per isolate).
 const cooldownUntil = new Map<string, number>();
+/** Tests only: forget which providers are cooling down. */
+export const resetCooldowns = () => cooldownUntil.clear();
 
 export function availableProviders(env: Env): ProviderConfig[] {
   const now = Date.now();
@@ -78,17 +199,46 @@ export async function chatWithFallback(env: Env, args: ChatArgs): Promise<ChatRe
   const providers = availableProviders(env);
   if (providers.length === 0) throw new ProviderError("NO_PROVIDERS");
   let lastErr: unknown;
+  const toolNames = new Set((args.tools ?? []).map((t) => t.function.name));
   for (const p of providers) {
     let emitted = false;
-    const attempt = () =>
-      chatOnce(p, {
+    // A reply that opens like a tool call written as text is held back until it's complete,
+    // so the room never sees raw JSON; anything else streams as normal.
+    let held = "";
+    let holding = toolNames.size > 0;
+    const emit = (t: string) => {
+      emitted = true;
+      args.onDelta(t);
+    };
+    const attempt = async (): Promise<ChatResult> => {
+      held = "";
+      holding = toolNames.size > 0;
+      const res = await chatOnce(p, {
         ...args,
         tools: p.supportsTools ? args.tools : undefined,
         onDelta: (t) => {
-          emitted = true;
-          args.onDelta(t);
+          if (!holding) return emit(t);
+          held += t;
+          const s = held.trimStart();
+          if (!s || mightBeCallStart(s)) return;
+          holding = false;
+          emit(held);
         },
       });
+      if (res.toolCalls.length || !toolNames.size) {
+        if (holding && held) emit(held);
+        return res;
+      }
+      const { calls, rest } = recoverTextToolCalls(res.content, toolNames);
+      if (holding) {
+        // Nothing was shown yet: show only what's left once the calls are taken out.
+        if (rest) emit(rest);
+        return calls.length ? { ...res, content: rest, toolCalls: calls } : res;
+      }
+      if (!calls.length) return res;
+      console.warn(`provider ${p.id} wrote ${calls.length} tool call(s) as text; running them`);
+      return { ...res, content: rest, toolCalls: calls, replacedContent: true };
+    };
     try {
       try {
         return await attempt();
@@ -133,7 +283,8 @@ async function openAiCompatChat(p: ProviderConfig, args: ChatArgs): Promise<Chat
   const signal = timeout ? (args.signal ? AbortSignal.any([args.signal, timeout.signal]) : timeout.signal) : args.signal;
   let res: Response;
   try {
-    res = await fetch(`${p.baseUrl}/chat/completions`, {
+    const send = p.fetcher ? (url: string, init: RequestInit) => p.fetcher!.fetch(url, init) : fetch;
+    res = await send(`${p.baseUrl}/chat/completions`, {
       method: "POST",
       signal,
       headers: {

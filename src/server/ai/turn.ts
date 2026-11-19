@@ -24,6 +24,11 @@ export function withFreshNote(hist: LlmMessage[]): LlmMessage[] {
   return hist.map((m, i) => (i === lastUser ? { ...m, content: `${m.content}\n\n${note}` } : m));
 }
 
+/** "Do deep research", "cite the sites", "find reputable sources"… asks for the research workflow. */
+export function wantsResearch(text: string): boolean {
+  return /\b(deep[- ]?research|research|cite|citations?|cited|reputable|(?:with|find|list|include) (?:the |real )?sources)\b/i.test(text);
+}
+
 /**
  * Once a doc write has run, the model doesn't need its own Markdown echoed back on the next
  * step; replacing it with a short note saves ~1–2k tokens per step on free per-minute limits.

@@ -4,6 +4,7 @@ import type { Env } from "./env";
 import { isValidCode, makeCode, normalizeCode } from "../shared/code";
 import { availableProviders } from "./ai/providers";
 import { SKILLS } from "./ai/skills";
+import { aiEnv, hasPc, pcAiEnabled, pcStatus, setPcAi, unloadPcModels } from "./ai/pc";
 import { clientIp, ensureTables, hit, usageByDay } from "./db";
 import { auth, currentUser, enabledProviders, rememberRoomForUser } from "./auth";
 import { MAX_UPLOAD_BYTES, safeFileName, UPLOAD_TYPES } from "../shared/knowledge";
@@ -14,10 +15,10 @@ export { Doc } from "./doc";
 
 const app = new Hono<{ Bindings: Env }>();
 
-app.get("/api/health", (c) =>
+app.get("/api/health", async (c) =>
   c.json({
     ok: true,
-    providers: availableProviders(c.env).map((p) => ({ id: p.id, label: p.label, model: p.model })),
+    providers: availableProviders(await aiEnv(c.env)).map((p) => ({ id: p.id, label: p.label, model: p.model })),
     search: [c.env.TAVILY_API_KEY && "tavily", c.env.JINA_API_KEY && "jina", "duckduckgo (best effort)"].filter(Boolean).join(" → "),
     skills: SKILLS.length,
   }),
@@ -230,6 +231,26 @@ app.get("/api/admin/usage", async (c) => {
   if (!c.env.ADMIN_TOKEN || token !== c.env.ADMIN_TOKEN) return c.json({ error: "unauthorized" }, 401);
   if (!c.env.DB) return c.json({ rows: [], limit: 0 });
   return c.json({ rows: await usageByDay(c.env.DB), limit: Number(c.env.GLOBAL_DAILY_AI_LIMIT || 5000) });
+});
+
+// "Use my PC for AI" switch: off frees the GPU (for games) and skips Ollama everywhere.
+const isAdmin = (c: { env: Env; req: { header: (n: string) => string | undefined } }) =>
+  Boolean(c.env.ADMIN_TOKEN) && (c.req.header("x-admin-token") ?? "") === c.env.ADMIN_TOKEN;
+
+app.get("/api/admin/pc", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+  if (!hasPc(c.env)) return c.json({ configured: false, enabled: false, online: false, loaded: [] });
+  return c.json({ configured: true, enabled: await pcAiEnabled(c.env), ...(await pcStatus(c.env)) });
+});
+
+app.post("/api/admin/pc", async (c) => {
+  if (!isAdmin(c)) return c.json({ error: "unauthorized" }, 401);
+  if (!hasPc(c.env)) return c.json({ error: "No PC is connected to this site." }, 400);
+  const { enabled } = (await c.req.json().catch(() => ({}))) as { enabled?: boolean };
+  await setPcAi(c.env, enabled !== false);
+  // Turning it off also empties the GPU now instead of after Ollama's 5-minute idle timer.
+  const unloaded = enabled === false ? await unloadPcModels(c.env) : 0;
+  return c.json({ configured: true, enabled: enabled !== false, unloaded, ...(await pcStatus(c.env)) });
 });
 
 app.all("/api/*", (c) => c.json({ error: "not found" }, 404));

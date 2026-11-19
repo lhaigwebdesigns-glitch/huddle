@@ -11,8 +11,8 @@ import {
   type Source,
   type Step,
 } from "../shared/protocol";
-import { availableProviders, chatWithFallback, ProviderError, type LlmMessage } from "./ai/providers";
-import { compactDocArgs, withFreshNote } from "./ai/turn";
+import { availableProviders, chatWithFallback, ProviderError, type LlmMessage, type ToolCall } from "./ai/providers";
+import { compactDocArgs, wantsResearch, withFreshNote } from "./ai/turn";
 import { aiTurnsToday, countAiTurn } from "./db";
 import { FILE_INFO, isFileKind, type FileKind } from "../shared/files";
 import { colName } from "../shared/formula";
@@ -23,6 +23,7 @@ import { SKILLS } from "./ai/skills";
 import { runTool, TOOL_DEFS } from "./ai/tools";
 import { collectUrls, stripUnverifiedLinks } from "./ai/citations";
 import { getProviders as getProvidersConfigured } from "./ai/models";
+import { aiEnv } from "./ai/pc";
 
 const MAX_FILES = 100;
 
@@ -48,6 +49,25 @@ const MAX_STEPS = 6;
 /** Deep Research mode: room for several searches and page reads before writing. */
 const DEEP_RESEARCH_STEPS = 15;
 const MAX_MEMORY_FACTS = 50;
+
+/**
+ * Before a doc is written, unlink any URL the model didn't actually see in a tool result or a
+ * message, so a doc's Sources list never links to an invented page.
+ */
+function unlinkInventedUrls(call: ToolCall, llm: LlmMessage[], sources: Source[]) {
+  if (!/^(create|edit)_doc$/.test(call.function.name)) return;
+  try {
+    const args = JSON.parse(call.function.arguments);
+    if (typeof args.markdown !== "string") return;
+    const allowed = collectUrls([...llm.filter((m) => m.role !== "system").map((m) => m.content), ...sources.map((x) => x.url)]);
+    const { text, removed } = stripUnverifiedLinks(args.markdown, allowed);
+    if (!removed.length) return;
+    console.warn(`unlinked ${removed.length} unverified URL(s) in ${call.function.name}`, removed);
+    call.function.arguments = JSON.stringify({ ...args, markdown: text });
+  } catch {
+    // malformed arguments: the tool reports that itself
+  }
+}
 const HISTORY_FOR_AI = 30;
 const USER_AI_PER_HOUR = 40;
 
@@ -609,9 +629,12 @@ export class Room extends Server<Env> {
       } else {
         this.abort = new AbortController();
         const memory = (await this.ctx.storage.get<string[]>("memory")) ?? [];
-        llm = [{ role: "system", content: this.systemPrompt(true, memory) }, ...withFreshNote(this.history())];
+        // Asking for research ("deep research… cite the sites") turns research on for this turn,
+        // even when the room's Deep Research switch is off.
+        const research = s.deepResearch || wantsResearch(this.lastUserText());
+        llm = [{ role: "system", content: this.systemPrompt(true, memory, research) }, ...withFreshNote(this.history())];
         let emptyRetried = false;
-        const maxSteps = s.deepResearch ? DEEP_RESEARCH_STEPS : MAX_STEPS;
+        const maxSteps = research ? DEEP_RESEARCH_STEPS : MAX_STEPS;
         // Only offer tools that can do something in this room (every definition costs tokens).
         const hasKnowledge = (this.sql<{ n: number }>`SELECT COUNT(*) AS n FROM knowledge`[0]?.n ?? 0) > 0;
         const hasImages = this.loadMessages(HISTORY_FOR_AI).some((m) => m.meta?.attachments?.some((a) => a.type.startsWith("image/")));
@@ -621,16 +644,21 @@ export class Room extends Server<Env> {
             (t.function.name !== "search_knowledge" || hasKnowledge) &&
             (t.function.name !== "describe_image" || hasImages),
         );
+        // Skips the host PC when "Use my PC for AI" is off in /admin.
+        const routerEnv = await aiEnv(this.env);
         for (let i = 0; i < maxSteps; i++) {
           const tCall = Date.now();
+          const stepStart = msg.content.length;
           if (this.env.DEBUG_AI) console.log(`[ai] step ${i} calling model at +${tCall - msg.createdAt}ms`);
-          const res = await chatWithFallback(this.env, {
+          const res = await chatWithFallback(routerEnv, {
             messages: llm,
             tools,
             signal: this.abort.signal,
             onDelta,
           });
           msg.meta!.model = `${res.provider} · ${res.model}`;
+          // The model wrote a tool call as text mid-reply: drop that text (ai_done resyncs everyone).
+          if (res.replacedContent) msg.content = msg.content.slice(0, stepStart) + res.content;
           if (this.env.DEBUG_AI)
             console.log(`[ai] step ${i} ${res.model} took ${Date.now() - tCall}ms: ${res.content.length} chars, tools: ${res.toolCalls.map((c) => `${c.function.name}(${c.function.arguments.slice(0, 400)})`).join(" | ") || "none"}`);
           if (!res.toolCalls.length && !res.content.trim() && !emptyRetried) {
@@ -643,6 +671,7 @@ export class Room extends Server<Env> {
           if (res.content && !/\s$/.test(msg.content)) onDelta("\n\n");
           llm.push({ role: "assistant", content: res.content || null, tool_calls: res.toolCalls });
           for (const call of res.toolCalls) {
+            unlinkInventedUrls(call, llm, sources);
             const output = await runTool(call.function.name, call.function.arguments, {
               env: this.env,
               roomCode: this.name,
@@ -771,7 +800,12 @@ export class Room extends Server<Env> {
     });
   }
 
-  private systemPrompt(withTools: boolean, memory: string[] = []) {
+  /** Text of the newest message from a person, for spotting requests like "do deep research". */
+  private lastUserText(): string {
+    return this.history().filter((m) => m.role === "user").at(-1)?.content ?? "";
+  }
+
+  private systemPrompt(withTools: boolean, memory: string[] = [], research = false) {
     const s = this.settings!;
     const people = [...new Set(this.members().map((m) => m.name))].join(", ") || "nobody";
     const files = this.files();
@@ -797,6 +831,7 @@ export class Room extends Server<Env> {
         `You have tools: web_search and fetch_url for current or factual info, tools that create and edit live files everyone in the room co-edits, and load_skill for expert playbooks.`,
         `Use web_search for anything recent or time-sensitive (news, prices, releases, "this week"). Don't use tools for small talk.`,
         `Citations: only link URLs that appear word-for-word in your tool results. Never build, guess or "fix" a URL, and only call fetch_url on URLs from search results or from the users. If you can't find a source, say so.`,
+        `Call tools only through the tool-calling interface. Never write a tool call (JSON, function tags) into your reply text.`,
         `Files you can make (pick the one that fits the request):`,
         ...FILE_GUIDE,
         `After making or changing a file, reply in chat with one or two sentences about what you did; don't repeat its content. To change an existing file, use its edit tool (read it first when rewriting).`,
@@ -804,7 +839,7 @@ export class Room extends Server<Env> {
         `Before specialised tasks, call load_skill with the most relevant skill. Available skills:`,
         ...skills.map((k) => `- ${k.name}: ${k.description}`),
       );
-      if (s.deepResearch)
+      if (research)
         volatile.push(
           `DEEP RESEARCH MODE is on. For questions that need research: load the deep-research skill, run several web_search queries from different angles, read the best 3–6 sources with fetch_url, then write the findings as a doc with create_doc (summary first, then sections, then a Sources list of the real URLs you read). In chat, give a short summary and point to the doc. Small talk still gets a normal short reply.`,
         );

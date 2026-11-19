@@ -21,16 +21,25 @@ export interface Env {
   AI?: Ai;
   /**
    * Self-hosted model via Ollama on your own GPU: no rate or token limits. Local dev can use
-   * http://localhost:11434; a deployed Worker needs a public tunnel URL to your PC.
+   * http://localhost:11434; the deployed Worker uses OLLAMA_VPC below instead.
    */
   OLLAMA_BASE_URL?: string;
+  /**
+   * Private link to Ollama on your PC (Workers VPC over a Cloudflare Tunnel). It has no public
+   * address: only this Worker can reach it. Used when OLLAMA_BASE_URL isn't set.
+   */
+  OLLAMA_VPC?: Fetcher;
   OLLAMA_MODEL?: string;
   /** reasoning_effort for the self-hosted model (default "none" = fast, no hidden thinking). */
   OLLAMA_REASONING?: string;
   /** Shared secret sent as a Bearer token; required in front of a public tunnel. */
   OLLAMA_API_KEY?: string;
   GROQ_API_KEY?: string;
+  /** Third Groq model (own free rate-limit bucket); "off" disables. */
+  GROQ_THIRD_MODEL?: string;
   CEREBRAS_API_KEY?: string;
+  NVIDIA_API_KEY?: string;
+  NVIDIA_MODEL?: string;
   OPENROUTER_API_KEY?: string;
   TAVILY_API_KEY?: string;
   JINA_API_KEY?: string;
