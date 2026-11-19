@@ -29,3 +29,18 @@ describe("auth helpers", () => {
     expect(await sha256("abc")).toBe("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
   });
 });
+
+describe("admin by Google account", () => {
+  it("only a Google sign-in with a listed email is an admin", async () => {
+    const { isAdminUser } = await import("./auth");
+    const env = { ADMIN_EMAILS: "Owner@Example.com, second@example.com" } as any;
+    const user = (provider: string, email: string | null) => ({ id: "1", uid: "u", name: "n", avatar: null, provider, email });
+    expect(isAdminUser(env, user("google", "owner@example.com"))).toBe(true);
+    expect(isAdminUser(env, user("google", "second@example.com"))).toBe(true);
+    expect(isAdminUser(env, user("github", "owner@example.com"))).toBe(false);
+    expect(isAdminUser(env, user("google", "someone@example.com"))).toBe(false);
+    expect(isAdminUser(env, user("google", null))).toBe(false);
+    expect(isAdminUser({} as any, user("google", "owner@example.com"))).toBe(false);
+    expect(isAdminUser(env, null)).toBe(false);
+  });
+});

@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { Button, Input, Logo, ThemeToggle } from "../components/ui";
+import { AdminAnalytics } from "../components/AdminAnalytics";
 
 interface Row {
   id: number;
@@ -148,108 +151,137 @@ export default function Admin() {
   const [rows, setRows] = useState<Row[] | null>(null);
   const [health, setHealth] = useState<any>(null);
   const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  /** Signed in with an admin Google account: no password needed (the session cookie is enough). */
+  const [viaAccount, setViaAccount] = useState<boolean | null>(null);
 
   const load = async (t = token) => {
     setErr("");
-    const res = await fetch("/api/admin/feedback", { headers: { "x-admin-token": t } });
-    if (!res.ok) return setErr("Wrong admin token (set ADMIN_TOKEN as a secret on the server).");
-    sessionStorage.setItem("huddle.admin", t);
+    setBusy(true);
+    const res = await fetch("/api/admin/feedback", { headers: { "x-admin-token": t } }).catch(() => null);
+    setBusy(false);
+    if (!res?.ok) return setErr(t ? "That admin password didn't work." : "");
+    if (t) sessionStorage.setItem("huddle.admin", t);
     setRows(((await res.json()) as { items: Row[] }).items);
-    const u = await fetch("/api/admin/usage", { headers: { "x-admin-token": t } });
-    if (u.ok) setUsage(await u.json());
   };
-  const [usage, setUsage] = useState<{ rows: { day: string; provider: string; turns: number }[]; limit: number } | null>(null);
-  const byDay = new Map<string, { total: number; parts: string[] }>();
-  for (const r of usage?.rows ?? []) {
-    const d = byDay.get(r.day) ?? { total: 0, parts: [] };
-    d.total += r.turns;
-    d.parts.push(`${r.provider} ${r.turns}`);
-    byDay.set(r.day, d);
-  }
   useEffect(() => {
+    document.title = "Admin · Huddle";
     fetch("/api/health").then((r) => r.json()).then(setHealth);
-    if (token) load();
+    fetch("/api/auth/me")
+      .then((r) => r.json() as Promise<{ isAdmin?: boolean }>)
+      .then((d) => {
+        setViaAccount(!!d.isAdmin);
+        if (d.isAdmin) load("");
+        else if (token) load();
+      })
+      .catch(() => {
+        setViaAccount(false);
+        if (token) load();
+      });
   }, []);
 
-  const up = rows?.filter((r) => r.rating === 1).length ?? 0;
-  const down = rows?.filter((r) => r.rating === -1).length ?? 0;
+  const signOut = () => {
+    sessionStorage.removeItem("huddle.admin");
+    setRows(null);
+    setToken("");
+  };
+
+  if (!rows && (viaAccount === null || (viaAccount && busy)))
+    return <div className="flex min-h-full items-center justify-center text-sm text-fg-muted">Loading admin…</div>;
+
+  if (!rows)
+    return (
+      <div className="flex min-h-full items-center justify-center bg-sidebar p-4">
+        <form className="rise w-full max-w-sm rounded-[24px] border border-line bg-bg p-7 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.18)]" onSubmit={(e) => (e.preventDefault(), load())}>
+          <Logo className="h-9 w-9" />
+          <h1 className="mt-5 text-2xl font-semibold tracking-tight">Huddle admin</h1>
+          <p className="mt-1.5 text-[15px] text-fg-muted">Sign in with your admin Google account on the home page, or enter the admin password.</p>
+          <Input type="password" autoFocus aria-label="Admin password" placeholder="Admin password" value={token} onChange={(e) => setToken(e.target.value)} className="mt-5 h-11" />
+          {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">{err}</p>}
+          <Button className="mt-3 w-full" size="lg" disabled={busy || !token}>{busy ? "Checking…" : "Open admin"}</Button>
+        </form>
+      </div>
+    );
+
+  const up = rows.filter((r) => r.rating === 1).length;
+  const down = rows.filter((r) => r.rating === -1).length;
 
   return (
-    <div className="mx-auto max-w-5xl p-6">
-      <h1 className="text-2xl font-bold">Huddle admin</h1>
-      {health && (
-        <div className="mt-3 rounded-lg border border-zinc-200 p-3 text-sm dark:border-zinc-800">
-          <b>AI providers:</b>{" "}
-          {health.providers.length ? health.providers.map((p: any) => `${p.label} (${p.model})`).join(" → ") : "none configured"}
-          <br />
-          <b>Search:</b> {health.search} · <b>Skills:</b> {health.skills}
-        </div>
-      )}
-      {!rows && (
-        <form className="mt-4 flex gap-2" onSubmit={(e) => (e.preventDefault(), load())}>
-          <input
-            type="password"
-            placeholder="Admin token"
-            value={token}
-            onChange={(e) => setToken(e.target.value)}
-            className="rounded-lg border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"
-          />
-          <button className="rounded-lg bg-primary px-4 py-2 text-primary-fg">Open</button>
-        </form>
-      )}
-      {err && <p className="mt-2 text-red-600">{err}</p>}
-      {rows && <KeyHealth token={token} />}
-      {rows && <PcSwitch token={token} onChanged={() => fetch("/api/health").then((r) => r.json()).then(setHealth)} />}
-      {usage && (
-        <div className="mt-4 rounded-lg border border-zinc-200 p-3 text-sm dark:border-zinc-800" data-testid="usage">
-          <b>Cloud AI turns per day</b> <span className="text-zinc-500">(site-wide limit {usage.limit}/day; Local mode isn't counted)</span>
-          {byDay.size === 0 ? (
-            <p className="mt-1 text-zinc-500">No AI turns recorded yet.</p>
-          ) : (
-            <ul className="mt-2 space-y-1">
-              {[...byDay].map(([day, d]) => (
-                <li key={day} className="flex items-center gap-3">
-                  <span className="w-24 font-mono text-xs">{day}</span>
-                  <span className="h-2 rounded bg-primary" style={{ width: `${Math.max(2, Math.min(100, (d.total / usage.limit) * 100))}%`, maxWidth: "40%" }} />
-                  <span className="font-medium">{d.total}</span>
-                  <span className="truncate text-xs text-zinc-500">{d.parts.join(" · ")}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-      {rows && (
-        <>
-          <p className="mt-4 text-sm text-zinc-500">
-            {rows.length} feedback items · 👍 {up} · 👎 {down}
-          </p>
-          <div className="mt-2 overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="text-xs uppercase text-zinc-500">
-                <tr>
-                  <th className="p-2">When</th>
-                  <th className="p-2">Who</th>
-                  <th className="p-2">Rating</th>
-                  <th className="p-2">Comment</th>
-                  <th className="p-2">AI reply excerpt</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.id} className="border-t border-zinc-200 align-top dark:border-zinc-800">
-                    <td className="whitespace-nowrap p-2">{new Date(r.created_at).toLocaleString()}</td>
-                    <td className="p-2">{r.name} <span className="font-mono text-xs text-zinc-500">{r.room}</span></td>
-                    <td className="p-2">{r.rating === 1 ? "👍" : r.rating === -1 ? "👎" : "💬"}</td>
-                    <td className="max-w-xs p-2">{r.comment}</td>
-                    <td className="max-w-sm p-2 text-zinc-500">{r.excerpt}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <div className="min-h-full bg-bg">
+      <header className="glass sticky top-0 z-30 border-b border-line/60 bg-bg/80 backdrop-blur-xl">
+        <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
+          <Link to="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
+            <Logo className="h-6 w-6" /> Huddle
+          </Link>
+          <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-fg-muted">Admin</span>
+          <div className="ml-auto flex items-center gap-2">
+            <ThemeToggle />
+            {!viaAccount && <Button variant="ghost" size="sm" onClick={signOut}>Lock</Button>}
           </div>
-        </>
-      )}
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-7xl px-4 pb-20 pt-6 sm:px-6">
+        <AdminAnalytics token={token} />
+
+        <h2 className="mt-12 text-lg font-semibold tracking-tight">Setup</h2>
+        {health && (
+          <div className="mt-4 rounded-lg border border-line p-4 text-sm">
+            <div className="font-medium">AI line-up</div>
+            <ol className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+              {health.providers.length ? (
+                health.providers.map((p: any, i: number) => (
+                  <li key={p.id} className="flex items-center gap-1.5">
+                    {i > 0 && <span className="text-fg-subtle">→</span>}
+                    <span className="rounded-full border border-line px-2 py-0.5">{p.label === "Self-hosted" ? "Your PC" : p.label} <span className="text-fg-subtle">{p.model}</span></span>
+                  </li>
+                ))
+              ) : (
+                <li className="text-fg-muted">No AI configured.</li>
+              )}
+            </ol>
+            <p className="mt-2 text-xs text-fg-subtle">Web search: {health.search} · Skills: {health.skills}</p>
+          </div>
+        )}
+        <div className="grid gap-x-4 lg:grid-cols-2">
+          <KeyHealth token={token} />
+          <PcSwitch token={token} onChanged={() => fetch("/api/health").then((r) => r.json()).then(setHealth)} />
+        </div>
+
+        <h2 className="mt-12 text-lg font-semibold tracking-tight">Feedback</h2>
+        <p className="mt-1 text-sm text-fg-muted">
+          {rows.length} items · 👍 {up} · 👎 {down}
+        </p>
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-line">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-sidebar text-xs uppercase tracking-wide text-fg-subtle">
+              <tr>
+                <th className="p-3 font-medium">When</th>
+                <th className="p-3 font-medium">Who</th>
+                <th className="p-3 font-medium">Rating</th>
+                <th className="p-3 font-medium">Comment</th>
+                <th className="p-3 font-medium">AI reply excerpt</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="p-6 text-center text-fg-subtle">No feedback yet.</td>
+                </tr>
+              )}
+              {rows.map((r) => (
+                <tr key={r.id} className="border-t border-line align-top">
+                  <td className="whitespace-nowrap p-3 text-fg-muted">{new Date(r.created_at).toLocaleString()}</td>
+                  <td className="p-3">{r.name} <span className="font-mono text-xs text-fg-subtle">{r.room}</span></td>
+                  <td className="p-3">{r.rating === 1 ? "👍" : r.rating === -1 ? "👎" : "💬"}</td>
+                  <td className="max-w-xs p-3">{r.comment}</td>
+                  <td className="max-w-sm p-3 text-fg-muted">{r.excerpt}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </main>
     </div>
   );
 }

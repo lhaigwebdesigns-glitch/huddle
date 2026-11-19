@@ -124,6 +124,11 @@ export default function Home() {
             <a href="#faq" className="transition-colors hover:text-fg">FAQ</a>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            {account.isAdmin && (
+              <Link to="/admin" className="press rounded-full px-3 py-1.5 text-sm font-medium text-fg-muted hover:bg-accent-soft hover:text-fg" data-testid="nav-admin">
+                Admin
+              </Link>
+            )}
             {account.user && (
               <Link to="/dashboard" className="press hidden rounded-full px-3 py-1.5 text-sm font-medium text-fg-muted hover:bg-accent-soft hover:text-fg sm:block" data-testid="nav-dashboard">
                 Dashboard

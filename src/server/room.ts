@@ -20,6 +20,7 @@ import { chunkText, ftsQuery } from "../shared/knowledge";
 import { parseCsv } from "../shared/sheet-model";
 import type { Attachment, Ban, ModerationAction, PartyPerson } from "../shared/protocol";
 import { deleteBlob } from "./blobs";
+import { bump, bumpLater, markActive } from "./stats";
 import { SKILLS } from "./ai/skills";
 import { runTool, TOOL_DEFS } from "./ai/tools";
 import { collectUrls, stripUnverifiedLinks } from "./ai/citations";
@@ -321,6 +322,8 @@ export class Room extends Server<Env> {
     await this.rememberPerson(uid, name, color);
 
     conn.setState({ uid, name, color });
+    this.ctx.waitUntil(markActive(this.env, uid));
+    bumpLater(this.env, "joins", 1, (p) => this.ctx.waitUntil(p));
     const messages = this.loadMessages(200);
     if (this.streaming) messages.push(this.streaming);
     this.send(conn, {
@@ -376,6 +379,9 @@ export class Room extends Server<Env> {
         };
         this.saveMessage(m);
         this.broadcastMsg({ t: "msg", message: m });
+        const wait = (p: Promise<unknown>) => this.ctx.waitUntil(p);
+        bumpLater(this.env, "messages", 1, wait);
+        bumpLater(this.env, `msg_h${String(new Date().getUTCHours()).padStart(2, "0")}`, 1, wait);
         if (me.typing) {
           conn.setState({ ...me, typing: false });
           this.broadcastPresence();
@@ -654,6 +660,7 @@ export class Room extends Server<Env> {
 
   private async aiTurn() {
     const s = this.settings!;
+    const turnStartedAt = Date.now();
     const msg: ChatMessage = {
       id: crypto.randomUUID(),
       role: "assistant",
@@ -818,8 +825,13 @@ export class Room extends Server<Env> {
     }
     if (!msg.content.trim()) msg.content = "_(no response)_";
     // Count cloud turns site-wide (shown in /admin; enforces GLOBAL_DAILY_AI_LIMIT).
-    if (llm.length && msg.meta!.model && !msg.meta!.error)
+    if (llm.length && msg.meta!.model && !msg.meta!.error) {
       this.ctx.waitUntil(countAiTurn(this.env.DB, msg.meta!.model.split(" · ")[0]));
+      // Reply time, for the admin dashboard's "average AI reply" (ms summed; divided by ai_timed).
+      const wait = (p: Promise<unknown>) => this.ctx.waitUntil(p);
+      bumpLater(this.env, "ai_ms", Date.now() - turnStartedAt, wait);
+      bumpLater(this.env, "ai_timed", 1, wait);
+    } else if (msg.meta!.error) this.ctx.waitUntil(bump(this.env, "ai_errors"));
     this.saveMessage(msg);
     this.broadcastMsg({ t: "ai_done", message: msg });
     if (this.env.DEBUG_AI) console.log(`[ai] turn done at +${Date.now() - msg.createdAt}ms`);
@@ -994,7 +1006,8 @@ export class Room extends Server<Env> {
       title: title.slice(0, 120) || "Untitled",
       createdAt: Date.now(),
       createdBy: by,
-    };
+    }
+    this.ctx.waitUntil(bump(this.env, `files_${kind}`));;
     this.sql`INSERT INTO files (id, kind, title, created_at, created_by) VALUES (${f.id}, ${f.kind}, ${f.title}, ${f.createdAt}, ${f.createdBy})`;
     this.broadcastMsg({ t: "files", files: this.files() });
     return f;

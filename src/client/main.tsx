@@ -1,4 +1,4 @@
-import React from "react";
+import React, { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
 import "@fontsource-variable/inter/opsz.css";
@@ -8,7 +8,8 @@ import "./styles.css";
 import "./editors";
 import Home from "./routes/Home";
 import RoomPage from "./routes/RoomPage";
-import Admin from "./routes/Admin";
+// Admin (with its charts) loads only when someone opens /admin.
+const Admin = lazy(() => import("./routes/Admin"));
 import Dashboard from "./routes/Dashboard";
 import PublicForm from "./routes/PublicForm";
 import SharedChat from "./routes/SharedChat";
@@ -30,7 +31,7 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/j/:code" element={<JoinRedirect />} />
         <Route path="/r/:code" element={<RoomPage />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/admin" element={<Admin />} />
+        <Route path="/admin" element={<Suspense fallback={null}><Admin /></Suspense>} />
         <Route path="/f/:code/:id" element={<PublicForm />} />
         <Route path="/s/:id" element={<SharedChat />} />
         <Route path="/privacy" element={<Privacy />} />

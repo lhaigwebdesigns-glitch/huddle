@@ -38,6 +38,11 @@ export interface Env {
   /** Third Groq model (own free rate-limit bucket); "off" disables. */
   GROQ_THIRD_MODEL?: string;
   CEREBRAS_API_KEY?: string;
+  /**
+   * Comma-separated emails that are admins when signed in with Google (verified email).
+   * They can open /admin without the ADMIN_TOKEN password and see an Admin button.
+   */
+  ADMIN_EMAILS?: string;
   NVIDIA_API_KEY?: string;
   NVIDIA_MODEL?: string;
   OPENROUTER_API_KEY?: string;

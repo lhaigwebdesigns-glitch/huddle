@@ -58,7 +58,8 @@ const PROVIDERS: Record<string, Provider> = {
     clientSecret: (e) => e.GOOGLE_CLIENT_SECRET,
     async profile(token) {
       const u: any = await (await fetch("https://openidconnect.googleapis.com/v1/userinfo", { headers: { authorization: `Bearer ${token}` } })).json();
-      return { id: String(u.sub), name: u.name || u.email, email: u.email ?? null, avatar: u.picture ?? null };
+      // Only keep emails Google has verified (admin access is granted by email).
+      return { id: String(u.sub), name: u.name || u.email, email: u.email_verified === false ? null : (u.email ?? null), avatar: u.picture ?? null };
     },
   },
 };
@@ -180,7 +181,17 @@ export const auth = new Hono<{ Bindings: Env }>();
 
 auth.get("/providers", (c) => c.json({ providers: enabledProviders(c.env), requireSignInToCreate: c.env.REQUIRE_SIGNIN_TO_CREATE === "1" }));
 
-auth.get("/me", async (c) => c.json({ user: await currentUser(c.env, c.req.raw) }));
+/** Admin by account: a Google sign-in whose verified email is listed in ADMIN_EMAILS. */
+export function isAdminUser(env: Env, user: User | null): boolean {
+  if (!user || user.provider !== "google" || !user.email) return false;
+  const list = (env.ADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+  return list.includes(user.email.toLowerCase());
+}
+
+auth.get("/me", async (c) => {
+  const user = await currentUser(c.env, c.req.raw);
+  return c.json({ user, isAdmin: isAdminUser(c.env, user) });
+});
 
 auth.get("/login/:provider", async (c) => {
   const name = c.req.param("provider");
