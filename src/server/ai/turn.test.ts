@@ -44,3 +44,13 @@ describe("AI turn helpers", () => {
     expect(search.function.arguments).toBe('{"query":"x"}');
   });
 });
+
+describe("wantsResearch", () => {
+  it("spots research requests but not everyday words", async () => {
+    const { wantsResearch } = await import("./turn");
+    expect(wantsResearch("Logan: do a deep research and compile a doc about thermodynamics, cite the sites")).toBe(true);
+    expect(wantsResearch("can you research flights?")).toBe(true);
+    expect(wantsResearch("I'm so excited for Friday")).toBe(false);
+    expect(wantsResearch("what are good sources of protein?")).toBe(false);
+  });
+});

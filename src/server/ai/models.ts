@@ -19,6 +19,8 @@ export interface ProviderConfig {
   responseTimeoutMs?: number;
   /** OpenAI-style reasoning_effort for "thinking" models (none | low | medium | high). */
   reasoningEffort?: string;
+  /** Send requests through this binding instead of the public internet (Workers VPC). */
+  fetcher?: Fetcher;
 }
 
 export function getProviders(env: Env): ProviderConfig[] {
@@ -26,14 +28,16 @@ export function getProviders(env: Env): ProviderConfig[] {
     return [{ id: "mock", label: "Mock AI (dev)", kind: "mock", model: "mock", supportsTools: true }];
   }
   const list: ProviderConfig[] = [];
-  if (env.OLLAMA_BASE_URL) {
+  if (env.OLLAMA_BASE_URL || env.OLLAMA_VPC) {
     // Your own GPU first: unlimited and free. If the PC is off or busy past the timeout,
-    // the router moves on to the hosted free tiers below.
+    // the router moves on to the hosted free tiers below. Deployed, it's reached through a
+    // private tunnel (OLLAMA_VPC) with no public address; local dev talks to localhost.
     list.push({
       id: "ollama",
       label: "Self-hosted",
       kind: "openai",
-      baseUrl: `${env.OLLAMA_BASE_URL.replace(/\/+$/, "")}/v1`,
+      baseUrl: env.OLLAMA_BASE_URL ? `${env.OLLAMA_BASE_URL.replace(/\/+$/, "")}/v1` : "http://127.0.0.1:11434/v1",
+      fetcher: env.OLLAMA_BASE_URL ? undefined : env.OLLAMA_VPC,
       apiKey: env.OLLAMA_API_KEY || "ollama",
       // "huddle" = qwen3:14b with a 16k context window, built from ollama/Modelfile.
       model: env.OLLAMA_MODEL || "huddle",
@@ -68,6 +72,32 @@ export function getProviders(env: Env): ProviderConfig[] {
         supportsTools: true,
       });
     }
+    // A third model on the same key, with its own free bucket. Thinking off saves tokens/minute.
+    const third = env.GROQ_THIRD_MODEL || "qwen/qwen3.8-27b";
+    if (third !== "off" && !list.some((p) => p.model === third)) {
+      list.push({
+        id: "groq-third",
+        label: "Groq",
+        kind: "openai",
+        baseUrl: "https://api.groq.com/openai/v1",
+        apiKey: env.GROQ_API_KEY,
+        model: third,
+        supportsTools: true,
+        reasoningEffort: /qwen/i.test(third) ? "none" : undefined,
+      });
+    }
+  }
+  if (env.NVIDIA_API_KEY) {
+    // NVIDIA NIM free API (build.nvidia.com, NVIDIA Developer Program): high daily limits.
+    list.push({
+      id: "nvidia",
+      label: "NVIDIA",
+      kind: "openai",
+      baseUrl: "https://integrate.api.nvidia.com/v1",
+      apiKey: env.NVIDIA_API_KEY,
+      model: env.NVIDIA_MODEL || "openai/gpt-oss-120b",
+      supportsTools: true,
+    });
   }
   if (env.CEREBRAS_API_KEY) {
     list.push({

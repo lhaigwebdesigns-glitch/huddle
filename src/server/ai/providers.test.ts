@@ -1,12 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { chatWithFallback, parseRetryAfter } from "./providers";
+import { chatWithFallback, parseRetryAfter, resetCooldowns } from "./providers";
 
 const sse = (chunks: string[]) =>
   new Response(chunks.map((c) => `data: ${JSON.stringify({ choices: [{ delta: { content: c } }] })}\n\n`).join("") + "data: [DONE]\n\n", {
     headers: { "content-type": "text/event-stream" },
   });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  resetCooldowns();
+});
 
 describe("free provider router", () => {
   it("falls through to the next provider on a 429 rate limit", async () => {
@@ -21,11 +24,10 @@ describe("free provider router", () => {
       messages: [{ role: "user", content: "hi" }],
       onDelta: (d) => (streamed += d),
     });
-    // Groq's main model, then Groq's fallback model (separate rate-limit bucket), then Cerebras.
-    expect(calls).toHaveLength(3);
-    expect(calls[0]).toContain("groq");
-    expect(calls[1]).toContain("groq");
-    expect(calls[2]).toContain("cerebras");
+    // Groq's three models (each its own rate-limit bucket), then Cerebras.
+    expect(calls).toHaveLength(4);
+    expect(calls.slice(0, 3).every((u) => u.includes("groq"))).toBe(true);
+    expect(calls[3]).toContain("cerebras");
     expect(res.content).toBe("Hello world");
     expect(streamed).toBe("Hello world");
     expect(res.provider).toBe("Cerebras");
@@ -110,5 +112,61 @@ describe("all providers down", () => {
     await expect(
       chatWithFallback({ CEREBRAS_API_KEY: "a" } as any, { messages: [], onDelta: () => {} }), // (Groq is in cooldown from the first test)
     ).rejects.toThrow("ALL_FAILED");
+  });
+});
+
+describe("tool calls written as text", () => {
+  const names = new Set(["create_doc", "web_search"]);
+
+  it("recovers the Llama-style JSON call from a real bad reply", async () => {
+    const { recoverTextToolCalls } = await import("./providers");
+    const reply = `{"type": "function", "name": "create_doc", "parameters": {"title": "Thermodynamics Report", "markdown": "## Intro\nHeat {and} work."}}`;
+    const { calls, rest } = recoverTextToolCalls(reply, names);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].function.name).toBe("create_doc");
+    expect(JSON.parse(calls[0].function.arguments)).toEqual({ title: "Thermodynamics Report", markdown: "## Intro\nHeat {and} work." });
+    expect(rest).toBe("");
+  });
+
+  it("handles <function=…> tags, fences and surrounding prose", async () => {
+    const { recoverTextToolCalls } = await import("./providers");
+    const a = recoverTextToolCalls('Let me look.\n<function=web_search>{"query": "entropy"}</function>', names);
+    expect(a.calls[0].function.name).toBe("web_search");
+    expect(a.rest).toBe("Let me look.");
+    const b = recoverTextToolCalls('```json\n{"name": "web_search", "arguments": {"query": "x"}}\n```', names);
+    expect(b.calls).toHaveLength(1);
+    expect(b.rest).toBe("");
+  });
+
+  it("leaves ordinary JSON and unknown tools alone", async () => {
+    const { recoverTextToolCalls } = await import("./providers");
+    const text = 'Use this config: {"name": "my-app", "version": 2}';
+    expect(recoverTextToolCalls(text, names)).toEqual({ calls: [], rest: text });
+  });
+
+  it("runs the call and never streams the raw JSON to the room", async () => {
+    const json = JSON.stringify({ type: "function", name: "create_doc", parameters: { title: "T", markdown: "# T" } });
+    vi.stubGlobal("fetch", async () => sse([json.slice(0, 20), json.slice(20)]));
+    let streamed = "";
+    const res = await chatWithFallback({ CEREBRAS_API_KEY: "b" } as any, {
+      messages: [{ role: "user", content: "make a doc" }],
+      tools: [{ type: "function", function: { name: "create_doc", description: "", parameters: {} } }],
+      onDelta: (d) => (streamed += d),
+    });
+    expect(streamed).toBe("");
+    expect(res.toolCalls[0].function.name).toBe("create_doc");
+    expect(res.content).toBe("");
+  });
+
+  it("still streams normal answers when tools are offered", async () => {
+    vi.stubGlobal("fetch", async () => sse(["Hello", " there"]));
+    let streamed = "";
+    const res = await chatWithFallback({ CEREBRAS_API_KEY: "b" } as any, {
+      messages: [{ role: "user", content: "hi" }],
+      tools: [{ type: "function", function: { name: "create_doc", description: "", parameters: {} } }],
+      onDelta: (d) => (streamed += d),
+    });
+    expect(streamed).toBe("Hello there");
+    expect(res.toolCalls).toHaveLength(0);
   });
 });
