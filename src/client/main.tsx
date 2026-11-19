@@ -9,6 +9,7 @@ import "./editors";
 import Home from "./routes/Home";
 import RoomPage from "./routes/RoomPage";
 import Admin from "./routes/Admin";
+import Dashboard from "./routes/Dashboard";
 import PublicForm from "./routes/PublicForm";
 import SharedChat from "./routes/SharedChat";
 import { Privacy, Terms } from "./routes/Legal";
@@ -28,6 +29,7 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/" element={<Home />} />
         <Route path="/j/:code" element={<JoinRedirect />} />
         <Route path="/r/:code" element={<RoomPage />} />
+        <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/f/:code/:id" element={<PublicForm />} />
         <Route path="/s/:id" element={<SharedChat />} />

@@ -42,7 +42,7 @@ app.post("/api/rooms", async (c) => {
     const stub = await getServerByName(c.env.Room, code);
     const res = await stub.init(uid, String(body.title ?? ""));
     if (res.ok) {
-      if (user) c.executionCtx.waitUntil(rememberRoomForUser(c.env, user, code, String(body.title ?? "")));
+      if (user) c.executionCtx.waitUntil(rememberRoomForUser(c.env, user, code, String(body.title ?? ""), true));
       return c.json({ code });
     }
   }
@@ -55,6 +55,40 @@ app.get("/api/rooms/:code", async (c) => {
   const stub = await getServerByName(c.env.Room, code);
   const info = await stub.info();
   return c.json(info, info.exists ? 200 : 404);
+});
+
+// ---- Host tools for the dashboard: Manage party and Delete room (signed-in host only) ----
+
+async function hostRoom(c: { env: Env; req: { raw: Request; param: (k: string) => string } }) {
+  const user = await currentUser(c.env, c.req.raw);
+  const code = normalizeCode(c.req.param("code"));
+  if (!user || !isValidCode(code)) return null;
+  const stub = await getServerByName(c.env.Room, code);
+  return (await stub.isHost(user.uid)) ? { user, code, stub } : null;
+}
+
+app.get("/api/rooms/:code/manage", async (c) => {
+  const h = await hostRoom(c);
+  if (!h) return c.json({ error: "Only the room's host can manage it." }, 403);
+  return c.json(await h.stub.manageState(h.user.uid));
+});
+
+app.post("/api/rooms/:code/manage", async (c) => {
+  const h = await hostRoom(c);
+  if (!h) return c.json({ error: "Only the room's host can manage it." }, 403);
+  const b = await c.req.json<{ action?: string; uid?: string }>().catch(() => ({}) as { action?: string; uid?: string });
+  if (b.action !== "kick" && b.action !== "ban" && b.action !== "unban") return c.json({ error: "Unknown action" }, 400);
+  await h.stub.moderate(h.user.uid, b.action, String(b.uid ?? "").slice(0, 64));
+  return c.json(await h.stub.manageState(h.user.uid));
+});
+
+app.delete("/api/rooms/:code", async (c) => {
+  const h = await hostRoom(c);
+  if (!h) return c.json({ error: "Only the room's host can delete it." }, 403);
+  if (!(await h.stub.destroy(h.user.uid))) return c.json({ error: "Couldn't delete the room." }, 500);
+  // Gone from everyone's dashboard too.
+  if (c.env.DB) c.executionCtx.waitUntil(c.env.DB.prepare(`DELETE FROM user_rooms WHERE code = ?1`).bind(h.code).run());
+  return c.json({ ok: true });
 });
 
 // ---- File version history (the party code is the room's secret, as for WebSockets) ----

@@ -1,4 +1,5 @@
-import type { ClientMsg, Member, RoomSettings, SkillInfo } from "../../shared/protocol";
+import type { Ban, ClientMsg, Member, RoomSettings, SkillInfo } from "../../shared/protocol";
+import { PartyLists } from "./PartyLists";
 import { hasWebGPU, LOCAL_MODELS } from "../lib/local-llm";
 import { useState } from "react";
 import { formatCode } from "../../shared/code";
@@ -87,9 +88,11 @@ export function SettingsDialog({
   members,
   me,
   memory,
+  bans,
   send,
   onClose,
 }: {
+  bans: Ban[];
   settings: RoomSettings;
   isHost: boolean;
   skills: SkillInfo[];
@@ -270,21 +273,17 @@ export function SettingsDialog({
           </div>
         )}
 
-        {isHost && members.length > 1 && (
-          <div className="mt-5">
-            <span className="text-sm font-medium">People</span>
-            <ul className="mt-2 space-y-1">
-              {members
-                .filter((m) => m.uid !== me.uid)
-                .map((m) => (
-                  <li key={m.uid} className="flex items-center justify-between text-sm">
-                    <span>{m.name}</span>
-                    <button onClick={() => send({ t: "kick", uid: m.uid })} className="text-xs text-red-600 hover:underline">
-                      Remove
-                    </button>
-                  </li>
-                ))}
-            </ul>
+        {isHost && (
+          <div className="mt-6 border-t border-line pt-5" data-testid="manage-party">
+            <span className="text-sm font-medium">Manage party</span>
+            <p className="mt-0.5 text-xs text-fg-muted">Kick removes someone now (they can rejoin with the code). Ban also blocks them from coming back.</p>
+            <div className="mt-3">
+              <PartyLists
+                people={members.map((m) => ({ ...m, online: true }))}
+                bans={bans}
+                onAct={(action, p) => send({ t: action, uid: p.uid })}
+              />
+            </div>
           </div>
         )}
       </div>

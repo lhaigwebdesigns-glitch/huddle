@@ -19,9 +19,10 @@ describe("auth helpers", () => {
 
   it("blocks open redirects", () => {
     expect(safeReturn("/r/ABC123")).toBe("/r/ABC123");
-    expect(safeReturn("//evil.example")).toBe("/");
-    expect(safeReturn("https://evil.example")).toBe("/");
-    expect(safeReturn(undefined)).toBe("/");
+    expect(safeReturn("//evil.example")).toBe("/dashboard");
+    expect(safeReturn("https://evil.example")).toBe("/dashboard");
+    expect(safeReturn(undefined)).toBe("/dashboard");
+    expect(safeReturn("/")).toBe("/dashboard");
   });
 
   it("hashes tokens", async () => {

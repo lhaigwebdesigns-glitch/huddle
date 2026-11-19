@@ -33,3 +33,10 @@ export async function getBlob(env: Env, key: string): Promise<StoredBlob | null>
   const stub = await getServerByName(env.Doc, `blob:${key}`);
   return (await stub.getBlob()) as StoredBlob | null;
 }
+
+/** Remove a stored upload for good (room deletion). */
+export async function deleteBlob(env: Env, key: string) {
+  if (env.FILES) return env.FILES.delete(key);
+  const stub = await getServerByName(env.Doc, `blob:${key}`);
+  await stub.wipe();
+}

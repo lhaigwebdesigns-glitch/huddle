@@ -8,6 +8,7 @@ import type {
   RoomSettings,
   ServerMsg,
   SkillInfo,
+  Ban,
 } from "../../shared/protocol";
 import type { Identity } from "./identity";
 import { generateLocal, interruptLocal } from "./local-llm";
@@ -15,6 +16,10 @@ import { generateLocal, interruptLocal } from "./local-llm";
 export interface RoomState {
   status: "connecting" | "open" | "reconnecting" | "closed";
   closeReason?: string;
+  /** Why you were sent out, when it was the host: kicked (may rejoin), banned, or room deleted. */
+  closeKind?: "kick" | "ban" | "deleted";
+  /** Host only: who's banned. */
+  bans: Ban[];
   you?: Member;
   members: Member[];
   messages: ChatMessage[];
@@ -90,7 +95,19 @@ function reducer(s: RoomState, a: Action): RoomState {
     case "open_file":
       return { ...s, openFileId: m.id, openFileNonce: s.openFileNonce + 1 };
     case "kicked":
-      return { ...s, status: "closed", closeReason: "You were removed from this room by the host." };
+      return {
+        ...s,
+        status: "closed",
+        closeKind: m.reason ?? "ban",
+        closeReason:
+          m.reason === "deleted"
+            ? "The host deleted this room."
+            : m.reason === "kick"
+              ? "The host removed you from this room."
+              : "The host banned you from this room.",
+      };
+    case "bans":
+      return { ...s, bans: m.bans };
     case "error":
       return { ...s, toast: m.message };
     default:
@@ -108,6 +125,7 @@ export function useRoom(code: string, me: Identity) {
     providers: [],
     openFileNonce: 0,
     memory: [],
+    bans: [],
   });
   const [localProgress, setLocalProgress] = useState<{ text: string; pct: number } | null>(null);
   const sock = useRef<PartySocket | null>(null);

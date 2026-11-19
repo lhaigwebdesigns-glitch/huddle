@@ -56,6 +56,22 @@ export interface Poll {
 
 export const REACTIONS = ["👍", "❤️", "😂", "🎉", "🤔", "👀"] as const;
 
+/** Someone who has been in the room (for the host's Manage party list). */
+export interface PartyPerson {
+  uid: string;
+  name: string;
+  color: string;
+  lastSeen: number;
+  online?: boolean;
+  isHost?: boolean;
+}
+export interface Ban {
+  uid: string;
+  name: string;
+  at: number;
+}
+export type ModerationAction = "kick" | "ban" | "unban";
+
 export interface Member {
   uid: string;
   name: string;
@@ -123,7 +139,10 @@ export type ClientMsg =
   | { t: "duplicate_file"; id: string }
   /** Copy a form's responses into a new sheet. */
   | { t: "form_to_sheet"; id: string }
+  /** Host only: remove now (can rejoin), ban (blocked), or lift a ban. */
   | { t: "kick"; uid: string }
+  | { t: "ban"; uid: string }
+  | { t: "unban"; uid: string }
   | { t: "local_delta"; id: string; delta: string }
   | { t: "local_done"; id: string; error?: string }
   /** Change your own message; the AI re-answers if it was the latest thing it replied to. */
@@ -162,5 +181,8 @@ export type ServerMsg =
   | { t: "memory"; facts: string[] }
   /** Room-wide banner, e.g. when the free cloud AI is unavailable. */
   | { t: "notice"; kind: "ai_unavailable"; text: string }
-  | { t: "kicked" }
+  /** You were removed: kicked (may rejoin), banned, or the host deleted the room. */
+  | { t: "kicked"; reason?: "kick" | "ban" | "deleted" }
+  /** Host only: the banned list. */
+  | { t: "bans"; bans: Ban[] }
   | { t: "error"; message: string };

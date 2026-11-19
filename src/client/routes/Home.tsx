@@ -16,11 +16,13 @@ import {
   Presentation,
   Table2,
   Users,
+  X,
 } from "lucide-react";
 import { signInUrl, useAccount } from "../lib/account";
 import { AccountMenu } from "../components/AccountMenu";
 import { formatCode, isValidCode, normalizeCode } from "../../shared/code";
-import { getIdentity, recentRooms, setName } from "../lib/identity";
+import { forgetRoom, getIdentity, recentRooms, setName } from "../lib/identity";
+import { Link } from "react-router-dom";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { ProductShot } from "../components/ProductShot";
 
@@ -33,17 +35,9 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const account = useAccount();
-  const [myRooms, setMyRooms] = useState<{ code: string; title: string }[]>([]);
   const nameRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    if (!account.user) return;
-    fetch("/api/auth/rooms")
-      .then((r) => r.json() as Promise<{ rooms: { code: string; title: string }[] }>)
-      .then((d) => setMyRooms(d.rooms))
-      .catch(() => {});
-  }, [account.user]);
-  // Signed in: rooms from your account (all devices), else this browser's recent rooms.
-  const recent = account.user && myRooms.length ? myRooms : recentRooms();
+  // Guests see this device's last few rooms; signed-in people have the dashboard.
+  const [recent, setRecent] = useState(() => recentRooms());
 
   const ensureName = () => {
     if (!name.trim()) {
@@ -91,6 +85,26 @@ export default function Home() {
     nav(`/r/${c}`);
   };
 
+  // Sections below the hero reveal once as they scroll into view.
+  useEffect(() => {
+    const els = [...document.querySelectorAll<HTMLElement>("main > section:not(:first-child)")];
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries)
+          if (e.isIntersecting) {
+            e.target.classList.add("is-visible");
+            io.unobserve(e.target);
+          }
+      },
+      { rootMargin: "0px 0px -10% 0px" },
+    );
+    for (const el of els) {
+      el.classList.add("reveal");
+      io.observe(el);
+    }
+    return () => io.disconnect();
+  }, []);
+
   const toStart = () => {
     document.getElementById("start")?.scrollIntoView({ behavior: "smooth", block: "center" });
     setTimeout(() => nameRef.current?.focus({ preventScroll: true }), 350);
@@ -110,6 +124,11 @@ export default function Home() {
             <a href="#faq" className="transition-colors hover:text-fg">FAQ</a>
           </div>
           <div className="ml-auto flex items-center gap-2">
+            {account.user && (
+              <Link to="/dashboard" className="press hidden rounded-full px-3 py-1.5 text-sm font-medium text-fg-muted hover:bg-accent-soft hover:text-fg sm:block" data-testid="nav-dashboard">
+                Dashboard
+              </Link>
+            )}
             <AccountMenu user={account.user} providers={account.providers} />
             <span className="hidden sm:block">
               <Button size="sm" onClick={toStart} className="rounded-full">
@@ -190,25 +209,44 @@ export default function Home() {
               </p>
             )}
 
-            {recent.length > 0 && (
+            {account.user ? (
               <div className="mt-6 text-center">
-                <div className="text-xs font-medium text-fg-subtle" data-testid="rooms-heading">
-                  {account.user && myRooms.length ? "My rooms" : "Recent rooms"}
-                </div>
-                <div className="mt-2 flex flex-wrap justify-center gap-2">
-                  {recent.map((r) => (
-                    <button
-                      key={r.code}
-                      onClick={() => {
-                        if (ensureName()) nav(`/r/${r.code}`);
-                      }}
-                      className="press rounded-full border border-line px-3 py-1 text-sm text-fg hover:bg-surface-2"
-                    >
-                      {r.title} <span className="font-mono text-xs text-fg-subtle">{formatCode(r.code)}</span>
-                    </button>
-                  ))}
-                </div>
+                <Link to="/dashboard" className="press inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1 text-sm hover:bg-surface-2" data-testid="rooms-heading">
+                  Your rooms are on your dashboard <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
               </div>
+            ) : (
+              recent.length > 0 && (
+                <div className="mt-6 text-center">
+                  <div className="text-xs font-medium text-fg-subtle" data-testid="rooms-heading">Recent rooms</div>
+                  <ul className="mt-2 flex flex-wrap justify-center gap-2" data-testid="recent-rooms">
+                    {recent.map((r) => (
+                      <li key={r.code} className="flex items-center rounded-full border border-line text-sm hover:bg-surface-2">
+                        <button
+                          onClick={() => {
+                            if (ensureName()) nav(`/r/${r.code}`);
+                          }}
+                          className="press py-1 pl-3 pr-1.5 text-fg"
+                        >
+                          {r.title} <span className="font-mono text-xs text-fg-subtle">{formatCode(r.code)}</span>
+                        </button>
+                        <button
+                          aria-label={`Remove ${r.title} from recent rooms`}
+                          onClick={() => (forgetRoom(r.code), setRecent(recentRooms()))}
+                          className="press mr-1 rounded-full p-1 text-fg-subtle hover:bg-accent-soft hover:text-fg"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                  {account.providers.length > 0 && (
+                    <a href={signInUrl(account.providers[0], "/dashboard")} className="mt-2 inline-block text-xs text-fg-muted underline-offset-4 hover:text-fg hover:underline">
+                      Sign in to keep all your rooms in one place
+                    </a>
+                  )}
+                </div>
+              )
             )}
           </div>
 
