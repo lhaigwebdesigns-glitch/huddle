@@ -235,8 +235,16 @@ export const TOOL_DEFS: ToolDef[] = [
     type: "function",
     function: {
       name: "generate_image",
-      description: "Create an image from a text description (illustrations, logos, slide art). It appears in your reply for everyone.",
-      parameters: { type: "object", properties: { prompt: { type: "string" } }, required: ["prompt"] },
+      description:
+        "Create an image (picture, illustration, logo, poster, slide art). This is the ONLY way an image gets made: never say you made one without calling this. It appears under your reply for everyone. Write the prompt in English as a detailed visual description: subject, setting, style (photo, 3D render, watercolor, flat vector…), lighting, colors, composition; put any words that must appear in the image in quotes.",
+      parameters: {
+        type: "object",
+        properties: {
+          prompt: { type: "string", description: "Detailed visual description (1–4 sentences)." },
+          shape: { type: "string", enum: ["square", "landscape", "portrait"], description: "Default square." },
+        },
+        required: ["prompt"],
+      },
     },
   },
   {
@@ -511,14 +519,16 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
       if (!ctx.env.AI) return "Image generation isn't available on this server (needs Cloudflare Workers AI).";
       ctx.step({ kind: "other", label: "Drawing an image" });
       try {
-        const out: any = await ctx.env.AI.run("@cf/black-forest-labs/flux-1-schnell" as any, { prompt, steps: 4 } as any);
-        const b64 = String(out?.image ?? "");
+        const b64 = await drawImage(ctx.env.AI, prompt, String(args.shape ?? "square"));
         if (!b64) return "The image model returned nothing; try a different description.";
         const bytes = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
         const id = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
-        const name = `${prompt.slice(0, 40).replace(/[^\w ]+/g, "").trim() || "image"}.jpg`;
-        await putBlob(ctx.env, `rooms/${ctx.roomCode}/${id}`, bytes, "image/jpeg", name);
-        ctx.addImage?.({ id, name, type: "image/jpeg", size: bytes.length, url: `/api/rooms/${ctx.roomCode}/blobs/${id}` });
+        // FLUX.2 may return PNG, FLUX.1 JPEG: label the file by its real format.
+        const png = bytes[0] === 0x89 && bytes[1] === 0x50;
+        const type = png ? "image/png" : "image/jpeg";
+        const name = `${prompt.slice(0, 40).replace(/[^\w ]+/g, "").trim() || "image"}.${png ? "png" : "jpg"}`;
+        await putBlob(ctx.env, `rooms/${ctx.roomCode}/${id}`, bytes, type, name);
+        ctx.addImage?.({ id, name, type, size: bytes.length, url: `/api/rooms/${ctx.roomCode}/blobs/${id}` });
         return `Image created (image_id ${id}). It is already displayed under your reply, so do NOT write a link or markdown image for it; just say a sentence about it. Only if you put it on a slide, use the URL /api/rooms/${ctx.roomCode}/blobs/${id}`;
       } catch (err) {
         return /remote|login/i.test(String(err))
@@ -691,4 +701,31 @@ function stripTags(s: string) {
     .replace(/&nbsp;/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+const IMAGE_SIZES: Record<string, [number, number]> = { square: [1024, 1024], landscape: [1216, 832], portrait: [832, 1216] };
+
+/**
+ * Text-to-image on Workers AI: FLUX.2 [klein 9B] (sharp, follows prompts and renders text well),
+ * falling back to FLUX.1 [schnell] if it's unavailable. Returns base64 JPEG/PNG data, or "".
+ */
+export async function drawImage(ai: Ai, prompt: string, shape: string): Promise<string> {
+  const [width, height] = IMAGE_SIZES[shape] ?? IMAGE_SIZES.square;
+  try {
+    // FLUX.2 takes multipart form input.
+    const form = new FormData();
+    form.append("prompt", prompt);
+    form.append("width", String(width));
+    form.append("height", String(height));
+    const body = new Response(form);
+    const out: any = await ai.run("@cf/black-forest-labs/flux-2-klein-9b" as any, {
+      multipart: { body: body.body, contentType: body.headers.get("content-type") },
+    } as any);
+    if (out?.image) return String(out.image);
+  } catch (err) {
+    if (/remote|login/i.test(String(err))) throw err;
+    console.warn("flux-2 failed, falling back to flux-1-schnell", String(err).slice(0, 200));
+  }
+  const out: any = await ai.run("@cf/black-forest-labs/flux-1-schnell" as any, { prompt, steps: 8 } as any);
+  return String(out?.image ?? "");
 }

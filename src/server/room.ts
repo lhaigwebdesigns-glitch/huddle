@@ -12,13 +12,13 @@ import {
   type Step,
 } from "../shared/protocol";
 import { availableProviders, chatWithFallback, ProviderError, type LlmMessage, type ToolCall } from "./ai/providers";
-import { compactDocArgs, wantsResearch, withFreshNote } from "./ai/turn";
+import { claimsImage, compactDocArgs, wantsImage, wantsResearch, withFreshNote } from "./ai/turn";
 import { aiTurnsToday, countAiTurn } from "./db";
 import { FILE_INFO, isFileKind, type FileKind } from "../shared/files";
 import { colName } from "../shared/formula";
 import { chunkText, ftsQuery } from "../shared/knowledge";
 import { parseCsv } from "../shared/sheet-model";
-import type { Attachment, Ban, ModerationAction, PartyPerson } from "../shared/protocol";
+import { AVATAR_URL_RE, type Attachment, type Ban, type ModerationAction, type PartyPerson } from "../shared/protocol";
 import { deleteBlob } from "./blobs";
 import { bump, bumpLater, markActive } from "./stats";
 import { SKILLS } from "./ai/skills";
@@ -43,6 +43,7 @@ interface ConnState {
   uid: string;
   name: string;
   color: string;
+  avatar?: string;
   typing?: boolean;
 }
 
@@ -321,7 +322,9 @@ export class Room extends Server<Env> {
     if (!known.includes(uid)) await this.ctx.storage.put("members", [...known, uid].slice(-500));
     await this.rememberPerson(uid, name, color);
 
-    conn.setState({ uid, name, color });
+    const avatarParam = (url.searchParams.get("avatar") ?? "").slice(0, 500);
+    const avatar = AVATAR_URL_RE.test(avatarParam) ? avatarParam : undefined;
+    conn.setState({ uid, name, color, avatar });
     this.ctx.waitUntil(markActive(this.env, uid));
     bumpLater(this.env, "joins", 1, (p) => this.ctx.waitUntil(p));
     const messages = this.loadMessages(200);
@@ -721,6 +724,9 @@ export class Room extends Server<Env> {
         const research = s.deepResearch || wantsResearch(this.lastUserText());
         llm = [{ role: "system", content: this.systemPrompt(true, memory, research) }, ...withFreshNote(this.history())];
         let emptyRetried = false;
+        // Models sometimes say "here's your image" without calling generate_image. Catch that once.
+        const askedForImage = wantsImage(this.lastUserText());
+        let imageNudged = false;
         const maxSteps = research ? DEEP_RESEARCH_STEPS : MAX_STEPS;
         // Only offer tools that can do something in this room (every definition costs tokens).
         const hasKnowledge = (this.sql<{ n: number }>`SELECT COUNT(*) AS n FROM knowledge`[0]?.n ?? 0) > 0;
@@ -754,6 +760,25 @@ export class Room extends Server<Env> {
             llm.push({ role: "user", content: "(Huddle: your last reply was empty. Please answer the request above, using a tool if needed.)" });
             continue;
           }
+          const imageMissing =
+            !res.toolCalls.length &&
+            !msg.meta!.images?.length &&
+            tools.some((t) => t.function.name === "generate_image") &&
+            (askedForImage || claimsImage(res.content));
+          if (imageMissing && !imageNudged) {
+            imageNudged = true;
+            // Take back the reply that claimed an image, and have the model actually make it.
+            msg.content = msg.content.slice(0, stepStart);
+            this.broadcastMsg({ t: "ai_done", message: { ...msg, meta: { ...msg.meta, streaming: true } } });
+            llm.push({ role: "assistant", content: res.content || null });
+            llm.push({
+              role: "user",
+              content: "(Huddle: no image exists yet, because generate_image was not called. Call generate_image now with a detailed visual prompt, then reply in one or two sentences. Don't describe an image you haven't made.)",
+            });
+            continue;
+          }
+          if (imageMissing && claimsImage(res.content))
+            onDelta("\n\n_(No image was actually created this time. Ask again and I'll make it.)_");
           if (!res.toolCalls.length) break;
           if (res.content && !/\s$/.test(msg.content)) onDelta("\n\n");
           llm.push({ role: "assistant", content: res.content || null, tool_calls: res.toolCalls });
@@ -922,6 +947,7 @@ export class Room extends Server<Env> {
       lines.push(
         `You have tools: web_search and fetch_url for current or factual info, tools that create and edit live files everyone in the room co-edits, and load_skill for expert playbooks.`,
         `Use web_search for anything recent or time-sensitive (news, prices, releases, "this week"). Don't use tools for small talk.`,
+        `Accuracy matters more than sounding sure. For specific facts you aren't certain of (numbers, dates, names, quotes, statistics, how-to steps for a particular product), run web_search first. If you still don't know, say so plainly. Never invent facts, quotes, sources, or results of tools you didn't call, and never claim you did something (made a file or image, searched) unless a tool result shows it.`,
         `Citations: only link URLs that appear word-for-word in your tool results. Never build, guess or "fix" a URL, and only call fetch_url on URLs from search results or from the users. If you can't find a source, say so.`,
         `Call tools only through the tool-calling interface. Never write a tool call (JSON, function tags) into your reply text.`,
         `Files you can make (pick the one that fits the request):`,
@@ -1016,7 +1042,7 @@ export class Room extends Server<Env> {
   // ---------- presence & messaging ----------
 
   private toMember(s: ConnState): Member {
-    return { uid: s.uid, name: s.name, color: s.color, isHost: s.uid === this.settings?.hostId, typing: !!s.typing };
+    return { uid: s.uid, name: s.name, color: s.color, avatar: s.avatar, isHost: s.uid === this.settings?.hostId, typing: !!s.typing };
   }
 
   private members(): Member[] {

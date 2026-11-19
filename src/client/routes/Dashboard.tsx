@@ -10,12 +10,14 @@ import {
   Plus,
   Search,
   Shield,
+  UserRound,
   Trash2,
   Users,
   X,
 } from "lucide-react";
 import { useAccount, signInUrl } from "../lib/account";
 import { AccountMenu } from "../components/AccountMenu";
+import { ProfilePanel } from "../components/ProfilePanel";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { getIdentity, setName } from "../lib/identity";
 import { formatCode, isValidCode, normalizeCode } from "../../shared/code";
@@ -39,7 +41,7 @@ interface ManageState {
 type Filter = "all" | "hosting" | "joined";
 
 /** Signed-in home: every room you created or joined, plus host tools (Manage party, Delete). */
-export default function Dashboard() {
+export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profile" }) {
   const nav = useNavigate();
   const account = useAccount();
   const [rooms, setRooms] = useState<DashRoom[] | null>(null);
@@ -62,10 +64,10 @@ export default function Dashboard() {
   useEffect(() => {
     if (account.user === null) nav("/", { replace: true });
     if (account.user) {
-      document.title = "Your rooms · Huddle";
+      document.title = view === "profile" ? "Profile · Huddle" : "Your rooms · Huddle";
       load();
     }
-  }, [account.user]);
+  }, [account.user, view]);
 
   useEffect(() => {
     if (!toast) return;
@@ -145,6 +147,14 @@ export default function Dashboard() {
           </Button>
         </div>
         <nav className="mt-4 space-y-0.5 px-3 text-sm" aria-label="Filter rooms">
+          <Link
+            to="/profile"
+            aria-current={view === "profile" ? "page" : undefined}
+            className={`press mb-2 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 ${view === "profile" ? "bg-accent-soft font-medium text-fg" : "text-fg-muted hover:bg-accent-soft/60 hover:text-fg"}`}
+            data-testid="sidebar-profile"
+          >
+            <UserRound className="h-4 w-4" /> Profile
+          </Link>
           {(
             [
               ["all", "All rooms", Users],
@@ -154,9 +164,9 @@ export default function Dashboard() {
           ).map(([id, label, Icon]) => (
             <button
               key={id}
-              onClick={() => setFilter(id)}
-              aria-current={filter === id ? "page" : undefined}
-              className={`press flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left ${filter === id ? "bg-accent-soft font-medium text-fg" : "text-fg-muted hover:bg-accent-soft/60 hover:text-fg"}`}
+              onClick={() => (setFilter(id), view !== "rooms" && nav("/dashboard"))}
+              aria-current={view === "rooms" && filter === id ? "page" : undefined}
+              className={`press flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left ${view === "rooms" && filter === id ? "bg-accent-soft font-medium text-fg" : "text-fg-muted hover:bg-accent-soft/60 hover:text-fg"}`}
             >
               <Icon className="h-4 w-4" />
               <span className="flex-1">{label}</span>
@@ -193,6 +203,12 @@ export default function Dashboard() {
           <div className="flex items-center gap-2"><ThemeToggle /><AccountMenu user={account.user} providers={account.providers} /></div>
         </header>
 
+        {view === "profile" ? (
+          <div className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-4 pb-16 pt-8 sm:px-8">
+            <Link to="/dashboard" className="mb-4 inline-block text-sm text-fg-muted hover:text-fg md:hidden">← Your rooms</Link>
+            <ProfilePanel user={account.user} onChange={account.update} />
+          </div>
+        ) : (
         <div className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-4 pb-16 pt-8 sm:px-8">
           <h1 className="rise text-3xl font-semibold tracking-tight">Welcome back, {account.user.name.split(" ")[0]}</h1>
           <p className="rise rise-1 mt-1 text-fg-muted">Your rooms, wherever you left them.</p>
@@ -257,6 +273,7 @@ export default function Dashboard() {
             ))}
           </ul>
         </div>
+        )}
       </main>
 
       {manage && <ManageSheet room={manage} onClose={() => setManage(null)} onToast={setToast} />}

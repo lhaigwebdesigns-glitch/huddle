@@ -31,6 +31,7 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/j/:code" element={<JoinRedirect />} />
         <Route path="/r/:code" element={<RoomPage />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/profile" element={<Dashboard view="profile" />} />
         <Route path="/admin" element={<Suspense fallback={null}><Admin /></Suspense>} />
         <Route path="/f/:code/:id" element={<PublicForm />} />
         <Route path="/s/:id" element={<SharedChat />} />

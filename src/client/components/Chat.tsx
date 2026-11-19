@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { REACTIONS, type ChatMessage, type ClientMsg, type Member, type Poll, type RoomSettings } from "../../shared/protocol";
 import { Markdown } from "./Markdown";
 import { ThoughtBubble } from "./ThoughtBubble";
+import { PersonAvatar } from "./PersonAvatar";
 import { expandSlash, matchSlash, parsePoll } from "../lib/slash";
 import type { Attachment } from "../../shared/protocol";
 import { uploadFile } from "../lib/uploads";
@@ -167,18 +168,14 @@ const SUGGESTIONS = [
   { label: "Explain step by step", Icon: Brain, text: "Explain how compound interest works, step by step, with a small example." },
 ];
 
-function Avatar({ name, color, ai }: { name: string; color: string; ai?: boolean }) {
+function Avatar({ name, color, ai, avatar }: { name: string; color: string; ai?: boolean; avatar?: string }) {
   if (ai)
     return (
       <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-primary-fg" aria-hidden>
         <Sparkles className="h-3.5 w-3.5" strokeWidth={2} />
       </div>
     );
-  return (
-    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-semibold text-white" style={{ background: color }} aria-hidden>
-      {name.slice(0, 1).toUpperCase()}
-    </div>
-  );
+  return <PersonAvatar name={name} color={color} avatar={avatar} />;
 }
 
 function timeOf(ms: number) {
@@ -329,7 +326,7 @@ function MessageView({
       {grouped ? (
         <div className="w-7 shrink-0 pt-1 text-right text-[10px] text-fg-subtle opacity-0 tabular group-hover:opacity-100">{timeOf(m.createdAt)}</div>
       ) : (
-        <Avatar name={m.authorName} color={color} ai={isAi} />
+        <Avatar name={m.authorName} color={color} ai={isAi} avatar={author?.avatar} />
       )}
       <div className="min-w-0 flex-1">
         {!grouped && (

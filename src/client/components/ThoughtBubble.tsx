@@ -1,3 +1,5 @@
+import { PersonAvatar } from "./PersonAvatar";
+
 /**
  * A comic-style thought bubble with a wave of dots: people typing (with their avatars stacked
  * beside it) and the AI thinking (with what it's doing, e.g. "Searching the web…").
@@ -7,7 +9,7 @@ export function ThoughtBubble({
   label,
   ariaLabel,
 }: {
-  people?: { uid: string; name: string; color: string }[];
+  people?: { uid: string; name: string; color: string; avatar?: string }[];
   label?: string;
   ariaLabel: string;
 }) {
@@ -16,13 +18,8 @@ export function ThoughtBubble({
       {people.length > 0 && (
         <span className="flex -space-x-2">
           {people.slice(0, 3).map((p) => (
-            <span
-              key={p.uid}
-              title={p.name}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold text-white ring-2 ring-bg"
-              style={{ background: p.color }}
-            >
-              {p.name[0]?.toUpperCase()}
+            <span key={p.uid} title={p.name} className="rounded-full ring-2 ring-bg">
+              <PersonAvatar name={p.name} color={p.color} avatar={p.avatar} className="h-7 w-7 text-[11px]" />
             </span>
           ))}
         </span>

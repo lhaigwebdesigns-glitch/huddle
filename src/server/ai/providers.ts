@@ -297,7 +297,8 @@ async function openAiCompatChat(p: ProviderConfig, args: ChatArgs): Promise<Chat
         messages: args.messages,
         tools: args.tools?.length ? args.tools : undefined,
         stream: true,
-        temperature: 0.6,
+        // Lower = more literal and factual (fewer made-up details); 0.3 still reads naturally.
+        temperature: 0.3,
         max_tokens: 4096,
         // Thinking models: gpt-oss's hidden reasoning counts against free tokens-per-minute
         // limits, so it runs at "low"; a provider can set its own (e.g. Ollama's "none").

@@ -329,8 +329,8 @@ try {
   await bob.getByTestId("sheet-editor").waitFor({ timeout: 10000 });
   await bob.locator('[data-cell="A2"]').getByText("Flour budget").waitFor();
   ok(true, "a CSV upload opens as a live sheet");
-  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
-  await alice.getByTestId("file-input").setInputFiles({ name: "dot.png", mimeType: "image/png", buffer: png });
+  const avatarPng /* also reused for the profile picture test */ = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+  await alice.getByTestId("file-input").setInputFiles({ name: "dot.png", mimeType: "image/png", buffer: avatarPng });
   await alice.getByTestId("pending-uploads").getByText("dot.png").waitFor();
   await alice.getByTestId("composer").fill("look at this");
   await alice.getByTestId("composer").press("Enter");
@@ -428,6 +428,42 @@ try {
   await gina.reload();
   await gina.getByTestId("recent-rooms").waitFor();
   ok((await gina.getByTestId("recent-rooms").locator("li").count()) === 3, "guests see at most 3 recent rooms");
+
+  // Profile: Erin renames herself and uploads a picture; both show up when she joins a room.
+  await erin.goto(`${BASE}/profile`);
+  await erin.getByTestId("profile").waitFor();
+  const newName = `Erin ${Math.floor(Math.random() * 1000)}`;
+  await erin.getByLabel("Display name").fill(newName);
+  await erin.getByRole("button", { name: "Save" }).click();
+  await erin.getByText("Name saved.").waitFor();
+  // A tiny valid PNG (1×1 pixel).
+  await erin.getByTestId("avatar-input").setInputFiles({ name: "me.png", mimeType: "image/png", buffer: avatarPng });
+  await erin.getByText("Picture updated.").waitFor();
+  await erin.reload();
+  ok((await erin.getByLabel("Display name").inputValue()) === newName, "profile name is saved");
+  await erin.goto(`${BASE}/dashboard`);
+  await erin.getByPlaceholder("New room name").fill("Erin's picture room");
+  await erin.getByRole("button", { name: /Start a room/ }).click();
+  await erin.waitForURL(/\/r\/[A-Z0-9]{6}$/);
+  const me = erin.getByTestId("members").locator("li").filter({ hasText: newName });
+  await me.waitFor();
+  ok((await me.locator("img").getAttribute("src"))?.startsWith("/api/avatars/"), "the new name and picture show in rooms");
+
+  // File menu: open the ⋯ menu on the last file in the list; it must be fully on screen.
+  await erin.getByTestId("composer").fill("make a doc with our plan");
+  await erin.getByTestId("composer").press("Enter");
+  await erin.getByTestId("doc-editor").waitFor({ timeout: 15000 });
+  const lastFile = erin.getByTestId("drive-file").last();
+  await lastFile.hover();
+  await lastFile.getByRole("button", { name: /More actions/ }).click();
+  const menuBox = await erin.getByTestId("file-menu").boundingBox();
+  const vp = erin.viewportSize();
+  ok(menuBox && menuBox.y >= 0 && menuBox.y + menuBox.height <= vp.height && menuBox.x >= 0 && menuBox.x + menuBox.width <= vp.width, "file ⋯ menu opens fully on screen");
+  await erin.getByRole("menuitem", { name: "Rename" }).click();
+  await erin.getByLabel("New file name").fill("Renamed plan");
+  await erin.keyboard.press("Enter");
+  await erin.getByTestId("drive-file").filter({ hasText: "Renamed plan" }).waitFor();
+  ok(true, "file menu actions work");
 
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
   const statuses = await alice.evaluate(async () => {

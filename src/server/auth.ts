@@ -17,6 +17,8 @@ export interface User {
   email: string | null;
   avatar: string | null;
   provider: string;
+  /** Your room color (cursor, avatar ring); null = this device picks one. */
+  color?: string | null;
 }
 
 const SESSION_COOKIE = "huddle_session";
@@ -114,6 +116,14 @@ export function ensureAuthTables(db: D1Database) {
     ])
     // Added later: whether this user hosts the room (1), only joined it (0), or unknown (NULL, older rows).
     .then(() => db.prepare(`ALTER TABLE user_rooms ADD COLUMN host INTEGER`).run().catch(() => {}))
+    // Added later: profile edits. custom_* = 1 once you change it, so signing in again keeps it.
+    .then(() =>
+      Promise.all(
+        [`ALTER TABLE users ADD COLUMN color TEXT`, `ALTER TABLE users ADD COLUMN custom_name INTEGER`, `ALTER TABLE users ADD COLUMN custom_avatar INTEGER`].map((q) =>
+          db.prepare(q).run().catch(() => {}),
+        ),
+      ),
+    )
     .then(() => undefined)
     .catch((e) => {
       ready = null;
@@ -127,7 +137,7 @@ export async function currentUser(env: Env, req: Request): Promise<User | null> 
   if (!token || !env.DB) return null;
   await ensureAuthTables(env.DB);
   const row = await env.DB.prepare(
-    `SELECT u.id, u.uid, u.name, u.email, u.avatar, u.provider FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?1 AND s.expires_at > ?2`,
+    `SELECT u.id, u.uid, u.name, u.email, u.avatar, u.provider, u.color FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?1 AND s.expires_at > ?2`,
   )
     .bind(await sha256(token), Date.now())
     .first<User>();
@@ -138,7 +148,16 @@ async function upsertUser(db: D1Database, provider: string, p: { id: string; nam
   await ensureAuthTables(db);
   const existing = await db.prepare(`SELECT id, uid FROM users WHERE provider = ?1 AND provider_id = ?2`).bind(provider, p.id).first<{ id: string; uid: string }>();
   if (existing) {
-    await db.prepare(`UPDATE users SET name = ?1, email = ?2, avatar = ?3 WHERE id = ?4`).bind(p.name.slice(0, 60), p.email, p.avatar, existing.id).run();
+    // Keep a name or picture you set yourself; otherwise refresh them from Google/GitHub.
+    await db
+      .prepare(
+        `UPDATE users SET email = ?2,
+           name = CASE WHEN custom_name = 1 THEN name ELSE ?1 END,
+           avatar = CASE WHEN custom_avatar = 1 THEN avatar ELSE ?3 END
+         WHERE id = ?4`,
+      )
+      .bind(p.name.slice(0, 60), p.email, p.avatar, existing.id)
+      .run();
     return existing.id;
   }
   const id = randomToken(12);
@@ -259,6 +278,51 @@ auth.post("/logout", async (c) => {
 });
 
 /** Your rooms for the dashboard: whether you host each one, and who's in it right now. */
+// ---------- profile ----------
+
+const COLOR_RE = /^#[0-9a-f]{6}$/i;
+const AVATAR_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+
+/** Change your display name and/or color (the color your cursor and avatar use in rooms). */
+auth.patch("/profile", async (c) => {
+  const user = await currentUser(c.env, c.req.raw);
+  if (!user || !c.env.DB) return c.json({ error: "Sign in first." }, 401);
+  const b = await c.req.json<{ name?: string; color?: string }>().catch(() => ({}) as { name?: string; color?: string });
+  const name = typeof b.name === "string" ? b.name.trim().replace(/\s+/g, " ").slice(0, 32) : undefined;
+  if (name !== undefined && !name) return c.json({ error: "Your name can't be empty." }, 400);
+  if (b.color !== undefined && !COLOR_RE.test(b.color)) return c.json({ error: "Pick one of the colors." }, 400);
+  if (name !== undefined) await c.env.DB.prepare(`UPDATE users SET name = ?1, custom_name = 1 WHERE id = ?2`).bind(name, user.id).run();
+  if (b.color !== undefined) await c.env.DB.prepare(`UPDATE users SET color = ?1 WHERE id = ?2`).bind(b.color, user.id).run();
+  return c.json({ user: await currentUser(c.env, c.req.raw) });
+});
+
+/** Upload a profile picture (PNG, JPEG, WebP or GIF, up to 2 MB). */
+auth.post("/avatar", async (c) => {
+  const user = await currentUser(c.env, c.req.raw);
+  if (!user || !c.env.DB) return c.json({ error: "Sign in first." }, 401);
+  const form = await c.req.formData().catch(() => null);
+  const file = form?.get("file");
+  if (!(file instanceof File)) return c.json({ error: "No picture was sent." }, 400);
+  if (!AVATAR_TYPES.includes(file.type)) return c.json({ error: "Use a PNG, JPEG, WebP or GIF picture." }, 415);
+  if (file.size > MAX_AVATAR_BYTES) return c.json({ error: "Pictures can be up to 2 MB." }, 413);
+  // Loaded here so this module stays importable in unit tests (blobs needs the Workers runtime).
+  const { putBlob } = await import("./blobs");
+  const id = randomToken(8).toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12) || "pic";
+  await putBlob(c.env, `avatars/${user.id}/${id}`, new Uint8Array(await file.arrayBuffer()), file.type, "avatar");
+  const url = `/api/avatars/${user.id}/${id}`;
+  await c.env.DB.prepare(`UPDATE users SET avatar = ?1, custom_avatar = 1 WHERE id = ?2`).bind(url, user.id).run();
+  return c.json({ user: await currentUser(c.env, c.req.raw) });
+});
+
+/** Remove your picture (rooms show your initial instead). */
+auth.delete("/avatar", async (c) => {
+  const user = await currentUser(c.env, c.req.raw);
+  if (!user || !c.env.DB) return c.json({ error: "Sign in first." }, 401);
+  await c.env.DB.prepare(`UPDATE users SET avatar = NULL, custom_avatar = 1 WHERE id = ?1`).bind(user.id).run();
+  return c.json({ user: await currentUser(c.env, c.req.raw) });
+});
+
 auth.get("/rooms", async (c) => {
   const user = await currentUser(c.env, c.req.raw);
   if (!user || !c.env.DB) return c.json({ rooms: [] });

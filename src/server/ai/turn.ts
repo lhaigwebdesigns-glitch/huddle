@@ -57,3 +57,18 @@ export function compactDocArgs(call: ToolCall) {
     // leave malformed arguments as they were
   }
 }
+
+/** "Make / draw / generate … a picture / logo / poster…": the person wants a new image. */
+export function wantsImage(text: string): boolean {
+  return (
+    /\b(make|create|generate|draw|design|paint|render|sketch|show me|give me|can you do|produce)\b/i.test(text) &&
+    /\b(image|picture|pic|photo|drawing|illustration|logo|poster|wallpaper|artwork|art|icon|banner|sticker|meme)s?\b/i.test(text)
+  );
+}
+
+/** The reply says an image was made ("Here's your image", "I've created a logo…"). */
+export function claimsImage(text: string): boolean {
+  return /\b(here('s| is| are)|i('ve| have)?\s+(just\s+)?(made|created|generated|drawn|designed|painted|rendered))\b[^.!?\n]{0,60}\b(image|picture|pic|photo|drawing|illustration|logo|poster|wallpaper|artwork|icon|banner)s?\b/i.test(
+    text,
+  );
+}

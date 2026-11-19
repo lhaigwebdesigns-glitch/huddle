@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { LogOut } from "lucide-react";
+import { LayoutGrid, LogOut, UserRound } from "lucide-react";
+import { PersonAvatar } from "./PersonAvatar";
+import { getIdentity } from "../lib/identity";
 
 function Github({ className }: { className?: string }) {
   return (
@@ -53,16 +55,18 @@ export function AccountMenu({ user, providers }: { user: Account | null | undefi
           aria-expanded={open}
           data-testid="account-button"
         >
-          {user.avatar ? (
-            <img src={user.avatar} alt="" referrerPolicy="no-referrer" className="h-7 w-7 rounded-full" />
-          ) : (
-            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-fg">{user.name.slice(0, 1).toUpperCase()}</span>
-          )}
+          <PersonAvatar name={user.name} color={user.color || getIdentity().color} avatar={user.avatar} className="h-7 w-7 text-xs" />
           <span className="max-w-[10rem] truncate">{user.name}</span>
         </button>
         {open && (
           <div className={`${MENU} w-56`} role="menu">
             <div className="truncate px-3 py-2 text-xs text-fg-subtle">{user.email ?? PROVIDER_LABEL[user.provider] ?? user.provider}</div>
+            <a role="menuitem" href="/profile" className={ITEM} data-testid="menu-profile">
+              <UserRound className="h-4 w-4 text-fg-muted" /> Edit profile
+            </a>
+            <a role="menuitem" href="/dashboard" className={ITEM}>
+              <LayoutGrid className="h-4 w-4 text-fg-muted" /> Your rooms
+            </a>
             <button role="menuitem" onClick={signOut} className={ITEM}>
               <LogOut className="h-4 w-4 text-fg-muted" /> Sign out
             </button>

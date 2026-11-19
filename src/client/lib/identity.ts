@@ -4,6 +4,8 @@ export interface Identity {
   uid: string;
   name: string;
   color: string;
+  /** Profile picture URL when signed in with one. */
+  avatar?: string;
 }
 
 function safeGet(k: string) {
@@ -32,8 +34,20 @@ export function getIdentity(): Identity {
     color = COLORS[Math.floor(Math.random() * COLORS.length)];
     safeSet("huddle.color", color);
   }
-  return { uid, name: safeGet("huddle.name") ?? "", color };
+  return { uid, name: safeGet("huddle.name") ?? "", color, avatar: safeGet("huddle.avatar") || undefined };
 }
+
+/** This device's room color (also used for live pointers). */
+export function setColor(color: string) {
+  safeSet("huddle.color", color);
+}
+
+/** The signed-in account's picture, sent along when joining rooms; empty = none. */
+export function setAvatar(url: string | null | undefined) {
+  safeSet("huddle.avatar", url ?? "");
+}
+
+export const COLORS_LIST = COLORS;
 
 export function setName(name: string) {
   safeSet("huddle.name", name.trim().slice(0, 32));
