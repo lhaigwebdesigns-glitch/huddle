@@ -420,6 +420,11 @@ async function workersAiChat(p: ProviderConfig, args: ChatArgs): Promise<ChatRes
  */
 export const MOCK_TOOL_CALLS: { trigger: RegExp; name: string; args: Record<string, unknown> }[] = [
   {
+    trigger: /split up the work/i,
+    name: "add_tasks",
+    args: { tasks: [{ title: "Mock task: research" }, { title: "Mock task: slides" }] },
+  },
+  {
     trigger: /make a doc/i,
     name: "create_doc",
     args: { title: "Mock plan", markdown: "# Mock plan\n\nThis doc was written by the **mock AI**.\n\n- First point\n- Second point" },

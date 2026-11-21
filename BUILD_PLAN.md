@@ -13,7 +13,7 @@ Last updated Nov 21, 2026. Sizes: **S** = an evening, **M** = a weekend, **L** =
 - paste block
 - turn in with locked files
 
-**Build 2 is live too:** contribution receipts. **Next is Build 3: tasks, roles and templates.**
+**Build 2 (receipts) and Build 3 (tasks, roles, templates) are built**, waiting to merge and deploy. **Next is Build 4: the teacher class page and grading.**
 
 **Known limit of receipts:** when someone splits a paragraph in the middle (presses Enter inside it), the doc editor rewrites the text after the split, so that text is credited to the person who split it. Typing, deleting and pressing Enter at the end of a paragraph are counted correctly.
 
@@ -25,7 +25,7 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 |---|---|---|---|---|
 | ✅ 1 | Project rooms, AI settings, tutor mode, paste block, turn in | 8, 9, 10, 12 (files) | L | The base everything else needs |
 | ✅ 2 | **Contribution receipts** | 1, 3, 5, 6, 7, 12 (receipt) | L | The core idea: proof of who did the work |
-| ⬜ 3 | **Tasks, roles and templates** | 11, 13, 46, 53, 60 | L | Groups split the work, and tasks count on the receipt |
+| ✅ 3 | **Tasks, roles and templates** | 11, 13, 46, 53, 60 | L | Groups split the work, and tasks count on the receipt |
 | ⬜ 4 | **Teacher class page and grading** | 22, 23, 24, 25, 65 | L | The teacher's side: one place for all groups, fast grading |
 | ⬜ 5 | **Google sign-in and Share to Classroom** | 15, 14, start 19 | M | No friction for schools; Google's review takes weeks, so start it here |
 | ⬜ 6 | **Safety and limits** | 64, 66, 67, 68, 69, 70, 62, 63 | M | Required before any students use it |
@@ -159,9 +159,9 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 | 8 | Project setup: title, due date, instructions, rubric | S | ✅ Build 1 |
 | 9 | Three AI settings, enforced by the server and shown to students | M | ✅ Build 1 |
 | 10 | Tutor mode | M | ✅ Build 1 |
-| 11 | Task list | M | ⬜ Build 3 |
+| 11 | Task list | M | ✅ Build 3 |
 | 12 | Turn in: locks the files and the receipt | S | ✅ Builds 1 and 2 |
-| 13 | Assignment templates | M | ⬜ Build 3 |
+| 13 | Assignment templates | M | ✅ Build 3 |
 | new | Block pasting from outside Huddle, with exceptions for accessibility | S | ✅ Build 1 |
 
 ### 3. Google Classroom
@@ -201,7 +201,7 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 | 43 | Outline, word count, page count | S | ⬜ Build 12 |
 | 44 | Citations | M | ⬜ Build 12 |
 | 45 | Export to PDF and Word in school format | M | ⬜ Build 7 |
-| 46 | Section owners | S | ⬜ Build 3 |
+| 46 | Section owners | S | ⬜ Build 7 (moved: margin owners come with the docs work) |
 | 47 | AI on selected text | M | ⬜ Build 9 |
 
 ### 7. Slides
@@ -212,7 +212,7 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 | 50 | Images on slides | M | ⬜ Build 12 |
 | 51 | Speaker notes | S | ⬜ Build 12 (check what exists) |
 | 52 | Presenter mode | M | ⬜ Build 7 |
-| 53 | Slide owners | S | ⬜ Build 3 |
+| 53 | Slide owners | S | ⬜ Build 7 (moved: comes with slide free placement) |
 | 54 | Reorder, duplicate, sorter view | S | ⬜ Build 12 |
 | 55 | Better AI decks | M | ⬜ Build 12 |
 | 56 | PDF export and Google Slides check | S | 🟡 PPTX export exists |
@@ -227,7 +227,7 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 ### 9. AI
 | # | Build | Size | Status |
 |---|---|---|---|
-| 60 | Group-aware AI | M | 🟡 Knows the project (Build 1); tasks in Build 3 |
+| 60 | Group-aware AI | M | ✅ Builds 1 and 3 (knows tasks, owners, roles; can add tasks) |
 | 61 | Feedback against the rubric | M | 🟡 The AI has the rubric (Build 1); a dedicated button in Build 12 |
 | 62 | Paid AI fallback and per-room limits | M | ⬜ Build 6 |
 | 63 | Self-repairing router | S | ⬜ Build 6 |

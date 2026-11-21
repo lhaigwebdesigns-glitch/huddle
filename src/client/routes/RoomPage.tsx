@@ -300,7 +300,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
           </div>
         )}
         {state.settings.project && (
-          <ProjectBar project={state.settings.project} title={state.settings.title} isHost={isHost} send={send} onReceipt={setReceiptMode} />
+          <ProjectBar project={state.settings.project} title={state.settings.title} isHost={isHost} send={send} onReceipt={setReceiptMode} board={state.board} meUid={state.you.uid} />
         )}
         <Chat
           messages={state.messages}

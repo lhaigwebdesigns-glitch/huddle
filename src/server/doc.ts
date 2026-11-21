@@ -264,10 +264,10 @@ export class Doc extends YServer<Env> {
 
   // ---------- RPC: docs ----------
 
-  async setMarkdown(markdown: string, mode: "replace" | "append" = "replace") {
+  async setMarkdown(markdown: string, mode: "replace" | "append" = "replace", actor: Author | null = AI_AUTHOR) {
     // Keep what people had before the AI rewrites a doc (skip brand-new empty docs).
     if (mode === "replace" && this.document.getXmlFragment("default").length) await this.saveVersion();
-    writeMarkdown(this.document, markdown, mode);
+    this.as(actor, () => writeMarkdown(this.document, markdown, mode));
     await this.onSave();
     return { ok: true };
   }

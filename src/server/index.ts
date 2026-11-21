@@ -34,7 +34,7 @@ app.post("/api/rooms", async (c) => {
     return c.json({ error: "Sign in to create a room (joining with a code doesn't need an account).", signIn: true }, 401);
   if (!(await hit(c.env.DB, `rooms:${clientIp(c.req.raw)}`, Number(c.env.ROOMS_PER_IP_HOUR || 20), 3600)))
     return c.json({ error: "You've created a lot of rooms in the last hour. Please wait a bit and try again." }, 429);
-  const body = await c.req.json<{ uid?: string; title?: string; project?: Record<string, unknown> }>().catch(() => ({}) as any);
+  const body = await c.req.json<{ uid?: string; title?: string; project?: Record<string, unknown>; template?: string }>().catch(() => ({}) as any);
   // Signed-in people always host under their account's identity.
   const uid = user?.uid ?? String(body.uid ?? "").slice(0, 64);
   if (!uid) return c.json({ error: "uid required" }, 400);
@@ -42,7 +42,7 @@ app.post("/api/rooms", async (c) => {
     const code = makeCode();
     const stub = await getServerByName(c.env.Room, code);
     const project = body.project && typeof body.project === "object" ? body.project : undefined;
-    const res = await stub.init(uid, String(body.title ?? ""), project);
+    const res = await stub.init(uid, String(body.title ?? ""), project, typeof body.template === "string" ? body.template : undefined);
     if (res.ok) {
       if (user) c.executionCtx.waitUntil(rememberRoomForUser(c.env, user, code, String(body.title ?? ""), true));
       c.executionCtx.waitUntil(bump(c.env, "rooms_created"));

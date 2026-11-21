@@ -64,3 +64,47 @@ describe("cleanProject", () => {
     expect(p.turnedInAt).toBeUndefined();
   });
 });
+
+describe("tasks and roles", () => {
+  it("lets the AI plan tasks in tutor and full projects, but not when AI is off or after turn in", () => {
+    expect(toolAllowed("add_tasks", "tutor")).toBe(true);
+    expect(toolAllowed("add_tasks", "full")).toBe(true);
+    expect(toolAllowed("add_tasks", "off")).toBe(false);
+    expect(toolAllowed("add_tasks", "full", true)).toBe(false);
+  });
+
+  it("tells the AI the task list, owners, due dates and roles", () => {
+    const names: Record<string, string> = { u1: "Maya", u2: "Sam" };
+    const p = projectPrompt(
+      { instructions: "", rubric: "", ai: "full" },
+      Date.now(),
+      {
+        tasks: [
+          { title: "Find sources", ownerUid: "u1", dueAt: Date.UTC(2026, 11, 4), done: false },
+          { title: "Make slides", done: true },
+        ],
+        roles: { u2: "Designer" },
+      },
+      (uid) => names[uid] ?? "someone",
+    ).join("\n");
+    expect(p).toMatch(/\[ \] Find sources \(owner: Maya\) due 2026-12-04/);
+    expect(p).toMatch(/\[x\] Make slides \(no owner yet\)/);
+    expect(p).toMatch(/Sam: Designer/);
+    expect(projectPrompt({ instructions: "", rubric: "", ai: "full" }, Date.now(), { tasks: [], roles: {} }).join("\n")).toMatch(/no tasks yet/);
+  });
+});
+
+describe("templates", () => {
+  it("each template has instructions, a rubric, files and tasks", async () => {
+    const { PROJECT_TEMPLATES } = await import("../../shared/templates");
+    const { FILE_INFO } = await import("../../shared/files");
+    expect(PROJECT_TEMPLATES.length).toBe(5);
+    for (const t of PROJECT_TEMPLATES) {
+      expect(t.instructions && t.rubric).toBeTruthy();
+      expect(t.files.length).toBeGreaterThan(0);
+      for (const f of t.files) expect(FILE_INFO[f.kind]).toBeTruthy();
+      expect(t.tasks.length).toBeGreaterThanOrEqual(5);
+    }
+    expect(new Set(PROJECT_TEMPLATES.map((t) => t.id)).size).toBe(5);
+  });
+});

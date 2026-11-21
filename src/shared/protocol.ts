@@ -173,6 +173,29 @@ export interface SkillInfo {
   description: string;
 }
 
+/** A piece of the project's work, owned by one person. */
+export interface Task {
+  id: string;
+  title: string;
+  ownerUid?: string;
+  dueAt?: number;
+  done: boolean;
+  doneAt?: number;
+  createdBy: string;
+  createdAt: number;
+}
+
+/** Tasks plus each person's role ("Researcher", "Designer"…). */
+export interface TaskBoard {
+  tasks: Task[];
+  /** uid → role */
+  roles: Record<string, string>;
+  /** uid → name for everyone in the group (sent by the server; not stored). */
+  people?: Record<string, string>;
+}
+
+export const TASK_LIMITS = { tasks: 60, title: 140, role: 30 } as const;
+
 /** One person's part of a project, as the group and the teacher see it. */
 export interface ReceiptPerson {
   uid: string;
@@ -188,6 +211,9 @@ export interface ReceiptPerson {
   /** Times they asked the AI to make or change files (full-help projects). */
   aiAsks: number;
   note?: string;
+  role?: string;
+  /** Titles of the tasks they own, and which are done. */
+  tasks?: { title: string; done: boolean }[];
 }
 export interface ReceiptFile {
   id: string;
@@ -220,6 +246,12 @@ export type ClientMsg =
   | { t: "receipt" }
   /** Your own note on the receipt ("I did the research at the library"). */
   | { t: "receipt_note"; text: string }
+  /** Project tasks: anyone in the group can add, assign, finish or remove them. */
+  | { t: "task_add"; title: string; ownerUid?: string; dueAt?: number }
+  | { t: "task_update"; id: string; title?: string; ownerUid?: string | null; dueAt?: number | null; done?: boolean }
+  | { t: "task_delete"; id: string }
+  /** Set your own role in the group ("" clears it). */
+  | { t: "set_role"; role: string }
   | { t: "say"; text: string; attachments?: Attachment[] }
   /** Turn an uploaded CSV into a live sheet. */
   | { t: "import_csv"; title: string; csv: string }
@@ -263,6 +295,8 @@ export type ServerMsg =
       skills: SkillInfo[];
       providers: string[];
       memory: string[];
+      /** Project tasks and roles (projects only). */
+      board?: TaskBoard;
     }
   | { t: "presence"; members: Member[] }
   | { t: "msg"; message: ChatMessage }
@@ -282,4 +316,5 @@ export type ServerMsg =
   /** Host only: the banned list. */
   | { t: "bans"; bans: Ban[] }
   | { t: "receipt"; receipt: Receipt }
+  | { t: "tasks"; board: TaskBoard }
   | { t: "error"; message: string };
