@@ -1,7 +1,7 @@
 import { lazy, memo, Suspense, useEffect, useState, type ComponentType } from "react";
 import type { FileVersion, RoomFile } from "../../shared/protocol";
 import { FILE_INFO, type FileKind } from "../../shared/files";
-import { History as HistoryIcon, X } from "lucide-react";
+import { History as HistoryIcon, Lock, X } from "lucide-react";
 import { FileIcon } from "./FileIcon";
 import type { Identity } from "../lib/identity";
 import { useYDoc, type YConn } from "../lib/useYDoc";
@@ -12,6 +12,8 @@ export interface EditorProps extends YConn {
   file: RoomFile;
   me: Identity;
   synced: boolean;
+  /** The project was turned in: show the file but don't allow edits. */
+  readOnly?: boolean;
 }
 
 // Every editor loads on first use (see src/client/editors.ts) so the chat stays fast.
@@ -78,7 +80,7 @@ function History({ room, file, onClose }: { room: string; file: RoomFile; onClos
   );
 }
 
-function Body({ room, file, me }: { room: string; file: RoomFile; me: Identity }) {
+function Body({ room, file, me, locked }: { room: string; file: RoomFile; me: Identity; locked: boolean }) {
   const { conn, synced } = useYDoc(room, file.id, me);
   const Editor = EDITORS[file.kind];
   if (!Editor) return <div className="p-6 text-sm text-fg-subtle">This file type isn't supported in this version of Huddle.</div>;
@@ -87,7 +89,10 @@ function Body({ room, file, me }: { room: string; file: RoomFile; me: Identity }
     <Suspense fallback={<div className="p-6 text-sm text-fg-subtle">Loading editor…</div>}>
       {/* Whiteboards draw their own live pointers on the canvas. */}
       <LivePointers provider={conn.provider} enabled={file.kind !== "whiteboard"}>
-        <Editor {...conn} room={room} file={file} me={me} synced={synced} />
+        {/* The server refuses edits to a locked file; disabling the controls makes that clear. */}
+        <fieldset disabled={locked} className="contents">
+          <Editor {...conn} room={room} file={file} me={me} synced={synced} readOnly={locked} />
+        </fieldset>
       </LivePointers>
     </Suspense>
   );
@@ -99,12 +104,14 @@ export const FilePanel = memo(function FilePanel({
   me,
   onClose,
   onRename,
+  locked = false,
 }: {
   room: string;
   file: RoomFile;
   me: Identity;
   onClose: () => void;
   onRename: (title: string) => void;
+  locked?: boolean;
 }) {
   const [title, setTitle] = useState(file.title);
   const [history, setHistory] = useState(false);
@@ -116,6 +123,7 @@ export const FilePanel = memo(function FilePanel({
         <FileIcon kind={file.kind} className="h-4 w-4 shrink-0 text-fg-muted" />
         <input
           aria-label="File name"
+          disabled={locked}
           className="min-w-0 flex-1 rounded-md bg-transparent px-1 py-0.5 text-[15px] font-semibold tracking-tight outline-none hover:bg-surface-2 focus:bg-surface-2"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -135,8 +143,14 @@ export const FilePanel = memo(function FilePanel({
           <X className="h-4 w-4" />
         </button>
       </div>
-      {history && <History room={room} file={file} onClose={() => setHistory(false)} />}
-      <Body key={file.id} room={room} file={file} me={me} />
+      {history && !locked && <History room={room} file={file} onClose={() => setHistory(false)} />}
+      {locked && (
+        <div className="flex items-center gap-2 border-b border-line bg-sidebar px-4 py-2 text-xs text-fg-muted" role="status" data-testid="locked-banner">
+          <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          This project was turned in, so this file is read-only. Ask your teacher to reopen it to make changes.
+        </div>
+      )}
+      <Body key={file.id} room={room} file={file} me={me} locked={locked} />
     </div>
   );
 });

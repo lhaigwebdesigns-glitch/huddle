@@ -18,6 +18,8 @@ import {
 import { useAccount, signInUrl } from "../lib/account";
 import { AccountMenu } from "../components/AccountMenu";
 import { ProfilePanel } from "../components/ProfilePanel";
+import { NewProjectDialog } from "../components/NewProjectDialog";
+import { GraduationCap } from "lucide-react";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { getIdentity, setName } from "../lib/identity";
 import { formatCode, isValidCode, normalizeCode } from "../../shared/code";
@@ -52,6 +54,7 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState("");
+  const [newProject, setNewProject] = useState(false);
   const [manage, setManage] = useState<DashRoom | null>(null);
   const [deleting, setDeleting] = useState<DashRoom | null>(null);
 
@@ -145,6 +148,9 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
           <Button className="w-full justify-start" onClick={() => create()} disabled={busy} data-testid="dash-new-room">
             <Plus className="h-4 w-4" /> New room
           </Button>
+          <Button variant="secondary" className="mt-1.5 w-full justify-start" onClick={() => setNewProject(true)} data-testid="dash-new-project">
+            <GraduationCap className="h-4 w-4" /> New project
+          </Button>
         </div>
         <nav className="mt-4 space-y-0.5 px-3 text-sm" aria-label="Filter rooms">
           <Link
@@ -220,6 +226,24 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
               <Plus className="h-4 w-4" /> {busy ? "Starting…" : "Start a room"}
             </Button>
           </form>
+          <button
+            type="button"
+            onClick={() => setNewProject(true)}
+            className="press rise rise-2 mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-fg-muted hover:bg-accent-soft hover:text-fg"
+            data-testid="new-project"
+          >
+            <GraduationCap className="h-4 w-4" /> Teacher? Set up a group project with AI rules
+          </button>
+          {newProject && (
+            <NewProjectDialog
+              uid={account.user.uid}
+              onClose={() => setNewProject(false)}
+              onCreated={(c) => {
+                if (!getIdentity().name) setName(account.user!.name);
+                nav(`/r/${c}`);
+              }}
+            />
+          )}
           {/* Mobile: join + filter */}
           <form onSubmit={join} className="mt-3 flex gap-2 md:hidden">
             <Input aria-label="Party code" placeholder="Have a code? K7Q-29F" value={code} onChange={(e) => setCode(formatCode(e.target.value))} className="font-mono" />

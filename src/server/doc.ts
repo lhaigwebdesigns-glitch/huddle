@@ -34,7 +34,21 @@ const MAX_VERSIONS = 30;
 export class Doc extends YServer<Env> {
   static callbackOptions = { debounceWait: 1500, debounceMaxWait: 8000 };
 
+  /** Turned-in projects lock their files: edits from people's editors are refused. */
+  private locked = false;
+
+  isReadOnly() {
+    return this.locked;
+  }
+
+  async setLocked(on: boolean) {
+    this.locked = on;
+    await this.ctx.storage.put("locked", on);
+    return { ok: true };
+  }
+
   async onLoad() {
+    this.locked = !!(await this.ctx.storage.get<boolean>("locked"));
     const state = await this.readState("ydoc");
     if (state) return docFromState(state);
   }

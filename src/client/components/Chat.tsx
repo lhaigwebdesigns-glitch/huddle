@@ -492,6 +492,7 @@ export function Chat({
   const menu = matchSlash(text);
   const last = messages[messages.length - 1];
   const lastUserIdx = messages.map((m) => m.role).lastIndexOf("user");
+  const aiOff = settings.project?.ai === "off";
 
   useLayoutEffect(() => {
     const el = listRef.current;
@@ -560,8 +561,17 @@ export function Chat({
       >
         {messages.length === 0 && (
           <div className="rise mx-auto mt-[12vh] max-w-xl px-6 text-center">
-            <h2 className="text-[28px] font-semibold tracking-[-0.025em]">What are we working on?</h2>
-            <p className="mx-auto mt-2 max-w-md text-[15px] text-fg-muted">Share the party code so friends can join, then ask the AI anything.</p>
+            <h2 className="text-[28px] font-semibold tracking-[-0.025em]">{settings.project ? "Let's get this project started" : "What are we working on?"}</h2>
+            <p className="mx-auto mt-2 max-w-md text-[15px] text-fg-muted">
+              {settings.project
+                ? aiOff
+                  ? "Share the code with your group, split up the work, and make your files on the right."
+                  : settings.project.ai === "tutor"
+                    ? "Share the code with your group. Stuck? Ask the tutor for a hint; it won't do the work for you."
+                    : "Share the code with your group, then ask the AI to help you plan, research and build."
+                : "Share the party code so friends can join, then ask the AI anything."}
+            </p>
+            {(!settings.project || settings.project.ai === "full") && (<>
             <div className="mt-8 grid gap-2 text-left sm:grid-cols-2" data-testid="suggestions">
               {SUGGESTIONS.map((s) => (
                 <button
@@ -579,6 +589,7 @@ export function Chat({
             <p className="mt-6 text-xs text-fg-subtle">
               Type <kbd className="rounded border border-line bg-surface-2 px-1.5 font-mono">/</kbd> for shortcuts like /doc and /search.
             </p>
+            </>)}
           </div>
         )}
         <div className="mx-auto max-w-3xl pb-3">
@@ -594,6 +605,11 @@ export function Chat({
                     {dayLabel(m.createdAt)}
                   </div>
                 )}
+                {m.role === "system" ? (
+                  <p className="mx-auto my-3 w-fit max-w-[90%] rounded-full bg-surface-2 px-3 py-1 text-center text-xs text-fg-muted" data-testid="room-notice">
+                    {m.content}
+                  </p>
+                ) : (
                 <MessageView
                   m={m}
                   members={members}
@@ -601,9 +617,10 @@ export function Chat({
                   me={me}
                   grouped={grouped}
                   send={send}
-                  canRegenerate={m === last && m.role === "assistant" && !streaming}
+                  canRegenerate={m === last && m.role === "assistant" && !streaming && !aiOff}
                   canEdit={m.role === "user" && m.authorId === me.uid && i === lastUserIdx && !streaming}
                 />
+                )}
               </div>
             );
           })}
@@ -646,7 +663,9 @@ export function Chat({
           <div className="h-6 px-2 text-xs text-fg-subtle" aria-live="polite">
             {localProgress
               ? `Loading local model on your device… ${Math.round(localProgress.pct * 100)}%`
-              : settings.aiMode === "mention"
+              : aiOff
+                ? ""
+                : settings.aiMode === "mention"
                   ? "Mention @ai to get the AI's attention"
                   : ""}
           </div>
@@ -684,7 +703,11 @@ export function Chat({
               rows={1}
               value={text}
               aria-label="Message"
-              placeholder={`Message the room${settings.aiMode === "mention" ? " (use @ai for the AI)" : " and the AI"}… (type / for shortcuts)`}
+              placeholder={
+                aiOff
+                  ? "Chat with your group (AI is off for this project)"
+                  : `Message the room${settings.aiMode === "mention" ? " (use @ai for the AI)" : " and the AI"}… (type / for shortcuts)`
+              }
               className="block max-h-48 min-h-[2.75rem] w-full resize-none bg-transparent px-2.5 py-2 text-[15px] leading-relaxed outline-none focus-visible:outline-none"
               onChange={(e) => {
                 setText(e.target.value);

@@ -5,6 +5,51 @@ import { useState } from "react";
 import { formatCode } from "../../shared/code";
 import { X } from "lucide-react";
 import { ThemeToggle } from "./ui";
+import { EMPTY_PROJECT, ProjectEditor, type ProjectDraft } from "./ProjectEditor";
+
+/** Host only: turn the room into a school project and set its rules. */
+function ProjectSection({ settings, members, send }: { settings: RoomSettings; members: Member[]; send: (m: ClientMsg) => void }) {
+  const saved = settings.project;
+  const [draft, setDraft] = useState<ProjectDraft>(() => (saved ? { ...saved } : EMPTY_PROJECT));
+  const [msg, setMsg] = useState("");
+  const save = (d: ProjectDraft) => {
+    // dueAt: null clears a due date that was removed.
+    send({ t: "settings", patch: { project: { ...d, dueAt: (d.dueAt ?? null) as number | undefined } } });
+    setMsg("Saved");
+    setTimeout(() => setMsg(""), 1500);
+  };
+  return (
+    <div className="rounded-2xl border border-line px-4 py-3" data-testid="project-section">
+      <label className="flex items-center justify-between gap-3">
+        <span>
+          <span className="text-sm font-medium">School project</span>
+          <span className="block text-xs text-fg-subtle">Add instructions, a due date and AI rules for a group assignment.</span>
+        </span>
+        <input
+          type="checkbox"
+          checked={!!saved}
+          data-testid="project-toggle"
+          aria-label="Make this a project"
+          onChange={(e) => {
+            if (e.target.checked) save(draft);
+            else if (confirm("Stop treating this room as a project? Its instructions and AI rules will be removed.")) send({ t: "settings", patch: { project: null } });
+          }}
+        />
+      </label>
+      {saved && (
+        <div className="mt-3">
+          <ProjectEditor value={draft} onChange={setDraft} members={members} hostId={settings.hostId} compact />
+          <div className="mt-3 flex items-center gap-2">
+            <button type="button" onClick={() => save(draft)} className="press rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg hover:bg-primary-hover" data-testid="project-save">
+              Save project
+            </button>
+            {msg && <span className="text-xs text-fg-subtle" role="status">{msg}</span>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** Custom assistant: name + standing instructions, shareable between rooms by code. */
 function AssistantEditor({ settings, patch }: { settings: RoomSettings; patch: (p: Partial<RoomSettings>) => void }) {
@@ -127,6 +172,7 @@ export function SettingsDialog({
         </div>
 
         <fieldset disabled={disabled} className="mt-4 space-y-5 disabled:opacity-60">
+          {isHost && <ProjectSection settings={settings} members={members} send={send} />}
           <label className="block">
             <span className="text-sm font-medium">Room name</span>
             <input
