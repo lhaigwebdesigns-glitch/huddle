@@ -10,6 +10,11 @@ import Home from "./routes/Home";
 import RoomPage from "./routes/RoomPage";
 // Admin (with its charts) loads only when someone opens /admin.
 const Admin = lazy(() => import("./routes/Admin"));
+// Teacher pages load on first use.
+const ClassesPage = lazy(() => import("./routes/Classes").then((m) => ({ default: m.ClassesPage })));
+const ClassPage = lazy(() => import("./routes/Classes").then((m) => ({ default: m.ClassPage })));
+const Grading = lazy(() => import("./routes/Grading"));
+import StudentClass from "./routes/StudentClass";
 import Dashboard from "./routes/Dashboard";
 import PublicForm from "./routes/PublicForm";
 import SharedChat from "./routes/SharedChat";
@@ -34,6 +39,10 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/profile" element={<Dashboard view="profile" />} />
         <Route path="/admin" element={<Suspense fallback={null}><Admin /></Suspense>} />
         <Route path="/f/:code/:id" element={<PublicForm />} />
+        <Route path="/classes" element={<Suspense fallback={null}><ClassesPage /></Suspense>} />
+        <Route path="/classes/:id" element={<Suspense fallback={null}><ClassPage /></Suspense>} />
+        <Route path="/classes/:id/a/:aid/:room" element={<Suspense fallback={null}><Grading /></Suspense>} />
+        <Route path="/c/:code" element={<StudentClass />} />
         <Route path="/s/:id" element={<SharedChat />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />

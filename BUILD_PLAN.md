@@ -13,7 +13,7 @@ Last updated Nov 21, 2026. Sizes: **S** = an evening, **M** = a weekend, **L** =
 - paste block
 - turn in with locked files
 
-**Build 2 (receipts) and Build 3 (tasks, roles, templates) are built**, waiting to merge and deploy. **Next is Build 4: the teacher class page and grading.**
+**Builds 2 and 3 are live. Build 4 (classes, dashboard, grading) is built**, waiting to merge and deploy. **Next is Build 5: Google sign-in and Share to Classroom.**
 
 **Known limit of receipts:** when someone splits a paragraph in the middle (presses Enter inside it), the doc editor rewrites the text after the split, so that text is credited to the person who split it. Typing, deleting and pressing Enter at the end of a paragraph are counted correctly.
 
@@ -26,7 +26,7 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 | ✅ 1 | Project rooms, AI settings, tutor mode, paste block, turn in | 8, 9, 10, 12 (files) | L | The base everything else needs |
 | ✅ 2 | **Contribution receipts** | 1, 3, 5, 6, 7, 12 (receipt) | L | The core idea: proof of who did the work |
 | ✅ 3 | **Tasks, roles and templates** | 11, 13, 46, 53, 60 | L | Groups split the work, and tasks count on the receipt |
-| ⬜ 4 | **Teacher class page and grading** | 22, 23, 24, 25, 65 | L | The teacher's side: one place for all groups, fast grading |
+| ✅ 4 | **Teacher class page and grading** | 22, 23, 24, 25, 65 | L | The teacher's side: one place for all groups, fast grading |
 | ⬜ 5 | **Google sign-in and Share to Classroom** | 15, 14, start 19 | M | No friction for schools; Google's review takes weeks, so start it here |
 | ⬜ 6 | **Safety and limits** | 64, 66, 67, 68, 69, 70, 62, 63 | M | Required before any students use it |
 | ⬜ 7 | **Docs and slides basics** | 39, 40, 42, 45, 48, 52 | L | What students need to make real projects |
@@ -151,7 +151,7 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 | 4 | "Who wrote this?" view | M | ⬜ Build 9 |
 | 5 | Group review and notes before turning in | S | ✅ Build 2 |
 | 6 | "What your teacher sees" preview | S | ✅ Build 2 |
-| 7 | Privacy rules: teacher sees turned-in receipts only, never the chat | S | 🟡 Receipt rule done (Build 2); the teacher leaves the group room in Build 4 |
+| 7 | Privacy rules: teacher sees turned-in receipts only, never the chat | S | ✅ Builds 2 and 4 |
 
 ### 2. Project rooms and AI settings (Priority 1)
 | # | Build | Size | Status |
@@ -170,7 +170,7 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 | 14 | Share to Classroom button | S | ⬜ Build 5 |
 | 15 | Google sign-in as the main way in | S | 🟡 Google sign-in exists; Build 5 makes it the main way in |
 | 16 | Classroom connection: roster, assignment, turned-in status | L | ⬜ Build 10 |
-| 17 | Automatic groups from the roster | M | ⬜ Build 10 |
+| 17 | Automatic groups from the roster | M | 🟡 Random groups from the class roster (Build 4); Classroom roster in Build 10 |
 | 18 | Send grades back to Classroom | M | ⬜ Build 10 |
 | 19 | Google's review of Classroom access | M | ⬜ Starts in Build 5 |
 | 20 | Huddle inside Classroom (add-on) | L | ⬜ After the pilot |
@@ -179,10 +179,10 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 ### 4. Teacher tools
 | # | Build | Size | Status |
 |---|---|---|---|
-| 22 | Class page and class code | M | ⬜ Build 4 |
-| 23 | Teacher dashboard (submitted work only) | M | ⬜ Build 4 |
-| 24 | Grading screen | L | ⬜ Build 4 |
-| 25 | Grade export | S | ⬜ Build 4 |
+| 22 | Class page and class code | M | ✅ Build 4 |
+| 23 | Teacher dashboard (submitted work only) | M | ✅ Build 4 |
+| 24 | Grading screen | L | ✅ Build 4 |
+| 25 | Grade export | S | ✅ Build 4 (CSV) |
 | 26 | Confusion summary | L | ⬜ Build 11, only if the teacher wants it |
 | 27 | "I'm still stuck, tell my teacher" button | S | ⬜ Build 11 |
 
@@ -236,7 +236,7 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 | # | Build | Size | Status |
 |---|---|---|---|
 | 64 | Age check (13+) | S | ⬜ Build 6 |
-| 65 | Teacher and student accounts | S | ⬜ Build 4 |
+| 65 | Teacher and student accounts | S | ✅ Build 4 (teacher = owns a class; student = joined one) |
 | 66 | Privacy policy and terms, plus a professional review | S | ⬜ Build 6 |
 | 67 | AI content safety | M | ⬜ Build 6 |
 | 68 | Report button | S | ⬜ Build 6 |

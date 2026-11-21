@@ -72,6 +72,9 @@ function reducer(s: RoomState, a: Action): RoomState {
       return { ...s, memory: m.facts };
     case "tasks":
       return { ...s, board: m.board };
+    case "redirect":
+      if (m.to.startsWith("/")) window.location.replace(m.to);
+      return s;
     case "presence":
       return { ...s, members: m.members };
     case "msg":

@@ -110,7 +110,11 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
     const c = normalizeCode(code);
     if (!isValidCode(c)) return setErr("Party codes are 6 letters or numbers, like K7Q-29F.");
     const res = await fetch(`/api/rooms/${c}`);
-    if (!res.ok) return setErr("That code doesn't match a room.");
+    if (!res.ok) {
+      const cls = await fetch(`/api/classes/join/${c}`);
+      if (cls.ok) return nav(`/c/${c}`);
+      return setErr("That code doesn't match a room or a class.");
+    }
     nav(`/r/${c}`);
   };
 
@@ -151,6 +155,9 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
           <Button variant="secondary" className="mt-1.5 w-full justify-start" onClick={() => setNewProject(true)} data-testid="dash-new-project">
             <GraduationCap className="h-4 w-4" /> New project
           </Button>
+          <Link to="/classes" className="press mt-1.5 flex w-full items-center gap-2 rounded-xl px-4 py-2 text-[15px] text-fg-muted hover:bg-accent-soft hover:text-fg" data-testid="sidebar-classes">
+            <Users className="h-4 w-4" /> Classes
+          </Link>
         </div>
         <nav className="mt-4 space-y-0.5 px-3 text-sm" aria-label="Filter rooms">
           <Link
@@ -232,8 +239,11 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
             className="press rise rise-2 mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-fg-muted hover:bg-accent-soft hover:text-fg"
             data-testid="new-project"
           >
-            <GraduationCap className="h-4 w-4" /> Teacher? Set up a group project with AI rules
+            <GraduationCap className="h-4 w-4" /> One group project
           </button>
+          <Link to="/classes" className="press rise rise-2 mt-1 flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-fg-muted hover:bg-accent-soft hover:text-fg" data-testid="classes-link">
+            <Users className="h-4 w-4" /> Teacher? Set up a class and assign projects to every group
+          </Link>
           {newProject && (
             <NewProjectDialog
               uid={account.user.uid}

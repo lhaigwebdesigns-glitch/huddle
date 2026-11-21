@@ -638,6 +638,76 @@ try {
   await teach.getByTestId("tasks-toggle").getByText("0/7").waitFor();
   ok((await teach.getByTestId("drive-file").count()) === 2, "a template project starts with its files and 7 tasks");
 
+  // ---------- Classes: a teacher's class, a group assignment, progress and grading ----------
+  const park = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+  await park.goto(`${BASE}/api/auth/login/dev?name=Ms.%20Park&return=/classes`);
+  await park.waitForURL(/\/classes$/);
+  await park.getByLabel("Class name").fill("Period 3 History");
+  await park.getByTestId("create-class").click();
+  await park.waitForURL(/\/classes\/[a-z0-9]+$/);
+  const classUrl = park.url();
+  const classLink = await park.getByTestId("copy-class-link").getAttribute("data-link");
+  ok(/\/c\/[A-Z0-9]{6}$/.test(classLink), "a teacher creates a class and gets a class link");
+  const kids = [];
+  for (const name of ["Ava", "Ben", "Cam", "Dee"]) {
+    const p = await (await browser.newContext({ viewport: { width: 1200, height: 900 } })).newPage();
+    await p.goto(classLink);
+    await p.getByLabel("Your name").fill(name);
+    await p.getByTestId("join-class").click();
+    await p.getByText("You're in this class").waitFor();
+    kids.push(p);
+  }
+  await park.reload();
+  await park.getByTestId("roster").getByText("Dee").waitFor();
+  ok(true, "students join with the class link, and the teacher sees the roster");
+  await park.getByTestId("new-assignment-btn").click();
+  await park.getByTestId("a-template-presentation").click();
+  await park.getByLabel("Assignment title").fill("WWI presentation");
+  await park.getByLabel("Group size").fill("2");
+  await park.getByTestId("create-assignment").click();
+  await park.getByTestId("group-card").nth(1).waitFor({ timeout: 20000 });
+  ok((await park.getByTestId("group-card").count()) === 2, "an assignment makes one project room per group");
+  const rooms = [];
+  for (const k of kids) {
+    await k.reload();
+    await k.getByTestId("open-group-room").click();
+    await k.waitForURL(/\/r\/[A-Z0-9]{6}$/);
+    rooms.push(k.url().split("/r/")[1]);
+    await k.getByTestId("project-bar").waitFor();
+  }
+  ok(new Set(rooms).size === 2 && rooms.filter((r) => r === rooms[0]).length === 2, "each student lands in their own group's room");
+  // One group turns in.
+  const first = kids[0];
+  await first.getByTestId("turn-in").click();
+  await first.getByTestId("confirm-turn-in").click();
+  await first.getByTestId("turned-in").waitFor();
+  await park.reload();
+  await park.getByTestId("group-status").getByText("Turned in").waitFor();
+  ok(/Tasks 0\/7/.test(await park.getByTestId("group-progress").first().innerText()), "the dashboard shows each group's progress and who turned in");
+  // The teacher grades it.
+  await park.getByTestId("grade-group").click();
+  await park.getByTestId("grader").waitFor();
+  ok((await park.getByRole("region", { name: "Contribution receipt" }).count()) === 1, "the grading screen shows the frozen receipt");
+  const rows = park.getByTestId("rubric-row");
+  ok((await rows.count()) === 3, "the rubric text becomes rows with points");
+  for (let i = 0; i < 3; i++) await rows.nth(i).getByTestId("score-step").first().click();
+  ok((await park.getByTestId("grade-total").innerText()).startsWith("100 / 100"), "clicking scores adds up the group total");
+  await park.getByTestId("student-grade").first().fill("90");
+  await park.getByTestId("grade-comment").fill("Great sources.");
+  await park.getByTestId("save-grade").click();
+  await park.getByRole("status").getByText("Saved").waitFor();
+  await park.goto(classUrl);
+  const href = await park.getByTestId("export-csv").getAttribute("href");
+  const text = await park.evaluate(async (u) => (await fetch(u)).text(), href);
+  const lines = text.trim().split(/\r\n/);
+  ok(lines.length === 5 && lines.some((l) => /,90,100,Great sources\.$/.test(l)) && lines.some((l) => /,100,100,100,Great sources\.$/.test(l)), "the grades CSV has every student, with per-student grades");
+  await park.getByTestId("group-status").getByText("Graded").waitFor();
+  ok(true, "graded groups show as Graded");
+  // The teacher never sits in a group's chat: opening the room link goes to grading.
+  await park.goto(`${BASE}/r/${rooms[0]}`);
+  await park.waitForURL(/\/classes\/[a-z0-9]+\/a\/[a-z0-9]+\/[A-Z0-9]{6}$/, { timeout: 15000 });
+  ok(true, "a teacher opening a group's room is sent to grading, not the chat");
+
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
   const statuses = await alice.evaluate(async () => {
     const ip = `e2e-${Math.random()}`;

@@ -81,7 +81,12 @@ export default function Home() {
     setBusy(true);
     const res = await fetch(`/api/rooms/${c}`);
     setBusy(false);
-    if (!res.ok) return setErr("That code doesn't match a room. Check the letters and try again.");
+    if (!res.ok) {
+      // Not a room: it may be a class code.
+      const cls = await fetch(`/api/classes/join/${c}`);
+      if (cls.ok) return nav(`/c/${c}`);
+      return setErr("That code doesn't match a room or a class. Check the letters and try again.");
+    }
     nav(`/r/${c}`);
   };
 
