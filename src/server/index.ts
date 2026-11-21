@@ -11,6 +11,7 @@ import { clientIp, ensureTables, hit, usageByDay } from "./db";
 import { auth, currentUser, enabledProviders, isAdminUser, rememberRoomForUser } from "./auth";
 import { MAX_UPLOAD_BYTES, safeFileName, UPLOAD_TYPES } from "../shared/knowledge";
 import { getBlob, putBlob } from "./blobs";
+import { classes } from "./classes";
 
 export { Room } from "./room";
 export { Doc } from "./doc";
@@ -27,6 +28,7 @@ app.get("/api/health", async (c) =>
 );
 
 app.route("/api/auth", auth);
+app.route("/api/classes", classes);
 
 app.post("/api/rooms", async (c) => {
   const user = await currentUser(c.env, c.req.raw);

@@ -352,6 +352,12 @@ export class Room extends Server<Env> {
 
     if (!this.settings) return conn.close(4004, "Room not found");
     if (!uid) return conn.close(4000, "Missing user id");
+    // A teacher never sits in a class group's room (they never see its chat): send them to grading.
+    const link = this.settings.classLink;
+    if (link && uid === this.settings.hostId) {
+      this.send(conn, { t: "redirect", to: `/classes/${link.classId}/a/${link.assignmentId}/${this.name}` });
+      return conn.close(4010, "Teachers grade from the class page");
+    }
     if ((await this.bans()).some((b) => b.uid === uid)) return conn.close(4003, "The host banned you from this room.");
     const known = (await this.ctx.storage.get<string[]>("members")) ?? [];
     if (this.settings.locked && uid !== this.settings.hostId && !known.includes(uid))
@@ -643,16 +649,9 @@ export class Room extends Server<Env> {
         return;
       }
       case "reopen": {
-        const p = this.settings.project;
-        if (!p?.turnedInAt) return;
+        if (!this.settings.project?.turnedInAt) return;
         if (!isHost) return this.send(conn, { t: "error", message: "Only the teacher (the host) can reopen a turned-in project." });
-        delete p.turnedInAt;
-        delete p.turnedInBy;
-        await this.ctx.storage.put("settings", this.settings);
-        await this.lockFiles(false);
-        await this.ctx.storage.delete("receipt:final");
-        this.broadcastMsg({ t: "settings", settings: this.settings });
-        this.notice(`${me.name} reopened the project. The group can edit again.`);
+        await this.reopen(me.name);
         return;
       }
       case "new_file": {
@@ -900,6 +899,60 @@ export class Room extends Server<Env> {
     const asks = (await this.ctx.storage.get<Record<string, number>>("aiAsks")) ?? {};
     for (const uid of uids) asks[uid] = (asks[uid] ?? 0) + 1;
     await this.ctx.storage.put("aiAsks", asks);
+  }
+
+  private async reopen(byName: string) {
+    const p = this.settings?.project;
+    if (!p?.turnedInAt) return false;
+    delete p.turnedInAt;
+    delete p.turnedInBy;
+    await this.ctx.storage.put("settings", this.settings);
+    await this.lockFiles(false);
+    await this.ctx.storage.delete("receipt:final");
+    this.broadcastMsg({ t: "settings", settings: this.settings! });
+    this.notice(`${byName} reopened the project. The group can edit again.`);
+    return true;
+  }
+
+  // ---------- RPC for the teacher's class pages (counts and turned-in work only, never the chat) ----------
+
+  async setClassLink(link: { classId: string; assignmentId: string; group: string }) {
+    if (!this.settings) return { ok: false };
+    this.settings.classLink = link;
+    await this.ctx.storage.put("settings", this.settings);
+    return { ok: true };
+  }
+
+  async groupStatus(memberUids: string[]) {
+    const s = this.settings;
+    if (!s) return null;
+    const known = (await this.ctx.storage.get<Record<string, { lastSeen: number }>>("people")) ?? {};
+    const board = await this.board();
+    const [last] = this.sql<{ at: number }>`SELECT MAX(created_at) AS at FROM messages WHERE role = 'user'`;
+    const seen = memberUids.map((u) => known[u]?.lastSeen ?? 0).filter(Boolean);
+    const lastActivity = Math.max(last?.at ?? 0, ...seen, 0) || undefined;
+    return {
+      joined: memberUids.filter((u) => known[u]).length,
+      tasksDone: board.tasks.filter((t) => t.done).length,
+      tasksTotal: board.tasks.length,
+      ...(lastActivity ? { lastActivity } : {}),
+      ...(s.project?.turnedInAt ? { turnedInAt: s.project.turnedInAt } : {}),
+      files: this.files().length,
+    };
+  }
+
+  /** The submitted files and frozen receipt, only once the group turned the project in. */
+  async submitted() {
+    if (!this.settings?.project?.turnedInAt) return { turnedIn: false as const, files: this.files().map(({ id, title, kind }) => ({ id, title, kind })), receipt: null };
+    return {
+      turnedIn: true as const,
+      files: this.files().map(({ id, title, kind }) => ({ id, title, kind })),
+      receipt: (await this.ctx.storage.get<Receipt>("receipt:final")) ?? null,
+    };
+  }
+
+  async teacherReopen(name: string) {
+    return { ok: await this.reopen(name || "Your teacher") };
   }
 
   /** A line from Huddle itself in the chat ("Maya turned in the project"). */

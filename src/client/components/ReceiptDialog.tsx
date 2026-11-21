@@ -91,6 +91,7 @@ export function ReceiptDialog({
   mode,
   send,
   onClose,
+  embedded = false,
 }: {
   receipt?: Receipt;
   meUid: string;
@@ -98,14 +99,17 @@ export function ReceiptDialog({
   mode: "view" | "turnin";
   send: (m: ClientMsg) => void;
   onClose: () => void;
+  /** Shown inside another page (the teacher's grading screen) instead of as a dialog. */
+  embedded?: boolean;
 }) {
   const r = receipt;
   // Ask for a fresh receipt on open, and keep a live one current while it's open.
   useEffect(() => {
+    if (embedded) return;
     send({ t: "receipt" });
     const t = setInterval(() => send({ t: "receipt" }), 15_000);
     return () => clearInterval(t);
-  }, [send]);
+  }, [send, embedded]);
   const mine = r?.people.find((p) => p.uid === meUid);
   const [note, setNote] = useState(mine?.note ?? "");
   const [noteSaved, setNoteSaved] = useState(false);
@@ -124,12 +128,19 @@ export function ReceiptDialog({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]" onClick={onClose}>
+    <div
+      className={embedded ? "flex h-full min-h-0" : "fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"}
+      onClick={embedded ? undefined : onClose}
+    >
       <div
-        role="dialog"
-        aria-modal="true"
+        role={embedded ? "region" : "dialog"}
+        aria-modal={embedded ? undefined : true}
         aria-label="Contribution receipt"
-        className="pop flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[24px] border border-line bg-surface shadow-[0_30px_80px_-20px_rgba(0,0,0,0.4)]"
+        className={
+          embedded
+            ? "flex min-h-0 w-full flex-col overflow-hidden"
+            : "pop flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[24px] border border-line bg-surface shadow-[0_30px_80px_-20px_rgba(0,0,0,0.4)]"
+        }
         onClick={(e) => e.stopPropagation()}
         data-testid="receipt"
       >
@@ -151,9 +162,11 @@ export function ReceiptDialog({
               <Download className="h-3.5 w-3.5" /> PDF
             </button>
           )}
-          <button onClick={onClose} className="press rounded-full p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg" aria-label="Close receipt">
-            <X className="h-4 w-4" />
-          </button>
+          {!embedded && (
+            <button onClick={onClose} className="press rounded-full p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg" aria-label="Close receipt">
+              <X className="h-4 w-4" />
+            </button>
+          )}
         </div>
 
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-6 py-5">

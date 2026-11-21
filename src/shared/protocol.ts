@@ -122,6 +122,8 @@ export interface RoomSettings {
   assistant?: AssistantProfile;
   /** Set when the room is a school project: the teacher (host) sets its rules. */
   project?: ProjectSettings;
+  /** Set when the room is a group's room in a teacher's class. */
+  classLink?: { classId: string; assignmentId: string; group: string };
 }
 
 /** What the AI may do in a project: nothing, coach only, or full help. */
@@ -317,4 +319,6 @@ export type ServerMsg =
   | { t: "bans"; bans: Ban[] }
   | { t: "receipt"; receipt: Receipt }
   | { t: "tasks"; board: TaskBoard }
+  /** Go somewhere else instead (a teacher opening a group's room goes to grading). */
+  | { t: "redirect"; to: string }
   | { t: "error"; message: string };
