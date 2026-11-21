@@ -53,3 +53,14 @@ describe("CSV export", () => {
     );
   });
 });
+
+describe("Share to Classroom", () => {
+  it("builds Google Classroom's share link with the url, title and text", async () => {
+    const { classroomShareUrl } = await import("./classes");
+    const u = new URL(classroomShareUrl("https://huddle.example/c/ABC123", "WWI presentation", "Join your group & start"));
+    expect(u.origin + u.pathname).toBe("https://classroom.google.com/share");
+    expect(u.searchParams.get("url")).toBe("https://huddle.example/c/ABC123");
+    expect(u.searchParams.get("title")).toBe("WWI presentation");
+    expect(u.searchParams.get("body")).toBe("Join your group & start");
+  });
+});

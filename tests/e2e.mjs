@@ -648,6 +648,8 @@ try {
   const classUrl = park.url();
   const classLink = await park.getByTestId("copy-class-link").getAttribute("data-link");
   ok(/\/c\/[A-Z0-9]{6}$/.test(classLink), "a teacher creates a class and gets a class link");
+  const share = new URL(await park.getByTestId("share-class-to-classroom").getAttribute("href"));
+  ok(share.origin === "https://classroom.google.com" && share.searchParams.get("url") === classLink, "Share to Google Classroom posts the class link");
   const kids = [];
   for (const name of ["Ava", "Ben", "Cam", "Dee"]) {
     const p = await (await browser.newContext({ viewport: { width: 1200, height: 900 } })).newPage();
@@ -667,6 +669,8 @@ try {
   await park.getByTestId("create-assignment").click();
   await park.getByTestId("group-card").nth(1).waitFor({ timeout: 20000 });
   ok((await park.getByTestId("group-card").count()) === 2, "an assignment makes one project room per group");
+  const post = new URL(await park.getByTestId("post-to-classroom").getAttribute("href"));
+  ok(post.searchParams.get("title") === "WWI presentation" && post.searchParams.get("url") === classLink, "each assignment can be posted to Classroom with its title");
   const rooms = [];
   for (const k of kids) {
     await k.reload();

@@ -1,18 +1,30 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, Check, Copy, Download, GraduationCap, Plus, Users, X } from "lucide-react";
-import { useAccount, signInUrl } from "../lib/account";
+import { PROVIDER_LABEL, useAccount, signInUrl } from "../lib/account";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { formatCode } from "../../shared/code";
 import { timeAgo } from "../components/PartyLists";
 import { EMPTY_PROJECT, ProjectEditor, type ProjectDraft } from "../components/ProjectEditor";
 import { PROJECT_TEMPLATES } from "../../shared/templates";
 import { FILE_INFO } from "../../shared/files";
-import { gradeTotal, rubricMax, type Assignment, type ClassInfo, type ClassView, type GroupInfo } from "../../shared/classes";
+import { classroomShareUrl, gradeTotal, rubricMax, type Assignment, type ClassInfo, type ClassView, type GroupInfo } from "../../shared/classes";
 
 async function api<T>(url: string, init?: RequestInit): Promise<T & { error?: string }> {
   const r = await fetch(url, init?.body ? { ...init, headers: { "content-type": "application/json", ...init.headers } } : init);
   return (await r.json().catch(() => ({ error: "Something went wrong." }))) as T & { error?: string };
+}
+
+/** A small Google Classroom-style mark (green board), drawn here so no logo file is needed. */
+function ClassroomMark() {
+  return (
+    <svg viewBox="0 0 16 16" className="mr-1 inline h-3.5 w-3.5 align-[-2px]" aria-hidden>
+      <rect x="1" y="2" width="14" height="11" rx="1.5" fill="#1e8e3e" />
+      <rect x="3" y="4" width="10" height="7" rx="0.5" fill="#fff" opacity=".9" />
+      <circle cx="8" cy="7" r="1.4" fill="#1e8e3e" />
+      <path d="M5.5 10.5c.5-1.2 1.4-1.8 2.5-1.8s2 .6 2.5 1.8" fill="#1e8e3e" />
+    </svg>
+  );
 }
 
 /** Header shared by the teacher's pages. */
@@ -46,11 +58,16 @@ function SignInFirst() {
     <div className="mx-auto mt-[15vh] max-w-sm px-6 text-center">
       <GraduationCap className="mx-auto h-8 w-8 text-fg-muted" />
       <h1 className="mt-3 text-2xl font-semibold tracking-tight">Sign in to set up classes</h1>
-      <p className="mt-2 text-sm text-fg-muted">Teachers need an account. Students join with a class code, no account needed.</p>
+      <p className="mt-2 text-sm text-fg-muted">Use your school Google account. Students join with a class code, no account needed.</p>
       <div className="mt-5 flex flex-col gap-2">
-        {account.providers.map((p) => (
-          <a key={p} href={signInUrl(p, location.pathname)} className="press rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-fg hover:bg-primary-hover">
-            Continue with {p === "google" ? "Google" : p === "github" ? "GitHub" : p}
+        {account.providers.map((p, i) => (
+          <a
+            key={p}
+            href={signInUrl(p, location.pathname)}
+            className={`press rounded-xl px-4 py-2 text-sm font-medium ${i === 0 ? "bg-primary text-primary-fg hover:bg-primary-hover" : "border border-line-strong text-fg hover:bg-surface-2"}`}
+            data-testid={`signin-${p}`}
+          >
+            Continue with {PROVIDER_LABEL[p] ?? p}
           </a>
         ))}
       </div>
@@ -173,6 +190,19 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
         <button onClick={() => setManage((m) => !m)} aria-pressed={manage} className="press rounded-lg px-2.5 py-1 text-xs text-fg-muted hover:bg-surface-2 hover:text-fg">
           <Users className="mr-1 inline h-3.5 w-3.5" /> {manage ? "Done" : "Move students"}
         </button>
+        <a
+          href={classroomShareUrl(
+            `${location.origin}/c/${view.class.code}`,
+            a.title,
+            `Group project on Huddle. Open the link, join the class with your name, then open your group's room.${a.project.dueAt ? ` Due ${new Date(a.project.dueAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}.` : ""}`,
+          )}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2"
+          data-testid="post-to-classroom"
+        >
+          <ClassroomMark /> Post to Classroom
+        </a>
         <a href={`/api/classes/${view.class.id}/assignments/${a.id}/grades.csv`} className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2" data-testid="export-csv">
           <Download className="mr-1 inline h-3.5 w-3.5" /> Grades CSV
         </a>
@@ -366,6 +396,15 @@ export function ClassPage() {
                 {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
               </button>
             </div>
+            <a
+              href={classroomShareUrl(link, `Join ${view.class.name} on Huddle`, "Open the link and type your name to join the class. Your group projects will show up there.")}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="press mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted hover:text-fg"
+              data-testid="share-class-to-classroom"
+            >
+              <ClassroomMark /> Share to Google Classroom
+            </a>
           </div>
         </div>
 

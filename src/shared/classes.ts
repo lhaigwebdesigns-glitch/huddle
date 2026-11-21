@@ -135,3 +135,13 @@ const csvCell = (v: unknown) => {
 export function toCsv(rows: unknown[][]): string {
   return rows.map((r) => r.map(csvCell).join(",")).join("\r\n") + "\r\n";
 }
+
+/**
+ * Google Classroom's share link: opens Classroom so the teacher can post this link to a
+ * class as an assignment, material or announcement. No Google API access needed.
+ */
+export function classroomShareUrl(url: string, title: string, body?: string): string {
+  const q = new URLSearchParams({ url, title: title.slice(0, 120) });
+  if (body) q.set("body", body.slice(0, 500));
+  return `https://classroom.google.com/share?${q}`;
+}

@@ -13,7 +13,7 @@ Last updated Nov 21, 2026. Sizes: **S** = an evening, **M** = a weekend, **L** =
 - paste block
 - turn in with locked files
 
-**Builds 2 and 3 are live. Build 4 (classes, dashboard, grading) is built**, waiting to merge and deploy. **Next is Build 5: Google sign-in and Share to Classroom.**
+**Builds 1–4 are live. Build 5 (Google first, Share to Classroom) is built**, waiting to merge and deploy. **Next is Build 6: safety and limits.**
 
 **Known limit of receipts:** when someone splits a paragraph in the middle (presses Enter inside it), the doc editor rewrites the text after the split, so that text is credited to the person who split it. Typing, deleting and pressing Enter at the end of a paragraph are counted correctly.
 
@@ -27,7 +27,7 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 | ✅ 2 | **Contribution receipts** | 1, 3, 5, 6, 7, 12 (receipt) | L | The core idea: proof of who did the work |
 | ✅ 3 | **Tasks, roles and templates** | 11, 13, 46, 53, 60 | L | Groups split the work, and tasks count on the receipt |
 | ✅ 4 | **Teacher class page and grading** | 22, 23, 24, 25, 65 | L | The teacher's side: one place for all groups, fast grading |
-| ⬜ 5 | **Google sign-in and Share to Classroom** | 15, 14, start 19 | M | No friction for schools; Google's review takes weeks, so start it here |
+| ✅ 5 | **Google sign-in and Share to Classroom** | 15, 14, start 19 | M | No friction for schools; Google's review takes weeks, so start it here |
 | ⬜ 6 | **Safety and limits** | 64, 66, 67, 68, 69, 70, 62, 63 | M | Required before any students use it |
 | ⬜ 7 | **Docs and slides basics** | 39, 40, 42, 45, 48, 52 | L | What students need to make real projects |
 | ⬜ 8 | **New landing page** | 28–38 | M | Teachers need a page to sign up from |
@@ -167,12 +167,12 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 ### 3. Google Classroom
 | # | Build | Size | Status |
 |---|---|---|---|
-| 14 | Share to Classroom button | S | ⬜ Build 5 |
-| 15 | Google sign-in as the main way in | S | 🟡 Google sign-in exists; Build 5 makes it the main way in |
+| 14 | Share to Classroom button | S | ✅ Build 5 |
+| 15 | Google sign-in as the main way in | S | ✅ Build 5 |
 | 16 | Classroom connection: roster, assignment, turned-in status | L | ⬜ Build 10 |
 | 17 | Automatic groups from the roster | M | 🟡 Random groups from the class roster (Build 4); Classroom roster in Build 10 |
 | 18 | Send grades back to Classroom | M | ⬜ Build 10 |
-| 19 | Google's review of Classroom access | M | ⬜ Starts in Build 5 |
+| 19 | Google's review of Classroom access | M | 🟡 Checklist ready (docs/GOOGLE_CLASSROOM_REVIEW.md); needs your own domain and an adult-owned Google Cloud project first |
 | 20 | Huddle inside Classroom (add-on) | L | ⬜ After the pilot |
 | 21 | Assign, turn in and grade without Classroom | M | ⬜ Build 10 |
 

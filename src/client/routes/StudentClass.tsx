@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowRight, BookOpen, Check } from "lucide-react";
 import { getIdentity, setName } from "../lib/identity";
+import { signInUrl, useAccount } from "../lib/account";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { normalizeCode } from "../../shared/code";
 import type { StudentClassView } from "../../shared/classes";
@@ -13,6 +14,7 @@ export default function StudentClass() {
   const [view, setView] = useState<StudentClassView | null>(null);
   const [err, setErr] = useState("");
   const [name, setNameInput] = useState(me.name);
+  const account = useAccount();
   const load = () =>
     fetch(`/api/classes/join/${code}?uid=${encodeURIComponent(me.uid)}`)
       .then((r) => r.json() as Promise<StudentClassView & { error?: string }>)
@@ -63,6 +65,15 @@ export default function StudentClass() {
                 <Check className="h-3.5 w-3.5" /> You're in this class
               </div>
               <h1 className="mt-1 text-2xl font-semibold tracking-tight">{view.name}</h1>
+              {account.user === null && account.providers.includes("google") && (
+                <p className="mt-2 text-xs text-fg-subtle">
+                  Using more than one device?{" "}
+                  <a href={signInUrl("google", `/c/${code}`)} className="font-medium text-fg-muted underline underline-offset-2 hover:text-fg" data-testid="student-google">
+                    Sign in with your school Google account
+                  </a>{" "}
+                  to keep this class everywhere.
+                </p>
+              )}
               <h2 className="mt-6 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Your assignments</h2>
               {view.assignments.length === 0 && <p className="mt-2 text-sm text-fg-muted">Nothing yet. Your teacher's group projects will show up here.</p>}
               <ul className="mt-2 space-y-2">
