@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowRight, BookOpen, Check } from "lucide-react";
-import { getIdentity, setName } from "../lib/identity";
+import { ageConfirmed, confirmAge, getIdentity, setName } from "../lib/identity";
+import { AgeCheck } from "./RoomPage";
 import { signInUrl, useAccount } from "../lib/account";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { normalizeCode } from "../../shared/code";
@@ -14,6 +15,7 @@ export default function StudentClass() {
   const [view, setView] = useState<StudentClassView | null>(null);
   const [err, setErr] = useState("");
   const [name, setNameInput] = useState(me.name);
+  const [age, setAge] = useState(ageConfirmed);
   const account = useAccount();
   const load = () =>
     fetch(`/api/classes/join/${code}?uid=${encodeURIComponent(me.uid)}`)
@@ -23,11 +25,13 @@ export default function StudentClass() {
   const join = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
+    if (!age) return setErr("Huddle is for ages 13 and up. Please check the box to confirm.");
     setName(name.trim());
+    confirmAge();
     const r = await fetch(`/api/classes/join/${code}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ uid: me.uid, name: name.trim() }),
+      body: JSON.stringify({ uid: me.uid, name: name.trim(), age13: true }),
     });
     const d = (await r.json()) as { error?: string };
     if (d.error) return setErr(d.error);
@@ -54,6 +58,7 @@ export default function StudentClass() {
               <h1 className="mt-1 text-2xl font-semibold tracking-tight">{view.name}</h1>
               <p className="mt-1.5 text-[15px] text-fg-muted">Type your name the way your teacher will recognize it.</p>
               <Input autoFocus maxLength={32} value={name} onChange={(e) => setNameInput(e.target.value)} placeholder="Your name" aria-label="Your name" className="mt-5 h-11" />
+              <AgeCheck checked={age} onChange={setAge} />
               {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">{err}</p>}
               <Button className="mt-3 w-full" size="lg" data-testid="join-class">
                 Join class <ArrowRight className="h-4 w-4" />

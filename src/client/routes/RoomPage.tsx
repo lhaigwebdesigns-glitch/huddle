@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { formatCode, normalizeCode } from "../../shared/code";
-import { getIdentity, rememberRoom, setName, type Identity } from "../lib/identity";
+import { ageConfirmed, confirmAge, getIdentity, rememberRoom, setName, type Identity } from "../lib/identity";
 import { useRoom } from "../lib/useRoom";
 import { Chat } from "../components/Chat";
 import { FilePanel } from "../components/FilePanel";
@@ -16,23 +16,39 @@ import { usePasteGuard } from "../lib/pasteGuard";
 import { ArrowLeft, ArrowRight, Check, Cloud, Copy, Cpu, DoorOpen, Link2, Menu, MessageSquare, Settings, Trash2, X } from "lucide-react";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 
+/** "I'm 13 or older" checkbox, with the reason when it's left unchecked. */
+export function AgeCheck({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <label className="mt-4 flex items-start gap-2.5 text-sm text-fg-muted">
+      <input type="checkbox" className="mt-0.5" checked={checked} onChange={(e) => onChange(e.target.checked)} data-testid="age-13" />
+      <span>
+        I'm 13 or older. <span className="text-fg-subtle">Huddle is for ages 13 and up.</span>
+      </span>
+    </label>
+  );
+}
+
 const ROW = "press flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left text-[13.5px] text-fg-muted hover:bg-accent-soft hover:text-fg";
 
-function NamePrompt({ onDone }: { onDone: (n: string) => void }) {
+/** Asks for a name (if we don't have one) and confirms the person is 13 or older. */
+function NamePrompt({ onDone, needName }: { onDone: (n: string) => void; needName: boolean }) {
   const [n, setN] = useState("");
+  const [age, setAge] = useState(ageConfirmed);
+  const askAge = !ageConfirmed();
   return (
     <div className="flex min-h-full items-center justify-center bg-sidebar p-4">
       <form
         className="rise w-full max-w-sm rounded-[24px] border border-line bg-bg p-7 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.18)]"
         onSubmit={(e) => {
           e.preventDefault();
-          if (n.trim()) onDone(n.trim());
+          if ((!needName || n.trim()) && age) onDone(n.trim());
         }}
       >
         <Logo className="h-9 w-9" />
         <h1 className="mt-5 text-2xl font-semibold tracking-tight">You're invited to a Huddle</h1>
-        <p className="mt-1.5 text-[15px] text-fg-muted">Pick a name so others know who you are.</p>
-        <Input autoFocus maxLength={32} value={n} onChange={(e) => setN(e.target.value)} placeholder="Your name" className="mt-5 h-11" />
+        <p className="mt-1.5 text-[15px] text-fg-muted">{needName ? "Pick a name so others know who you are." : "One quick check before you join."}</p>
+        {needName && <Input autoFocus maxLength={32} value={n} onChange={(e) => setN(e.target.value)} placeholder="Your name" className="mt-5 h-11" />}
+        {askAge && <AgeCheck checked={age} onChange={setAge} />}
         <Button className="mt-3 w-full" size="lg">
           Join room <ArrowRight className="h-4 w-4" />
         </Button>
@@ -44,11 +60,15 @@ function NamePrompt({ onDone }: { onDone: (n: string) => void }) {
 export default function RoomPage() {
   const code = normalizeCode(useParams().code ?? "");
   const [me, setMe] = useState<Identity>(() => getIdentity());
-  if (!me.name)
+  const [ageOk, setAgeOk] = useState(ageConfirmed);
+  if (!me.name || !ageOk)
     return (
       <NamePrompt
+        needName={!me.name}
         onDone={(n) => {
-          setName(n);
+          if (n) setName(n);
+          confirmAge();
+          setAgeOk(true);
           setMe(getIdentity());
         }}
       />

@@ -23,6 +23,40 @@ interface PcState {
 }
 
 /** "Use my PC for AI": off skips Ollama everywhere and frees the GPU right away (for games). */
+/** Models a provider retired. The router already skips them; update the model name in settings. */
+function ModelAlerts({ token }: { token: string }) {
+  const [alerts, setAlerts] = useState<{ provider: string; model: string; at: number; message: string }[]>([]);
+  const load = () =>
+    fetch("/api/admin/model-alerts", { headers: { "x-admin-token": token } })
+      .then((r) => (r.ok ? r.json() : Promise.resolve({ alerts: [] })) as Promise<{ alerts?: typeof alerts }>)
+      .then((d) => setAlerts(d.alerts ?? []));
+  useEffect(() => void load(), [token]);
+  if (!alerts.length) return null;
+  return (
+    <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-900/60 dark:bg-amber-950/20" data-testid="model-alerts">
+      <h2 className="font-semibold text-amber-900 dark:text-amber-200">A provider retired a model</h2>
+      <p className="mt-0.5 text-xs text-amber-900/80 dark:text-amber-200/80">Huddle is skipping it and using the next provider. Update the model name in your settings when you can.</p>
+      <ul className="mt-2 space-y-1.5">
+        {alerts.map((a) => (
+          <li key={a.provider + a.model}>
+            <b>{a.provider}</b> · <code>{a.model}</code> <span className="text-xs text-fg-subtle">({new Date(a.at).toLocaleString()})</span>
+            <div className="text-xs text-fg-muted">{a.message}</div>
+          </li>
+        ))}
+      </ul>
+      <button
+        onClick={async () => {
+          await fetch("/api/admin/model-alerts", { method: "DELETE", headers: { "x-admin-token": token } });
+          load();
+        }}
+        className="press mt-2 rounded-lg border border-line-strong px-2.5 py-0.5 text-xs hover:bg-surface-2"
+      >
+        Clear (after updating the model)
+      </button>
+    </section>
+  );
+}
+
 function PcSwitch({ token, onChanged }: { token: string; onChanged: () => void }) {
   const [pc, setPc] = useState<PcState | null>(null);
   const [busy, setBusy] = useState(false);
@@ -244,6 +278,7 @@ export default function Admin() {
           </div>
         )}
         <div className="grid gap-x-4 lg:grid-cols-2">
+          <ModelAlerts token={token} />
           <KeyHealth token={token} />
           <PcSwitch token={token} onChanged={() => fetch("/api/health").then((r) => r.json()).then(setHealth)} />
         </div>

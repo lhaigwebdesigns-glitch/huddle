@@ -4,7 +4,7 @@ import type { Env } from "./env";
 import { currentUser, type User } from "./auth";
 import { clientIp, hit } from "./db";
 import { makeCode, normalizeCode } from "../shared/code";
-import { cleanProject, type Receipt } from "../shared/protocol";
+import { cleanProject, type Receipt, type Report } from "../shared/protocol";
 import { templateById } from "../shared/templates";
 import {
   CLASS_LIMITS,
@@ -152,11 +152,65 @@ classes.get("/:id", async (c) => {
   return c.json(view);
 });
 
+/** Remove a student: off the roster, out of every group, and blocked from the group rooms. */
 classes.delete("/:id/students/:uid", async (c) => {
   const t = await teacherClass(c);
   if (t instanceof Response) return t;
-  await c.env.DB!.prepare(`DELETE FROM class_students WHERE class_id = ? AND uid = ?`).bind(t.cls.id, c.req.param("uid")).run();
+  const uid = c.req.param("uid");
+  await c.env.DB!.prepare(`DELETE FROM class_students WHERE class_id = ? AND uid = ?`).bind(t.cls.id, uid).run();
+  for (const a of await loadAssignments(c, t.cls.id, false))
+    for (const g of a.groups) {
+      if (!g.members.includes(uid)) continue;
+      await c.env.DB!.prepare(`UPDATE class_groups SET members = ? WHERE assignment_id = ? AND room_code = ?`)
+        .bind(JSON.stringify(g.members.filter((u) => u !== uid)), a.id, g.roomCode)
+        .run();
+      await (await getServerByName(c.env.Room, g.roomCode)).removeStudent(t.user.uid, uid).catch(() => {});
+    }
   return c.json({ ok: true });
+});
+
+/** Erase a class for good: every group room (chat, files, uploads) and every record of it. */
+classes.delete("/:id", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  const assignments = await loadAssignments(c, t.cls.id, false);
+  for (const a of assignments)
+    for (const g of a.groups) await (await getServerByName(c.env.Room, g.roomCode)).destroy(t.user.uid).catch(() => false);
+  const ids = assignments.map((a) => a.id);
+  const db = c.env.DB!;
+  await db.batch([
+    ...ids.flatMap((id) => [
+      db.prepare(`DELETE FROM class_groups WHERE assignment_id = ?`).bind(id),
+      db.prepare(`DELETE FROM grades WHERE assignment_id = ?`).bind(id),
+    ]),
+    db.prepare(`DELETE FROM assignments WHERE class_id = ?`).bind(t.cls.id),
+    db.prepare(`DELETE FROM class_students WHERE class_id = ?`).bind(t.cls.id),
+    db.prepare(`DELETE FROM classes WHERE id = ?`).bind(t.cls.id),
+  ]);
+  return c.json({ ok: true });
+});
+
+/** Messages students reported, across every group in the class. */
+classes.get("/:id/reports", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  const out: (Report & { assignment: string; group: string; room: string; assignmentId: string })[] = [];
+  for (const a of await loadAssignments(c, t.cls.id, false))
+    for (const g of a.groups) {
+      const reports = (await (await getServerByName(c.env.Room, g.roomCode)).reports().catch(() => [])) as Report[];
+      for (const r of reports) out.push({ ...r, assignment: a.title, assignmentId: a.id, group: g.name, room: g.roomCode });
+    }
+  out.sort((x, y) => y.at - x.at);
+  return c.json({ reports: out });
+});
+
+classes.post("/:id/reports/:room/:rid/dismiss", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  const room = c.req.param("room");
+  const inClass = (await loadAssignments(c, t.cls.id, false)).some((a) => a.groups.some((g) => g.roomCode === room));
+  if (!inClass) return c.json({ error: "Not found." }, 404);
+  return c.json(await (await getServerByName(c.env.Room, room)).dismissReport(c.req.param("rid")));
 });
 
 classes.post("/:id/assignments", async (c) => {
@@ -347,10 +401,11 @@ classes.post("/join/:code", async (c) => {
   const cls = await classByCode(c);
   if (!cls) return c.json({ error: "That code doesn't match a class." }, 404);
   if (!(await hit(c.env.DB!, `classjoin:${clientIp(c.req.raw)}`, 60, 3600))) return c.json({ error: "Too many tries. Wait a bit." }, 429);
-  const body = await c.req.json<{ uid?: string; name?: string }>().catch(() => ({}) as { uid?: string; name?: string });
+  const body = await c.req.json<{ uid?: string; name?: string; age13?: boolean }>().catch(() => ({}) as { uid?: string; name?: string; age13?: boolean });
   const uid = String(body.uid ?? "").slice(0, 64);
   const name = String(body.name ?? "").trim().slice(0, 32);
   if (!uid || !name) return c.json({ error: "Type your name to join." }, 400);
+  if (body.age13 !== true) return c.json({ error: "Huddle is for ages 13 and up." }, 400);
   const count = await c.env.DB!.prepare(`SELECT COUNT(*) AS n FROM class_students WHERE class_id = ?`).bind(cls.id).first<{ n: number }>();
   if ((count?.n ?? 0) >= CLASS_LIMITS.students) return c.json({ error: "This class is full." }, 400);
   await c.env.DB!.prepare(`INSERT INTO class_students (class_id, uid, name, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT (class_id, uid) DO UPDATE SET name = excluded.name`)

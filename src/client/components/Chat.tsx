@@ -6,7 +6,7 @@ import { PersonAvatar } from "./PersonAvatar";
 import { expandSlash, matchSlash, parsePoll } from "../lib/slash";
 import type { Attachment } from "../../shared/protocol";
 import { uploadFile } from "../lib/uploads";
-import {
+import { Flag,
   ArrowUp,
   BookOpen,
   Brain,
@@ -303,6 +303,7 @@ function MessageView({
   grouped,
   canRegenerate,
   canEdit,
+  canReport = false,
   send,
 }: {
   m: ChatMessage;
@@ -312,6 +313,8 @@ function MessageView({
   grouped: boolean;
   canRegenerate: boolean;
   canEdit: boolean;
+  /** Class rooms: send this message to the teacher (the only way a teacher sees the chat). */
+  canReport?: boolean;
   send: (m: ClientMsg) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -408,6 +411,18 @@ function MessageView({
         <Attachments items={[...(m.meta?.attachments ?? []), ...(m.meta?.images ?? [])]} send={send} />
         {m.meta?.poll && <PollCard id={m.id} poll={m.meta.poll} me={me} members={members} send={send} />}
         {!m.meta?.streaming && <Reactions m={m} me={me} members={members} send={send} />}
+        {canReport && !m.meta?.streaming && m.authorId !== me.uid && (
+          <button
+            onClick={() => {
+              const reason = prompt("Report this message to your teacher? Only this message is sent. Say what's wrong (optional):");
+              if (reason !== null) send({ t: "report", id: m.id, reason });
+            }}
+            className="press mt-1 flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs text-fg-subtle opacity-0 hover:bg-surface-2 hover:text-fg focus:opacity-100 group-hover:opacity-100"
+            data-testid="report-message"
+          >
+            <Flag className="h-3 w-3" /> Report to teacher
+          </button>
+        )}
         {isAi && !m.meta?.streaming && (
           <Feedback msg={m} room={room} me={me} canRegenerate={canRegenerate} onRegenerate={() => send({ t: "regenerate" })} />
         )}
@@ -619,6 +634,7 @@ export function Chat({
                   send={send}
                   canRegenerate={m === last && m.role === "assistant" && !streaming && !aiOff}
                   canEdit={m.role === "user" && m.authorId === me.uid && i === lastUserIdx && !streaming}
+                  canReport={!!settings.classLink}
                 />
                 )}
               </div>

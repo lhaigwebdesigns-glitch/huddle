@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Check, Copy, Download, GraduationCap, Plus, Users, X } from "lucide-react";
+import { ArrowLeft, Check, Copy, Download, Flag, GraduationCap, Plus, Users, X } from "lucide-react";
+import type { Report } from "../../shared/protocol";
 import { PROVIDER_LABEL, useAccount, signInUrl } from "../lib/account";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { formatCode } from "../../shared/code";
@@ -348,6 +349,52 @@ function NewAssignmentDialog({ classId, students, onDone, onClose }: { classId: 
   );
 }
 
+type ClassReport = Report & { assignment: string; group: string; room: string };
+
+/** Messages students reported to the teacher: the only chat a teacher ever sees. */
+function ReportsSection({ classId }: { classId: string }) {
+  const [reports, setReports] = useState<ClassReport[]>([]);
+  const load = useCallback(() => {
+    api<{ reports: ClassReport[] }>(`/api/classes/${classId}/reports`).then((d) => setReports(d.reports ?? []));
+  }, [classId]);
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 30_000);
+    return () => clearInterval(t);
+  }, [load]);
+  if (!reports.length) return null;
+  return (
+    <section className="mt-6 rounded-[20px] border border-amber-300 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20" data-testid="reports">
+      <h2 className="flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
+        <Flag className="h-4 w-4" /> {reports.length} reported message{reports.length === 1 ? "" : "s"}
+      </h2>
+      <p className="mt-0.5 text-xs text-amber-900/80 dark:text-amber-200/80">A student sent you these from their group's chat. You only see the message they reported.</p>
+      <ul className="mt-3 space-y-2">
+        {reports.map((r) => (
+          <li key={r.room + r.id} className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm" data-testid="report">
+            <div className="text-xs text-fg-subtle">
+              {r.assignment} · {r.group} · reported by {r.byName}, {timeAgo(r.at)}
+            </div>
+            <blockquote className="mt-1.5 border-l-2 border-line-strong pl-3">
+              <span className="font-medium">{r.message.authorName}{r.message.fromAi ? " (Huddle AI)" : ""}:</span> {r.message.content}
+            </blockquote>
+            {r.reason && <p className="mt-1.5 text-xs text-fg-muted">Why: {r.reason}</p>}
+            <button
+              onClick={async () => {
+                await api(`/api/classes/${classId}/reports/${r.room}/${r.id}/dismiss`, { method: "POST" });
+                load();
+              }}
+              className="press mt-2 rounded-lg border border-line-strong px-2.5 py-0.5 text-xs hover:bg-surface-2"
+            >
+              Mark as handled
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** /classes/:id: the teacher's dashboard for one class. */
 export function ClassPage() {
   const { id = "" } = useParams();
@@ -408,6 +455,8 @@ export function ClassPage() {
           </div>
         </div>
 
+        <ReportsSection classId={view.class.id} />
+
         <div className="mt-8 flex items-center gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-subtle">Assignments</h2>
           <span className="flex-1" />
@@ -425,12 +474,41 @@ export function ClassPage() {
         <h2 className="mt-10 text-sm font-semibold uppercase tracking-wide text-fg-subtle">Students</h2>
         <ul className="mt-2 flex flex-wrap gap-1.5" data-testid="roster">
           {view.students.map((s) => (
-            <li key={s.uid} className="rounded-full border border-line px-3 py-1 text-sm">
+            <li key={s.uid} className="flex items-center gap-1 rounded-full border border-line py-1 pl-3 pr-1 text-sm">
               {s.name}
+              <button
+                onClick={async () => {
+                  if (!confirm(`Remove ${s.name} from this class? They'll be taken out of their groups and can't get back into the group rooms.`)) return;
+                  await api(`/api/classes/${view.class.id}/students/${encodeURIComponent(s.uid)}`, { method: "DELETE" });
+                  load();
+                }}
+                className="press rounded-full p-0.5 text-fg-subtle hover:bg-surface-2 hover:text-fg"
+                aria-label={`Remove ${s.name}`}
+                data-testid="remove-student"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
             </li>
           ))}
           {!view.students.length && <li className="text-sm text-fg-subtle">Nobody yet.</li>}
         </ul>
+
+        <section className="mt-12 rounded-[20px] border border-line p-4">
+          <h2 className="text-sm font-semibold">Erase this class</h2>
+          <p className="mt-0.5 text-xs text-fg-subtle">Deletes every group room (chats, files and uploads), the roster and all grades. This can't be undone. Download grades first.</p>
+          <button
+            onClick={async () => {
+              const typed = prompt(`This permanently erases "${view.class.name}" and all of its students' work. Type the class name to confirm:`);
+              if (typed?.trim() !== view.class.name) return;
+              const d = await api(`/api/classes/${view.class.id}`, { method: "DELETE" });
+              if (!d.error) location.href = "/classes";
+            }}
+            className="press mt-2 rounded-lg border border-red-300 px-3 py-1 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30"
+            data-testid="erase-class"
+          >
+            Erase class
+          </button>
+        </section>
       </div>
       {newA && (
         <NewAssignmentDialog
