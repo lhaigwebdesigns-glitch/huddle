@@ -768,8 +768,12 @@ try {
   await park.getByTestId("roster").getByText("Dee").waitFor({ state: "detached" });
   ok(true, "the teacher can remove a student from the class");
   const dee = kids[3];
-  await dee.reload();
+  // They're sent out of the room right away…
   await dee.getByTestId("room-closed").waitFor({ timeout: 15000 });
+  // …and reloading doesn't get them back in.
+  await dee.reload();
+  await dee.waitForTimeout(3000);
+  ok((await dee.getByTestId("composer").count()) === 0, "a removed student is sent out of their group's room");
   ok(true, "a removed student can't get back into their group's room");
 
   // Joining a class needs the 13+ confirmation (the server checks it too).
@@ -787,6 +791,85 @@ try {
   const erased = await park.evaluate(async (code) => (await fetch(`/api/rooms/${code}`)).status, rooms[0]);
   ok(erased === 404 && (await park.getByTestId("class-row").filter({ hasText: "Period 3 History" }).count()) === 0, "erasing a class deletes its group rooms and the class");
 
+
+
+  // ---------- Docs and slides basics ----------
+  const ed1 = await (await browser.newContext({ viewport: { width: 1400, height: 900 }, acceptDownloads: true })).newPage();
+  await ed1.goto(BASE);
+  const edCode = await ed1.evaluate(async () => {
+    localStorage.setItem("huddle.name", "Ivy");
+    if (!localStorage.getItem("huddle.uid")) localStorage.setItem("huddle.uid", crypto.randomUUID());
+    const r = await fetch("/api/rooms", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ uid: localStorage.getItem("huddle.uid"), title: "Editors check" }) });
+    return (await r.json()).code;
+  });
+  await ed1.goto(`${BASE}/r/${edCode}`);
+  const ed2 = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+  await ed2.goto(`${BASE}/r/${edCode}`);
+  await ed2.getByPlaceholder("Your name").fill("Jo");
+  await ed2.getByRole("button", { name: /Join room/ }).click();
+  await ed2.getByTestId("composer").waitFor();
+
+  // Docs: table, checklist, image upload, and the school-paper Word export.
+  await ed1.getByTestId("composer").fill("make a doc with our plan");
+  await ed1.getByTestId("composer").press("Enter");
+  const doc1 = ed1.getByTestId("doc-editor");
+  await doc1.getByText("This doc was written by the").waitFor({ timeout: 15000 });
+  await ed1.evaluate(() => document.querySelector('[data-testid="doc-editor"]').editor.commands.focus("end"));
+  await ed1.getByTestId("doc-table").click();
+  await doc1.locator("table").waitFor();
+  ok((await doc1.locator("table th").count()) === 3, "a table with a header row can be added to a doc");
+  await ed1.evaluate(() => document.querySelector('[data-testid="doc-editor"]').editor.chain().focus("end").insertContent("<p>Checklist item</p>").run());
+  await ed1.getByTestId("doc-checklist").click();
+  await doc1.locator('ul[data-type="taskList"]').waitFor();
+  ok(true, "checklists work in docs");
+  await ed1.getByTestId("doc-image-input").setInputFiles({ name: "chart.png", mimeType: "image/png", buffer: avatarPng });
+  await doc1.locator('img[src^="/api/rooms/"]').waitFor({ timeout: 15000 });
+  ok(true, "an image can be uploaded into a doc");
+  await ed2.getByTestId("drive-file").filter({ hasText: "Mock plan" }).click();
+  await ed2.getByTestId("doc-editor").locator("table").waitFor();
+  await ed2.getByTestId("doc-editor").locator('img[src^="/api/rooms/"]').waitFor();
+  ok(true, "tables and images sync to everyone in the doc");
+  ed1.once("dialog", (d) => d.accept("Ivy, Jo"));
+  const [wordFile] = await Promise.all([ed1.waitForEvent("download"), ed1.getByTestId("doc-word").click()]);
+  const wordHtml = await (await import("node:fs/promises")).readFile(await wordFile.path(), "utf8");
+  ok(wordFile.suggestedFilename() === "Mock plan.doc" && /<p>Ivy<\/p><p>Jo<\/p>/.test(wordHtml) && /class="title">Mock plan</.test(wordHtml), "Word export uses school-paper format with names, date and title");
+
+  // Slides: a free-layout slide with a text box and a shape you can drag; slide owners.
+  await ed1.getByTestId("composer").fill("make slides about our plan");
+  await ed1.getByTestId("composer").press("Enter");
+  await ed1.getByTestId("slides-editor").waitFor({ timeout: 15000 });
+  await ed1.getByLabel("Layout").selectOption("free");
+  await ed1.getByTestId("free-canvas").waitFor();
+  await ed1.getByTestId("add-text-box").click();
+  await ed1.getByLabel("Text box", { exact: true }).fill("Hello free layout");
+  await ed1.getByTestId("add-rect").click();
+  const rect = ed1.getByTestId("slide-element").filter({ has: ed1.locator("div") }).last();
+  const leftBefore = await rect.evaluate((el) => el.style.left);
+  const rectBox = await rect.boundingBox();
+  await ed1.mouse.move(rectBox.x + rectBox.width / 2, rectBox.y + rectBox.height / 2);
+  await ed1.mouse.down();
+  await ed1.mouse.move(rectBox.x + rectBox.width / 2 + 120, rectBox.y + rectBox.height / 2 + 40, { steps: 6 });
+  await ed1.mouse.up();
+  const leftAfter = await rect.evaluate((el) => el.style.left);
+  ok(leftBefore !== leftAfter, "boxes on a free-layout slide can be dragged");
+  // Drag it near the slide's center: a guide line shows while it snaps.
+  const slideBox = await ed1.getByTestId("slide-canvas").boundingBox();
+  const rb = await rect.boundingBox();
+  await ed1.mouse.move(rb.x + rb.width / 2, rb.y + rb.height / 2);
+  await ed1.mouse.down();
+  await ed1.mouse.move(slideBox.x + slideBox.width / 2 + 3, rb.y + rb.height / 2, { steps: 6 });
+  const guidesShown = await ed1.getByTestId("snap-guide").count();
+  await ed1.mouse.up();
+  ok(guidesShown > 0, "a guide line shows when a box lines up with the slide's center");
+  await ed1.getByTestId("slide-owner").selectOption({ label: "Ivy (you)" });
+  await ed1.getByTestId("slide-owner-badge").getByText("Ivy").first().waitFor();
+  ok(true, "a slide can be given an owner, shown on its thumbnail");
+  await ed2.getByTestId("drive-file").filter({ hasText: "Mock deck" }).click();
+  await ed2.getByTestId("slide-thumb").first().click();
+  await ed2.getByTestId("free-canvas").getByLabel("Text box", { exact: true }).first().waitFor();
+  ok((await ed2.getByTestId("free-canvas").getByLabel("Text box", { exact: true }).first().inputValue()) === "Hello free layout", "free-layout slides sync live to everyone");
+  await ed1.close();
+  await ed2.close();
 
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
   const statuses = await alice.evaluate(async () => {

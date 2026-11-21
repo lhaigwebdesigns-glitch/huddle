@@ -4,6 +4,7 @@ import type { EditorProps } from "./FilePanel";
 import { usePeers, useYObserve } from "../lib/useYDoc";
 import {
   bullets,
+  CANVAS,
   deckOf,
   LAYOUT_LABEL,
   LAYOUTS,
@@ -19,6 +20,7 @@ import {
   type ThemeName,
 } from "../../shared/slides-model";
 import { SLIDE_H, SLIDE_W, SlideView, useWidth } from "./SlideView";
+import { FreeCanvas } from "./FreeCanvas";
 import { download, safeName } from "../lib/download";
 
 type Full = Required<SlideData>;
@@ -95,6 +97,17 @@ function exportHtml(slides: Full[], theme: ThemeName, title: string) {
   const body = slides
     .map((s) => {
       const list = (b: string) => `<ul>${bullets(b).map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
+      // Free layout: every box at its own spot, as a share of the 960×540 canvas.
+      const pct = (n: number, of: number) => `${((n / of) * 100).toFixed(2)}%`;
+      const free = (s.elements ?? [])
+        .map((e) => {
+          const pos = `position:absolute;left:${pct(e.x, CANVAS.w)};top:${pct(e.y, CANVAS.h)};width:${pct(e.w, CANVAS.w)};height:${pct(e.h, CANVAS.h)}`;
+          if (e.type === "image") return e.src ? `<img class="free" style="${pos};object-fit:cover" src="${esc(new URL(e.src, location.href).href)}">` : "";
+          if (e.type === "rect" || e.type === "ellipse") return `<div style="${pos};background:${e.fill};border-radius:${e.type === "ellipse" ? "50%" : "8px"}"></div>`;
+          return `<div style="${pos};font-size:${((e.size ?? 28) * 0.75).toFixed(1)}pt;white-space:pre-wrap;overflow:hidden">${esc(e.text ?? "")}</div>`;
+        })
+        .join("");
+      if (s.layout === "free") return `<section class="free">${free}</section>`;
       const inner =
         s.layout === "title" || s.layout === "section"
           ? `<h1>${esc(s.title)}</h1><p class="sub">${esc(s.body)}</p>`
@@ -117,6 +130,7 @@ h1{font-size:52pt;margin:0}h2{font-size:34pt;margin:0 0 .35in}.sub{font-size:22p
 ul{font-size:22pt;line-height:1.45;padding-left:.35in}li::marker{color:${t.accent}}
 blockquote{font-size:34pt;font-style:italic;margin:1in 0 .3in}.cols{display:grid;grid-template-columns:1fr 1fr;gap:.6in}
 img{position:absolute;right:0;top:0;width:50%;height:100%;object-fit:cover}
+section.free{padding:0}section.free img.free{right:auto}
 </style></head><body>${body}<script>onload=()=>setTimeout(()=>print(),300)</script></body></html>`;
 }
 
@@ -133,7 +147,22 @@ async function exportPptx(slides: Full[], theme: ThemeName, title: string) {
     slide.background = { color: hex(s.layout === "section" ? t.accent : t.bg) };
     const fg = hex(s.layout === "section" ? t.bg : t.fg);
     const bulletRuns = (b: string) => bullets(b).map((text) => ({ text, options: { bullet: { code: "25CF" }, breakLine: true } }));
-    if (s.layout === "title") {
+    // Free layout: the 960×540 canvas maps onto the 13.33×7.5 in slide.
+    const inch = (px: number) => (px / CANVAS.w) * 13.333;
+    if (s.layout === "free") {
+      for (const e of s.elements ?? []) {
+        const box = { x: inch(e.x), y: inch(e.y), w: inch(e.w), h: inch(e.h) };
+        if (e.type === "text") slide.addText(e.text ?? "", { ...box, fontSize: Math.round((e.size ?? 28) * 0.75), color: fg, fontFace: font, valign: "top" });
+        else if (e.type === "image" && e.src) {
+          try {
+            slide.addImage({ path: new URL(e.src, location.href).href, ...box, sizing: { type: "cover", w: box.w, h: box.h } });
+          } catch {
+            /* unreachable image: leave the space empty */
+          }
+        } else if (e.type === "rect" || e.type === "ellipse")
+          slide.addShape(e.type === "ellipse" ? pptx.ShapeType.ellipse : pptx.ShapeType.roundRect, { ...box, fill: { color: hex(e.fill ?? "#4f46e5") }, line: { color: hex(e.fill ?? "#4f46e5") } });
+      }
+    } else if (s.layout === "title") {
       slide.addText(s.title, { x: 1, y: 2.4, w: 11.3, h: 1.4, fontSize: 48, bold: true, color: fg, fontFace: font });
       slide.addText(s.body, { x: 1, y: 3.9, w: 11.3, h: 1, fontSize: 24, color: hex(t.muted), fontFace: font });
     } else if (s.layout === "section") {
@@ -159,7 +188,7 @@ async function exportPptx(slides: Full[], theme: ThemeName, title: string) {
   await pptx.writeFile({ fileName: `${safeName(title, "deck")}.pptx` });
 }
 
-export default function SlidesEditor({ ydoc, provider, file, me, synced }: EditorProps) {
+export default function SlidesEditor({ ydoc, provider, file, me, synced, room }: EditorProps) {
   const slidesArr = slidesOf(ydoc);
   const deck = deckOf(ydoc);
   useYObserve([slidesArr, deck]);
@@ -216,6 +245,12 @@ export default function SlidesEditor({ ydoc, provider, file, me, synced }: Edito
     setCurrent(Math.max(0, idx - 1));
   };
 
+  // Anyone who's here now or already owns a slide can be given one.
+  const owners = [
+    { uid: me.uid, name: me.name },
+    ...peers.filter((p) => p.state?.user?.uid).map((p) => ({ uid: String(p.state.user.uid), name: String(p.state.user.name) })),
+    ...slides.flatMap((s) => (s.owner ? [s.owner] : [])),
+  ].filter((o, i, all) => all.findIndex((x) => x.uid === o.uid) === i);
   const viewersOf = (i: number) => peers.filter((p) => p.state?.slide === i && p.state?.user);
 
   return (
@@ -278,6 +313,11 @@ export default function SlidesEditor({ ydoc, provider, file, me, synced }: Edito
               >
                 <SlideView slide={s} theme={theme} width={124} />
                 <span className="absolute bottom-0.5 left-1 rounded bg-black/50 px-1 text-[10px] text-white">{i + 1}</span>
+                {s.owner && (
+                  <span className="absolute bottom-0.5 right-1 max-w-[70%] truncate rounded bg-black/60 px-1 text-[10px] text-white" data-testid="slide-owner-badge">
+                    {s.owner.name}
+                  </span>
+                )}
                 <span className="absolute right-0.5 top-0.5 flex gap-0.5">
                   {viewersOf(i).map((p) => (
                     <span key={p.clientId} className="h-2.5 w-2.5 rounded-full ring-1 ring-white" style={{ background: p.state.user.color }} title={p.state.user.name} />
@@ -324,10 +364,37 @@ export default function SlidesEditor({ ydoc, provider, file, me, synced }: Edito
                 <button onClick={() => moveSlide(1)} className="rounded px-1.5 py-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-800" aria-label="Move slide down">↓</button>
                 <button onClick={dup} className="rounded px-1.5 py-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-800">Duplicate</button>
                 <button onClick={del} disabled={slides.length <= 1} className="rounded px-1.5 py-0.5 text-red-600 hover:bg-red-50 disabled:opacity-40 dark:hover:bg-red-950/40">Delete</button>
+                <label className="ml-2 flex items-center gap-1 text-zinc-500">
+                  Owner
+                  <select
+                    aria-label="Slide owner"
+                    value={slide.owner?.uid ?? ""}
+                    onChange={(e) => {
+                      const uid = e.target.value;
+                      const who = owners.find((o) => o.uid === uid);
+                      if (!uid) ymap?.delete("owner");
+                      else if (who) ymap?.set("owner", who);
+                    }}
+                    className="rounded border border-zinc-300 bg-white px-1 py-0.5 dark:border-zinc-700 dark:bg-zinc-900"
+                    data-testid="slide-owner"
+                  >
+                    <option value="">Nobody</option>
+                    {owners.map((o) => (
+                      <option key={o.uid} value={o.uid}>
+                        {o.name}
+                        {o.uid === me.uid ? " (you)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <span className="ml-auto text-zinc-500">Slide {idx + 1} of {slides.length}</span>
               </div>
               <div ref={mainRef} className="w-full shadow-lg">
-                <SlideView slide={slide} theme={theme} width={mainW} editable onEdit={editField} />
+                {slide.layout === "free" && ymap ? (
+                  <FreeCanvas slide={ymap} theme={theme} width={mainW} room={room} />
+                ) : (
+                  <SlideView slide={slide} theme={theme} width={mainW} editable onEdit={editField} />
+                )}
               </div>
               {slide.layout === "image" && (
                 <input

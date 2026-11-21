@@ -13,7 +13,7 @@ Last updated Nov 21, 2026. Sizes: **S** = an evening, **M** = a weekend, **L** =
 - paste block
 - turn in with locked files
 
-**Builds 1–5 are live. Build 6 (safety and limits) is built**, waiting to merge and deploy. **Next is Build 7: docs and slides basics.**
+**Builds 1–6 are live. Build 7 (docs and slides basics) is built**, waiting to merge and deploy. **Next is Build 8: the new landing page.**
 
 **Known limit of receipts:** when someone splits a paragraph in the middle (presses Enter inside it), the doc editor rewrites the text after the split, so that text is credited to the person who split it. Typing, deleting and pressing Enter at the end of a paragraph are counted correctly.
 
@@ -29,7 +29,7 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 | ✅ 4 | **Teacher class page and grading** | 22, 23, 24, 25, 65 | L | The teacher's side: one place for all groups, fast grading |
 | ✅ 5 | **Google sign-in and Share to Classroom** | 15, 14, start 19 | M | No friction for schools; Google's review takes weeks, so start it here |
 | ✅ 6 | **Safety and limits** | 64, 66, 67, 68, 69, 70, 62, 63 | M | Required before any students use it |
-| ⬜ 7 | **Docs and slides basics** | 39, 40, 42, 45, 48, 52 | L | What students need to make real projects |
+| ✅ 7 | **Docs and slides basics** | 39, 40, 42, 45, 48, 52 | L | What students need to make real projects |
 | ⬜ 8 | **New landing page** | 28–38 | M | Teachers need a page to sign up from |
 | | **The pilot with your teacher's class** | | | Fix her class's top complaints first |
 | ⬜ 9 | AI labels and "Who wrote this?" | 2, 4, 47 | M | After receipts prove useful |
@@ -194,28 +194,28 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 ### 6. Docs
 | # | Build | Size | Status |
 |---|---|---|---|
-| 39 | Images | M | ⬜ Build 7 |
-| 40 | Tables | M | ⬜ Build 7 |
+| 39 | Images | M | ✅ Build 7 |
+| 40 | Tables | M | ✅ Build 7 |
 | 41 | Comments | L | ⬜ Build 12 |
-| 42 | Highlight, color, links, checklists, alignment | S | ⬜ Build 7 |
+| 42 | Highlight, color, links, checklists, alignment | S | ✅ Build 7 |
 | 43 | Outline, word count, page count | S | ⬜ Build 12 |
 | 44 | Citations | M | ⬜ Build 12 |
-| 45 | Export to PDF and Word in school format | M | ⬜ Build 7 |
-| 46 | Section owners | S | ⬜ Build 7 (moved: margin owners come with the docs work) |
+| 45 | Export to PDF and Word in school format | M | ✅ Build 7 |
+| 46 | Section owners | S | ⬜ Build 12 (slide owners shipped in Build 7) |
 | 47 | AI on selected text | M | ⬜ Build 9 |
 
 ### 7. Slides
 | # | Build | Size | Status |
 |---|---|---|---|
-| 48 | Free placement | L | ⬜ Build 7 |
+| 48 | Free placement | L | ✅ Build 7 (free-layout slides: text, images, shapes; drag, resize, snap guides) |
 | 49 | More layouts and themes | M | ⬜ Build 12 |
 | 50 | Images on slides | M | ⬜ Build 12 |
-| 51 | Speaker notes | S | ⬜ Build 12 (check what exists) |
-| 52 | Presenter mode | M | ⬜ Build 7 |
-| 53 | Slide owners | S | ⬜ Build 7 (moved: comes with slide free placement) |
+| 51 | Speaker notes | S | ✅ Already there |
+| 52 | Presenter mode | M | ✅ Already there (present, notes, the room follows along) |
+| 53 | Slide owners | S | ✅ Build 7 |
 | 54 | Reorder, duplicate, sorter view | S | ⬜ Build 12 |
 | 55 | Better AI decks | M | ⬜ Build 12 |
-| 56 | PDF export and Google Slides check | S | 🟡 PPTX export exists |
+| 56 | PDF export and Google Slides check | S | 🟡 PPTX and PDF (print) work, including free-layout slides; Google Slides import not checked |
 
 ### 8. Sheets, forms and whiteboard
 | # | Build | Size | Status |

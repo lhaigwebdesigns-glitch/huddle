@@ -1,5 +1,18 @@
 import { useEffect, useRef, useState } from "react";
-import { bullets, THEMES, type Layout, type SlideData, type TextField, type ThemeName } from "../../shared/slides-model";
+import { bullets, THEMES, type ElementData, type Layout, type SlideData, type TextField, type ThemeName } from "../../shared/slides-model";
+
+/** One box on a free-layout slide, drawn without editing (thumbnails, presenting, exports). */
+export function StaticElement({ e, fg }: { e: ElementData; fg: string }) {
+  const box: React.CSSProperties = { position: "absolute", left: e.x, top: e.y, width: e.w, height: e.h };
+  if (e.type === "image")
+    return e.src ? <img src={e.src} alt="" referrerPolicy="no-referrer" style={{ ...box, objectFit: "cover" }} /> : <div style={{ ...box, border: "2px dashed " + fg + "55" }} />;
+  if (e.type === "rect" || e.type === "ellipse") return <div style={{ ...box, background: e.fill, borderRadius: e.type === "ellipse" ? "50%" : 8 }} />;
+  return (
+    <div style={{ ...box, fontSize: e.size ?? 28, lineHeight: 1.3, color: fg, whiteSpace: "pre-wrap", overflow: "hidden" }}>
+      {e.text}
+    </div>
+  );
+}
 
 /** Slides are designed on a 960×540 canvas and scaled to fit wherever they're shown. */
 export const SLIDE_W = 960;
@@ -89,6 +102,15 @@ export function SlideView({
   const common = { editable, onEdit };
   let content: React.ReactNode;
   switch (layout) {
+    case "free":
+      content = (
+        <div className="relative h-full w-full">
+          {(slide.elements ?? []).map((e) => (
+            <StaticElement key={e.id} e={e} fg={t.fg} />
+          ))}
+        </div>
+      );
+      break;
     case "title":
       content = (
         <div className="flex h-full flex-col justify-center px-24">

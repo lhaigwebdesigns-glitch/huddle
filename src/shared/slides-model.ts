@@ -8,7 +8,7 @@ import * as Y from "yjs";
  * Text fields are Y.Text so two people typing in the same box merge instead of clobbering.
  */
 
-export const LAYOUTS = ["title", "bullets", "two", "quote", "section", "image"] as const;
+export const LAYOUTS = ["title", "bullets", "two", "quote", "section", "image", "free"] as const;
 export type Layout = (typeof LAYOUTS)[number];
 export const LAYOUT_LABEL: Record<Layout, string> = {
   title: "Title",
@@ -17,7 +17,69 @@ export const LAYOUT_LABEL: Record<Layout, string> = {
   quote: "Quote",
   section: "Section header",
   image: "Image + text",
+  free: "Free layout (drag anything)",
 };
+
+/** A box on a free-layout slide, in canvas pixels (960×540). */
+export type ElementType = "text" | "image" | "rect" | "ellipse";
+export interface ElementData {
+  id?: string;
+  type: ElementType;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  text?: string;
+  src?: string;
+  fill?: string;
+  size?: number;
+}
+export const CANVAS = { w: 960, h: 540 } as const;
+
+const clamp = (n: unknown, lo: number, hi: number, d: number) => {
+  const v = Number(n);
+  return Number.isFinite(v) ? Math.max(lo, Math.min(hi, Math.round(v))) : d;
+};
+/** Images on slides: https links, or files uploaded to this room. */
+const safeSrc = (u: unknown) =>
+  typeof u === "string" && (/^https:\/\/[^\s"'<>]+$/i.test(u) || /^\/api\/rooms\/[A-Z0-9]{6}\/blobs\/[a-z0-9]{16}$/.test(u)) ? u : "";
+const safeFill = (c: unknown) => (typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c) ? c : "#4f46e5");
+
+export function makeElement(e: ElementData): Y.Map<any> {
+  const m = new Y.Map<any>();
+  const type: ElementType = ["text", "image", "rect", "ellipse"].includes(e.type) ? e.type : "text";
+  m.set("id", e.id ?? Math.random().toString(36).slice(2, 10));
+  m.set("type", type);
+  m.set("x", clamp(e.x, -400, CANVAS.w, 80));
+  m.set("y", clamp(e.y, -400, CANVAS.h, 80));
+  m.set("w", clamp(e.w, 20, CANVAS.w * 2, 300));
+  m.set("h", clamp(e.h, 20, CANVAS.h * 2, 80));
+  if (type === "text") {
+    m.set("text", new Y.Text(String(e.text ?? "").slice(0, 2000)));
+    m.set("size", clamp(e.size, 10, 120, 28));
+  }
+  if (type === "image") m.set("src", safeSrc(e.src));
+  if (type === "rect" || type === "ellipse") m.set("fill", safeFill(e.fill));
+  return m;
+}
+
+export function readElement(m: Y.Map<any>): Required<Omit<ElementData, "text" | "src" | "fill" | "size">> & Pick<ElementData, "text" | "src" | "fill" | "size"> {
+  const t = m.get("text");
+  return {
+    id: m.get("id"),
+    type: m.get("type") ?? "text",
+    x: m.get("x") ?? 0,
+    y: m.get("y") ?? 0,
+    w: m.get("w") ?? 100,
+    h: m.get("h") ?? 60,
+    ...(t !== undefined ? { text: t instanceof Y.Text ? t.toString() : String(t) } : {}),
+    ...(m.get("src") !== undefined ? { src: m.get("src") } : {}),
+    ...(m.get("fill") !== undefined ? { fill: m.get("fill") } : {}),
+    ...(m.get("size") !== undefined ? { size: m.get("size") } : {}),
+  };
+}
+
+export const elementsOf = (slide: Y.Map<any>): Y.Array<Y.Map<any>> | undefined => slide.get("elements");
 
 export const THEMES = {
   light: { bg: "#ffffff", fg: "#18181b", accent: "#4f46e5", muted: "#52525b", font: "Inter, system-ui, sans-serif" },
@@ -39,6 +101,10 @@ export interface SlideData {
   body2?: string;
   notes?: string;
   image?: string;
+  /** Free-layout slides: the boxes on the slide. */
+  elements?: ElementData[];
+  /** Who's responsible for this slide ("Alex: slides 4–6"). */
+  owner?: { uid: string; name: string } | null;
 }
 
 export const slidesOf = (doc: Y.Doc) => doc.getArray<Y.Map<any>>("slides");
@@ -60,6 +126,10 @@ export function makeSlide(d: SlideData): Y.Map<any> {
   m.set("layout", LAYOUTS.includes(d.layout as Layout) ? d.layout : "bullets");
   for (const f of TEXT_FIELDS) m.set(f, new Y.Text(asText(d[f])));
   m.set("image", safeImage(d.image));
+  const els = new Y.Array<Y.Map<any>>();
+  els.push((d.elements ?? []).slice(0, 60).map(makeElement));
+  m.set("elements", els);
+  if (d.owner && typeof d.owner.uid === "string") m.set("owner", { uid: d.owner.uid.slice(0, 64), name: String(d.owner.name ?? "").slice(0, 40) });
   return m;
 }
 
@@ -73,6 +143,8 @@ export function readSlide(m: Y.Map<any>): Required<SlideData> {
     body2: text("body2"),
     notes: text("notes"),
     image: m.get("image") ?? "",
+    elements: (elementsOf(m)?.toArray() ?? []).map(readElement),
+    owner: m.get("owner") ?? null,
   };
 }
 

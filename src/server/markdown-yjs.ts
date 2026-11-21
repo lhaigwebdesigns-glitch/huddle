@@ -119,21 +119,22 @@ function blocks(tokens: Token[]): Y.XmlElement[] {
         out.push(new Y.XmlElement("horizontalRule"));
         break;
       case "table": {
-        // StarterKit has no tables yet: render as an aligned plain-text table in a code block
-        // (cell Markdown like **bold** is flattened so no stray asterisks show up).
+        // A real table (the doc editor has tables): a header row, then body rows; each cell holds a paragraph.
         const tb = t as Tokens.Table;
-        const cell = (c: Tokens.TableCell) => {
-          const ops: Op[] = [];
-          inlineToText(c.tokens, {}, ops);
-          return ops.map((o) => o.insert).join("").replace(/\s+/g, " ").trim();
+        const row = (cells: Tokens.TableCell[], header: boolean) => {
+          const tr = new Y.XmlElement("tableRow");
+          tr.insert(
+            0,
+            cells.map((c) => {
+              const td = new Y.XmlElement(header ? "tableHeader" : "tableCell");
+              td.insert(0, [para(c.tokens)]);
+              return td;
+            }),
+          );
+          return tr;
         };
-        const rows = [tb.header.map(cell), ...tb.rows.map((r) => r.map(cell))];
-        const widths = rows[0].map((_, i) => Math.max(...rows.map((r) => (r[i] ?? "").length)));
-        const line = (r: string[]) => r.map((c, i) => (c ?? "").padEnd(widths[i])).join(" | ").trimEnd();
-        const el = new Y.XmlElement("codeBlock");
-        const text = new Y.XmlText();
-        text.insert(0, [line(rows[0]), widths.map((w) => "-".repeat(w)).join("-|-"), ...rows.slice(1).map(line)].join("\n"));
-        el.insert(0, [text]);
+        const el = new Y.XmlElement("table");
+        el.insert(0, [row(tb.header, true), ...tb.rows.map((r) => row(r, false))]);
         out.push(el);
         break;
       }
@@ -183,6 +184,17 @@ export function readMarkdown(doc: Y.Doc): string {
     else if (name === "paragraph") lines.push(prefix + textOf(el));
     else if (name === "codeBlock") lines.push("```" + (el.getAttribute("language") ?? ""), textOf(el), "```");
     else if (name === "horizontalRule") lines.push("---");
+    else if (name === "image") lines.push(`![${el.getAttribute("alt") ?? "image"}](${el.getAttribute("src") ?? ""})`);
+    else if (name === "table") {
+      const rows = el.toArray().map((tr) => (tr as Y.XmlElement).toArray().map((cell) => textOf(cell as Y.XmlElement).replace(/\|/g, "\\|").trim()));
+      if (rows.length) lines.push(`| ${rows[0].join(" | ")} |`, `| ${rows[0].map(() => "---").join(" | ")} |`, ...rows.slice(1).map((r) => `| ${r.join(" | ")} |`));
+    } else if (name === "taskList") {
+      el.toArray().forEach((li) => {
+        const item = li as Y.XmlElement;
+        const done = String(item.getAttribute("checked")) === "true";
+        lines.push(`${indent}- [${done ? "x" : " "}] ${item.toArray().map((c) => textOf(c as Y.XmlElement)).join(" ")}`);
+      });
+    }
     else if (name === "bulletList" || name === "orderedList") {
       el.toArray().forEach((li, i) => {
         const bullet = name === "orderedList" ? `${i + 1}. ` : "- ";
