@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import PartySocket from "partysocket";
 import type {
+  Receipt,
   ChatMessage,
   ClientMsg,
   Member,
@@ -32,6 +33,8 @@ export interface RoomState {
   toast?: string;
   /** Room banner (e.g. the free cloud AI is unavailable); cleared when dismissed or when Local mode is on. */
   notice?: string;
+  /** The latest contribution receipt the server sent (projects). */
+  receipt?: Receipt;
   /** Facts the AI remembers for this room (when memory is on). */
   memory: string[];
 }
@@ -106,6 +109,8 @@ function reducer(s: RoomState, a: Action): RoomState {
               ? "The host removed you from this room."
               : "The host banned you from this room.",
       };
+    case "receipt":
+      return { ...s, receipt: m.receipt };
     case "bans":
       return { ...s, bans: m.bans };
     case "error":

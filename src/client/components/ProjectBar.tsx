@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BookOpen, CalendarClock, ChevronDown, Lock, RotateCcw, Send, Sparkles } from "lucide-react";
+import { BookOpen, CalendarClock, ChevronDown, Lock, ReceiptText, RotateCcw, Send, Sparkles } from "lucide-react";
 import type { ClientMsg, ProjectSettings } from "../../shared/protocol";
 import { Markdown } from "./Markdown";
 
@@ -19,7 +19,20 @@ function dueLabel(ms: number, now = Date.now()) {
 }
 
 /** The assignment, pinned above the chat: due date, AI rule, instructions, rubric and Turn in. */
-export function ProjectBar({ project, title, isHost, send }: { project: ProjectSettings; title: string; isHost: boolean; send: (m: ClientMsg) => void }) {
+export function ProjectBar({
+  project,
+  title,
+  isHost,
+  send,
+  onReceipt,
+}: {
+  project: ProjectSettings;
+  title: string;
+  isHost: boolean;
+  send: (m: ClientMsg) => void;
+  /** Open the contribution receipt: to look at it, or as the last step before turning in. */
+  onReceipt: (mode: "view" | "turnin") => void;
+}) {
   const [open, setOpen] = useState(false);
   const overdue = !!project.dueAt && project.dueAt < Date.now() && !project.turnedInAt;
   const hasDetails = !!(project.instructions.trim() || project.rubric.trim());
@@ -53,6 +66,16 @@ export function ProjectBar({ project, title, isHost, send }: { project: ProjectS
             Instructions & rubric <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
           </button>
         )}
+        {/* The teacher only gets the receipt once the group turns the project in. */}
+        {(!isHost || project.turnedInAt) && (
+          <button
+            onClick={() => onReceipt("view")}
+            className="press flex items-center gap-1 rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2"
+            data-testid="open-receipt"
+          >
+            <ReceiptText className="h-3.5 w-3.5" /> Receipt
+          </button>
+        )}
         {project.turnedInAt ? (
           <span className="flex items-center gap-2">
             <span className="flex items-center gap-1 text-xs text-fg-muted" data-testid="turned-in">
@@ -71,7 +94,7 @@ export function ProjectBar({ project, title, isHost, send }: { project: ProjectS
           </span>
         ) : (
           <button
-            onClick={() => confirm("Turn in the project for the whole group? Its files will be locked as the submitted version. Your teacher can reopen it.") && send({ t: "turn_in" })}
+            onClick={() => onReceipt("turnin")}
             className="press flex items-center gap-1 rounded-lg bg-primary px-3 py-1 text-xs font-semibold text-primary-fg hover:bg-primary-hover"
             data-testid="turn-in"
           >

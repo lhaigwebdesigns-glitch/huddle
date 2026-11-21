@@ -71,7 +71,8 @@ export function DocEditor({
     extensions: [
       StarterKit.configure({ undoRedo: false, trailingNode: false, link: { openOnClick: false } }),
       Collaboration.configure({ document: ydoc }),
-      CollaborationCaret.configure({ provider, user: { name: me.name, color: me.color } }),
+      // Keep uid in the presence "user" field: the server uses it to credit edits on the receipt.
+      CollaborationCaret.configure({ provider, user: { name: me.name, color: me.color, uid: me.uid } }),
     ],
     editorProps: {
       attributes: { class: "prose prose-zinc dark:prose-invert max-w-none px-6 py-6 md:px-10", "data-testid": "doc-editor" },
