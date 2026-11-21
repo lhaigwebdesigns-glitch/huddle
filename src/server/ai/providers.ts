@@ -1,4 +1,5 @@
 import type { Env } from "../env";
+import { isRetiredModelError, recordModelAlert, RETIRED_COOLDOWN_MS } from "./router-health";
 import { getProviders, type ProviderConfig } from "./models";
 
 export interface ToolCall {
@@ -256,7 +257,12 @@ export async function chatWithFallback(env: Env, args: ChatArgs): Promise<ChatRe
       lastErr = err;
       const status = err instanceof ProviderError ? err.status : 0;
       const msg = String(err);
-      const cooldown = /run remotely/i.test(msg)
+      // A retired or renamed model: skip it for hours and tell the admin, instead of retrying.
+      const retired = isRetiredModelError(status, msg);
+      if (retired) await recordModelAlert(env, { provider: p.id, model: p.model, at: Date.now(), message: msg.slice(0, 300) });
+      const cooldown = retired
+        ? RETIRED_COOLDOWN_MS
+        : /run remotely/i.test(msg)
         ? 24 * 3_600_000 // Workers AI binding in local dev without a Cloudflare login: never works this session
         : status === 429
           ? Math.max(60, (err as ProviderError).retryAfter ?? 0) * 1000

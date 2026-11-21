@@ -196,6 +196,16 @@ export interface TaskBoard {
   people?: Record<string, string>;
 }
 
+/** A message a student sent to the teacher with the Report button. */
+export interface Report {
+  id: string;
+  at: number;
+  byUid: string;
+  byName: string;
+  reason: string;
+  message: { authorName: string; content: string; createdAt: number; fromAi: boolean };
+}
+
 export const TASK_LIMITS = { tasks: 60, title: 140, role: 30 } as const;
 
 /** One person's part of a project, as the group and the teacher see it. */
@@ -254,6 +264,8 @@ export type ClientMsg =
   | { t: "task_delete"; id: string }
   /** Set your own role in the group ("" clears it). */
   | { t: "set_role"; role: string }
+  /** Class rooms: send one message to the teacher, with a reason. */
+  | { t: "report"; id: string; reason: string }
   | { t: "say"; text: string; attachments?: Attachment[] }
   /** Turn an uploaded CSV into a live sheet. */
   | { t: "import_csv"; title: string; csv: string }

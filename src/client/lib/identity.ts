@@ -75,3 +75,11 @@ export function recentRooms(now = Date.now()): { code: string; title: string; at
 export function forgetRoom(code: string) {
   safeSet("huddle.recent", JSON.stringify(recentRooms().filter((r) => r.code !== code)));
 }
+
+/** Huddle is for ages 13 and up: people confirm it once on this device. */
+export function ageConfirmed() {
+  return safeGet("huddle.age13") === "1";
+}
+export function confirmAge() {
+  safeSet("huddle.age13", "1");
+}

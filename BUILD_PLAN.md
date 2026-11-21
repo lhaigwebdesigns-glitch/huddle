@@ -13,7 +13,7 @@ Last updated Nov 21, 2026. Sizes: **S** = an evening, **M** = a weekend, **L** =
 - paste block
 - turn in with locked files
 
-**Builds 1–4 are live. Build 5 (Google first, Share to Classroom) is built**, waiting to merge and deploy. **Next is Build 6: safety and limits.**
+**Builds 1–5 are live. Build 6 (safety and limits) is built**, waiting to merge and deploy. **Next is Build 7: docs and slides basics.**
 
 **Known limit of receipts:** when someone splits a paragraph in the middle (presses Enter inside it), the doc editor rewrites the text after the split, so that text is credited to the person who split it. Typing, deleting and pressing Enter at the end of a paragraph are counted correctly.
 
@@ -28,7 +28,7 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 | ✅ 3 | **Tasks, roles and templates** | 11, 13, 46, 53, 60 | L | Groups split the work, and tasks count on the receipt |
 | ✅ 4 | **Teacher class page and grading** | 22, 23, 24, 25, 65 | L | The teacher's side: one place for all groups, fast grading |
 | ✅ 5 | **Google sign-in and Share to Classroom** | 15, 14, start 19 | M | No friction for schools; Google's review takes weeks, so start it here |
-| ⬜ 6 | **Safety and limits** | 64, 66, 67, 68, 69, 70, 62, 63 | M | Required before any students use it |
+| ✅ 6 | **Safety and limits** | 64, 66, 67, 68, 69, 70, 62, 63 | M | Required before any students use it |
 | ⬜ 7 | **Docs and slides basics** | 39, 40, 42, 45, 48, 52 | L | What students need to make real projects |
 | ⬜ 8 | **New landing page** | 28–38 | M | Teachers need a page to sign up from |
 | | **The pilot with your teacher's class** | | | Fix her class's top complaints first |
@@ -229,19 +229,19 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 |---|---|---|---|
 | 60 | Group-aware AI | M | ✅ Builds 1 and 3 (knows tasks, owners, roles; can add tasks) |
 | 61 | Feedback against the rubric | M | 🟡 The AI has the rubric (Build 1); a dedicated button in Build 12 |
-| 62 | Paid AI fallback and per-room limits | M | ⬜ Build 6 |
-| 63 | Self-repairing router | S | ⬜ Build 6 |
+| 62 | Paid AI fallback and per-room limits | M | 🟡 Per-room and per-person limits exist; a paid fallback needs your OK to spend money |
+| 63 | Self-repairing router | S | ✅ Build 6 (skips retired models, alerts on /admin) |
 
 ### 10. Accounts, safety and trust
 | # | Build | Size | Status |
 |---|---|---|---|
-| 64 | Age check (13+) | S | ⬜ Build 6 |
+| 64 | Age check (13+) | S | ✅ Build 6 |
 | 65 | Teacher and student accounts | S | ✅ Build 4 (teacher = owns a class; student = joined one) |
-| 66 | Privacy policy and terms, plus a professional review | S | ⬜ Build 6 |
-| 67 | AI content safety | M | ⬜ Build 6 |
-| 68 | Report button | S | ⬜ Build 6 |
-| 69 | Teacher controls | S | 🟡 Kick, ban and turn-in lock exist; more in Build 6 |
-| 70 | Erase a class and its data | S | 🟡 Room delete exists; class erase in Build 6 |
+| 66 | Privacy policy and terms, plus a professional review | S | 🟡 Draft written (Build 6); needs a professional review |
+| 67 | AI content safety | M | ✅ Build 6 (Llama Guard check plus school rules) |
+| 68 | Report button | S | ✅ Build 6 |
+| 69 | Teacher controls | S | ✅ Build 6 (remove a student; send back) |
+| 70 | Erase a class and its data | S | ✅ Build 6 |
 
 ### 11. Feel and polish
 | # | Build | Size | Status |

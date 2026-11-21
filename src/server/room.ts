@@ -27,6 +27,7 @@ import {
   type ModerationAction,
   type PartyPerson,
   type ProjectSettings,
+  type Report,
   type Task,
   type TaskBoard,
   TASK_LIMITS,
@@ -42,6 +43,7 @@ import { runTool, TOOL_DEFS } from "./ai/tools";
 import { collectUrls, stripUnverifiedLinks } from "./ai/citations";
 import { getProviders as getProvidersConfigured } from "./ai/models";
 import { templateById, type ProjectTemplate } from "../shared/templates";
+import { checkMessage, safetyReply, SCHOOL_RULES } from "./ai/safety";
 import { aiEnv } from "./ai/pc";
 
 const MAX_FILES = 100;
@@ -634,6 +636,25 @@ export class Room extends Server<Env> {
         await this.saveBoard(b);
         return;
       }
+      case "report": {
+        // The teacher never sees the chat, except a message a student chooses to report.
+        if (!this.settings.classLink) return this.send(conn, { t: "error", message: "Reports go to a teacher, and this room isn't part of a class." });
+        const m = this.loadMessages(300).find((x) => x.id === msg.id);
+        if (!m || m.role === "system") return;
+        const reports = (await this.ctx.storage.get<Report[]>("reports")) ?? [];
+        if (reports.some((r) => r.message.createdAt === m.createdAt && r.byUid === me.uid)) return this.send(conn, { t: "error", message: "You already reported that message." });
+        reports.push({
+          id: crypto.randomUUID().slice(0, 8),
+          at: Date.now(),
+          byUid: me.uid,
+          byName: me.name,
+          reason: String(msg.reason ?? "").trim().slice(0, 500),
+          message: { authorName: m.authorName, content: m.content.slice(0, 2000), createdAt: m.createdAt, fromAi: m.role === "assistant" },
+        });
+        await this.ctx.storage.put("reports", reports.slice(-100));
+        this.send(conn, { t: "error", message: "Reported to your teacher. Only that message was sent." });
+        return;
+      }
       case "turn_in": {
         const p = this.settings.project;
         if (!p) return;
@@ -951,6 +972,21 @@ export class Room extends Server<Env> {
     };
   }
 
+  async reports() {
+    return (await this.ctx.storage.get<Report[]>("reports")) ?? [];
+  }
+
+  async dismissReport(id: string) {
+    const reports = (await this.ctx.storage.get<Report[]>("reports")) ?? [];
+    await this.ctx.storage.put("reports", reports.filter((r) => r.id !== id));
+    return { ok: true };
+  }
+
+  /** The teacher removed this student from the class: send them out and keep them out. */
+  async removeStudent(teacherUid: string, uid: string) {
+    return this.moderate(teacherUid, "ban", uid);
+  }
+
   async teacherReopen(name: string) {
     return { ok: await this.reopen(name || "Your teacher") };
   }
@@ -1073,6 +1109,8 @@ export class Room extends Server<Env> {
       const askers = [...new Set(recent.slice(lastAiAt + 1).filter((m) => m.role === "user").map((m) => m.authorId))];
       let creditedAsk = false;
       msg.createdAt = this.aiSeenUpTo + 1;
+      // School projects: a safety model checks the student's message before the AI answers.
+      const safety = s.project && budget === "ok" ? await checkMessage(this.env, this.lastUserText()) : ({ safe: true } as const);
       if (budget !== "ok") {
         msg.content =
           budget === "room"
@@ -1082,6 +1120,9 @@ export class Room extends Server<Env> {
         this.noticeAiUnavailable(
           budget === "room" ? "This room used today's free cloud AI allowance." : "Today's shared free cloud AI allowance is used up.",
         );
+      } else if (!safety.safe) {
+        msg.content = safetyReply(safety.category);
+        msg.meta!.model = "Huddle safety";
       } else if (s.engine === "local") {
         await this.localTurn(msg);
       } else {
@@ -1163,6 +1204,18 @@ export class Room extends Server<Env> {
           for (const call of res.toolCalls) {
             unlinkInventedUrls(call, llm, sources);
             // A model can still name a tool it wasn't offered; the project's rules win.
+            // School projects: image prompts get the same safety check as messages.
+            if (s.project && call.function.name === "generate_image") {
+              let prompt = "";
+              try {
+                prompt = String(JSON.parse(call.function.arguments || "{}").prompt ?? "");
+              } catch {}
+              const check = await checkMessage(this.env, prompt);
+              if (!check.safe) {
+                llm.push({ role: "tool", tool_call_id: call.id, content: "Refused: that image isn't appropriate for a school project. Tell the student kindly and offer a school-appropriate idea." });
+                continue;
+              }
+            }
             if (!toolAllowed(call.function.name, this.aiSetting(), !!this.settings?.project?.turnedInAt)) {
               llm.push({
                 role: "tool",
@@ -1336,7 +1389,7 @@ export class Room extends Server<Env> {
           ]
         : []),
       `This room is called "${s.title}". Today's date: ${new Date().toISOString().slice(0, 10)}. People here now: ${people}.`,
-      ...(s.project ? projectPrompt(s.project, Date.now(), this.boardCache, (uid) => this.nameCache[uid] ?? "someone") : []),
+      ...(s.project ? [SCHOOL_RULES, ...projectPrompt(s.project, Date.now(), this.boardCache, (uid) => this.nameCache[uid] ?? "someone")] : []),
     ];
     if (withTools) {
       lines.push(

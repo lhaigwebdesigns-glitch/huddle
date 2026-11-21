@@ -12,6 +12,7 @@ import { auth, currentUser, enabledProviders, isAdminUser, rememberRoomForUser }
 import { MAX_UPLOAD_BYTES, safeFileName, UPLOAD_TYPES } from "../shared/knowledge";
 import { getBlob, putBlob } from "./blobs";
 import { classes } from "./classes";
+import { clearModelAlerts, readModelAlerts } from "./ai/router-health";
 
 export { Room } from "./room";
 export { Doc } from "./doc";
@@ -296,6 +297,17 @@ app.get("/api/admin/usage", async (c) => {
   if (!(await isAdmin(c))) return c.json({ error: "unauthorized" }, 401);
   if (!c.env.DB) return c.json({ rows: [], limit: 0 });
   return c.json({ rows: await usageByDay(c.env.DB), limit: Number(c.env.GLOBAL_DAILY_AI_LIMIT || 5000) });
+});
+
+// Models a provider retired: the router already skips them; this lists them for /admin.
+app.get("/api/admin/model-alerts", async (c) => {
+  if (!(await isAdmin(c))) return c.json({ error: "unauthorized" }, 401);
+  return c.json({ alerts: await readModelAlerts(c.env) });
+});
+app.delete("/api/admin/model-alerts", async (c) => {
+  if (!(await isAdmin(c))) return c.json({ error: "unauthorized" }, 401);
+  await clearModelAlerts(c.env);
+  return c.json({ ok: true });
 });
 
 // "Use my PC for AI" switch: off frees the GPU (for games) and skips Ollama everywhere.

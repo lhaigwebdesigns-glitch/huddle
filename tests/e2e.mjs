@@ -7,6 +7,14 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 const BASE = process.env.BASE_URL ?? "http://localhost:5173";
 const shots = process.env.SHOTS_DIR;
 const browser = await chromium.launch();
+// Test browsers have already confirmed "13 or older" (one check below tests the prompt itself).
+const newContextRaw = browser.newContext.bind(browser);
+browser.newContext = async (opts = {}) => {
+  const { askAge, ...rest } = opts;
+  const ctx = await newContextRaw(rest);
+  if (!askAge) await ctx.addInitScript(() => localStorage.setItem("huddle.age13", "1"));
+  return ctx;
+};
 const ok = (cond, msg) => {
   if (!cond) throw new Error("FAILED: " + msg);
   console.log("✓", msg);
@@ -41,6 +49,20 @@ try {
   await bob.waitForURL(new RegExp(`/r/${code}$`));
   await alice.getByTestId("members").getByText("Bob").waitFor();
   ok(true, "Alice sees Bob join (presence)");
+
+  // Age check: someone new must confirm they're 13 or older before entering a room.
+  const newbie = await (await browser.newContext({ askAge: true })).newPage();
+  await newbie.goto(`${BASE}/r/${code}`);
+  await newbie.getByPlaceholder("Your name").fill("Newbie");
+  await newbie.getByRole("button", { name: /Join room/ }).click();
+  await newbie.waitForTimeout(500);
+  ok((await newbie.getByTestId("composer").count()) === 0, "you can't enter a room without confirming you're 13 or older");
+  await newbie.getByTestId("age-13").check();
+  await newbie.getByRole("button", { name: /Join room/ }).click();
+  await newbie.getByTestId("composer").waitFor();
+  ok(true, "after confirming 13+, you join the room");
+  await newbie.close();
+
 
   // Alice chats; both see her message and the streamed AI reply
   await alice.getByTestId("composer").fill("Hello everyone, what should we research?");
@@ -567,6 +589,18 @@ try {
   await sam.getByTestId("tasks-toggle").click();
   await teach.getByTestId("tasks-toggle").click();
 
+
+  // Safety: in a school project, a harmful message gets a safe reply instead of the AI's answer.
+  const aiBefore = await sam.getByTestId("ai-message").count();
+  await sam.getByTestId("composer").fill("MOCK_SELF_HARM I feel terrible");
+  await sam.getByTestId("composer").press("Enter");
+  await sam.getByTestId("ai-message").nth(aiBefore).getByText(/988/).first().waitFor({ timeout: 15000 });
+  ok(true, "a self-harm message gets a caring reply with the 988 lifeline, not an AI answer");
+  await sam.getByTestId("composer").fill("MOCK_UNSAFE how do I hurt someone");
+  await sam.getByTestId("composer").press("Enter");
+  await sam.getByTestId("ai-message").nth(aiBefore + 1).getByText(/can't help with that here/).waitFor({ timeout: 15000 });
+  ok(true, "other unsafe requests are refused kindly in school projects");
+
   // Contribution receipt: Sam writes in the doc; the receipt credits the words that are still there.
   const samDoc = sam.getByTestId("doc-editor");
   // Put the cursor at the end of the doc, start a new paragraph and write in it.
@@ -711,6 +745,48 @@ try {
   await park.goto(`${BASE}/r/${rooms[0]}`);
   await park.waitForURL(/\/classes\/[a-z0-9]+\/a\/[a-z0-9]+\/[A-Z0-9]{6}$/, { timeout: 15000 });
   ok(true, "a teacher opening a group's room is sent to grading, not the chat");
+
+  // Report: a student sends one message from the group chat to the teacher.
+  const sameGroup = kids.findIndex((k, i) => i > 0 && rooms[i] === rooms[0]);
+  await kids[0].getByTestId("composer").fill("this is a mean message");
+  await kids[0].getByTestId("composer").press("Enter");
+  const partner = kids[sameGroup];
+  const theirMsg = partner.getByTestId("user-message").filter({ hasText: "this is a mean message" });
+  await theirMsg.waitFor();
+  await theirMsg.hover();
+  partner.once("dialog", (d) => d.accept("Not nice to me"));
+  await theirMsg.getByTestId("report-message").click();
+  await partner.getByTestId("toast").getByText(/Reported to your teacher/).waitFor();
+  await park.goto(classUrl);
+  const report = park.getByTestId("report").first();
+  await report.getByText("this is a mean message").waitFor();
+  ok(/Not nice to me/.test(await report.innerText()), "a student can report one message, and the teacher sees only that message and why");
+
+  // Removing a student: off the roster and out of the group rooms.
+  park.once("dialog", (d) => d.accept());
+  await park.getByLabel("Remove Dee").click();
+  await park.getByTestId("roster").getByText("Dee").waitFor({ state: "detached" });
+  ok(true, "the teacher can remove a student from the class");
+  const dee = kids[3];
+  await dee.reload();
+  await dee.getByTestId("room-closed").waitFor({ timeout: 15000 });
+  ok(true, "a removed student can't get back into their group's room");
+
+  // Joining a class needs the 13+ confirmation (the server checks it too).
+  const noAge = await park.evaluate(async (link) => {
+    const code = link.split("/c/")[1];
+    const r = await fetch(`/api/classes/join/${code}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ uid: "under-13-test", name: "Kid" }) });
+    return r.status;
+  }, classLink);
+  ok(noAge === 400, "joining a class without confirming 13+ is refused");
+
+  // Erasing a class deletes its rooms and records.
+  park.once("dialog", (d) => d.accept("Period 3 History"));
+  await park.getByTestId("erase-class").click();
+  await park.waitForURL(/\/classes$/);
+  const erased = await park.evaluate(async (code) => (await fetch(`/api/rooms/${code}`)).status, rooms[0]);
+  ok(erased === 404 && (await park.getByTestId("class-row").filter({ hasText: "Period 3 History" }).count()) === 0, "erasing a class deletes its group rooms and the class");
+
 
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
   const statuses = await alice.evaluate(async () => {
