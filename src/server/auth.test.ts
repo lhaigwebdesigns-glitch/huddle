@@ -13,6 +13,10 @@ describe("auth helpers", () => {
   it("only enables configured providers; dev only when asked", () => {
     expect(enabledProviders({} as any)).toEqual([]);
     expect(enabledProviders({ GITHUB_CLIENT_ID: "a", GITHUB_CLIENT_SECRET: "b" } as any)).toEqual(["github"]);
+    // Google is always listed first (school accounts).
+    expect(
+      enabledProviders({ GITHUB_CLIENT_ID: "a", GITHUB_CLIENT_SECRET: "b", GOOGLE_CLIENT_ID: "c", GOOGLE_CLIENT_SECRET: "d" } as any),
+    ).toEqual(["google", "github"]);
     expect(enabledProviders({ GOOGLE_CLIENT_ID: "a" } as any)).toEqual([]); // secret missing
     expect(enabledProviders({ DEV_AUTH: "1" } as any)).toEqual(["dev"]);
   });

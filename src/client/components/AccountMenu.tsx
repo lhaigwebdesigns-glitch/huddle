@@ -88,7 +88,9 @@ export function AccountMenu({ user, providers }: { user: Account | null | undefi
               Continue with {PROVIDER_LABEL[p] ?? p}
             </a>
           ))}
-          <p className="px-3 pb-1.5 pt-2 text-xs leading-snug text-fg-subtle">Optional. Keeps your rooms on every device. Guests can always join with a code.</p>
+          <p className="px-3 pb-1.5 pt-2 text-xs leading-snug text-fg-subtle">
+            {providers.includes("google") && "Your school Google account works. "}Optional for students: keeps your rooms on every device. Guests can always join with a code.
+          </p>
         </div>
       )}
     </div>

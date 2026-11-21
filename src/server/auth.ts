@@ -67,7 +67,10 @@ const PROVIDERS: Record<string, Provider> = {
 };
 
 export function enabledProviders(env: Env): string[] {
-  const out = Object.keys(PROVIDERS).filter((p) => PROVIDERS[p].clientId(env) && PROVIDERS[p].clientSecret(env));
+  // Google first: schools run on Google accounts, so it's the main way in.
+  const out = ["google", ...Object.keys(PROVIDERS).filter((p) => p !== "google")].filter(
+    (p) => PROVIDERS[p] && PROVIDERS[p].clientId(env) && PROVIDERS[p].clientSecret(env),
+  );
   if (env.DEV_AUTH === "1") out.push("dev");
   return out;
 }
