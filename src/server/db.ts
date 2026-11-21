@@ -20,6 +20,9 @@ export function ensureTables(db: D1Database): Promise<void> {
       db.prepare(`CREATE TABLE IF NOT EXISTS shares (id TEXT PRIMARY KEY, created_at INTEGER, title TEXT, messages TEXT)`),
       db.prepare(`CREATE TABLE IF NOT EXISTS assistants (code TEXT PRIMARY KEY, created_at INTEGER, data TEXT)`),
       db.prepare(`CREATE TABLE IF NOT EXISTS app_settings (key TEXT PRIMARY KEY, value TEXT)`),
+      db.prepare(
+        `CREATE TABLE IF NOT EXISTS pilot_signups (id INTEGER PRIMARY KEY AUTOINCREMENT, created_at INTEGER, name TEXT, email TEXT, school TEXT, grade TEXT, subject TEXT, class_size TEXT, classroom TEXT, problem TEXT)`,
+      ),
     ])
     .then(() => undefined)
     .catch((err) => {

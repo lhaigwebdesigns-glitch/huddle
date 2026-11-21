@@ -13,7 +13,7 @@ Last updated Nov 21, 2026. Sizes: **S** = an evening, **M** = a weekend, **L** =
 - paste block
 - turn in with locked files
 
-**Builds 1–6 are live. Build 7 (docs and slides basics) is built**, waiting to merge and deploy. **Next is Build 8: the new landing page.**
+**Builds 1–7 are live. Build 8 (the new landing page) is built**, waiting to merge and deploy. **Next: the pilot with your teacher's class.** Every pre-pilot build is done.
 
 **Known limit of receipts:** when someone splits a paragraph in the middle (presses Enter inside it), the doc editor rewrites the text after the split, so that text is credited to the person who split it. Typing, deleting and pressing Enter at the end of a paragraph are counted correctly.
 
@@ -30,7 +30,7 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 | ✅ 5 | **Google sign-in and Share to Classroom** | 15, 14, start 19 | M | No friction for schools; Google's review takes weeks, so start it here |
 | ✅ 6 | **Safety and limits** | 64, 66, 67, 68, 69, 70, 62, 63 | M | Required before any students use it |
 | ✅ 7 | **Docs and slides basics** | 39, 40, 42, 45, 48, 52 | L | What students need to make real projects |
-| ⬜ 8 | **New landing page** | 28–38 | M | Teachers need a page to sign up from |
+| ✅ 8 | **New landing page** | 28–38 | M | Teachers need a page to sign up from |
 | | **The pilot with your teacher's class** | | | Fix her class's top complaints first |
 | ⬜ 9 | AI labels and "Who wrote this?" | 2, 4, 47 | M | After receipts prove useful |
 | ⬜ 10 | Classroom connection | 16, 17, 18, 21 | L | After Google approves the access |
@@ -189,7 +189,7 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 ### 5. Landing page
 | # | Change | Size | Status |
 |---|---|---|---|
-| 28–38 | New landing page, top to bottom | M | ⬜ Build 8 |
+| 28–38 | New landing page, top to bottom | M | ✅ Build 8 (proof spot waits for real pilot quotes) |
 
 ### 6. Docs
 | # | Build | Size | Status |

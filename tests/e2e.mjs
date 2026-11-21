@@ -871,6 +871,29 @@ try {
   await ed1.close();
   await ed2.close();
 
+
+  // ---------- Landing page: the two paths and the teacher pilot form ----------
+  const visitor = await (await browser.newContext({ viewport: { width: 1300, height: 900 } })).newPage();
+  await visitor.goto(BASE);
+  await visitor.getByRole("heading", { level: 1 }).getByText("Group projects where everyone gets credit.").waitFor();
+  ok((await visitor.getByText("Your AI, your rules.").count()) === 0, "the landing page leads with group projects, not AI providers");
+  await visitor.getByTestId("path-teacher").click();
+  await visitor.getByTestId("pilot-form").waitFor();
+  await visitor.getByTestId("pilot-submit").click();
+  ok((await visitor.getByTestId("pilot-done").count()) === 0, "the pilot form needs a name, email and the problem question");
+  const pilot = visitor.getByTestId("pilot-form");
+  await pilot.getByLabel("Your name").fill("Ms. Rivera");
+  await pilot.getByLabel("School email").fill("rivera@school.example");
+  await pilot.getByLabel("Subject").fill("Biology");
+  await pilot.getByText("Sometimes", { exact: true }).click();
+  await visitor.getByTestId("pilot-problem").fill("Two students did nothing and I couldn't tell who wrote what.");
+  await visitor.getByTestId("pilot-submit").click();
+  await visitor.getByTestId("pilot-done").waitFor();
+  ok(true, "a teacher can sign up for the pilot from the landing page");
+  const saved = await visitor.evaluate(async () => (await fetch("/api/pilot", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "x", email: "bad", problem: "short" }) })).status);
+  ok(saved === 400, "the pilot API rejects a bad email");
+  await visitor.close();
+
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
   const statuses = await alice.evaluate(async () => {
     const ip = `e2e-${Math.random()}`;
