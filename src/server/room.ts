@@ -12,13 +12,13 @@ import {
   type Step,
 } from "../shared/protocol";
 import { availableProviders, chatWithFallback, ProviderError, type LlmMessage, type ToolCall } from "./ai/providers";
-import { claimsImage, compactDocArgs, wantsImage, wantsResearch, withFreshNote } from "./ai/turn";
+import { claimsImage, compactDocArgs, projectPrompt, toolAllowed, wantsImage, wantsResearch, withFreshNote } from "./ai/turn";
 import { aiTurnsToday, countAiTurn } from "./db";
 import { FILE_INFO, isFileKind, type FileKind } from "../shared/files";
 import { colName } from "../shared/formula";
 import { chunkText, ftsQuery } from "../shared/knowledge";
 import { parseCsv } from "../shared/sheet-model";
-import { AVATAR_URL_RE, type Attachment, type Ban, type ModerationAction, type PartyPerson } from "../shared/protocol";
+import { AVATAR_URL_RE, cleanProject, type AiSetting, type Attachment, type Ban, type ModerationAction, type PartyPerson, type ProjectSettings } from "../shared/protocol";
 import { deleteBlob } from "./blobs";
 import { bump, bumpLater, markActive } from "./stats";
 import { SKILLS } from "./ai/skills";
@@ -28,6 +28,8 @@ import { getProviders as getProvidersConfigured } from "./ai/models";
 import { aiEnv } from "./ai/pc";
 
 const MAX_FILES = 100;
+/** Messages that create, rename or delete files: refused while a project is turned in. */
+const FILE_CHANGES = new Set<ClientMsg["t"]>(["new_file", "import_csv", "form_to_sheet", "duplicate_file", "rename_file", "delete_file"]);
 
 /** One line per file type the AI can create, for the system prompt. */
 const FILE_GUIDE = [
@@ -156,16 +158,17 @@ export class Room extends Server<Env> {
 
   // ---------- RPC (called from the HTTP API) ----------
 
-  async init(hostId: string, title: string) {
+  async init(hostId: string, title: string, project?: Partial<ProjectSettings>) {
     if (this.settings) return { ok: false as const };
     this.settings = {
       hostId,
-      title: title.slice(0, 80) || "Untitled room",
+      title: title.slice(0, 80) || (project ? "Untitled project" : "Untitled room"),
       aiMode: "always",
       engine: "auto",
       localModel: "Qwen3-4B-q4f16_1-MLC",
       locked: false,
       disabledSkills: [],
+      ...(project && typeof project === "object" ? { project: cleanProject(project) } : {}),
     };
     await this.ctx.storage.put("settings", this.settings);
     return { ok: true as const };
@@ -361,6 +364,8 @@ export class Room extends Server<Env> {
     }
     const me = conn.state;
     const isHost = me.uid === this.settings.hostId;
+    if (this.settings.project?.turnedInAt && FILE_CHANGES.has(msg.t))
+      return this.send(conn, { t: "error", message: "This project was turned in, so its files are locked. The teacher can reopen it." });
 
     switch (msg.t) {
       case "say": {
@@ -388,6 +393,10 @@ export class Room extends Server<Env> {
         if (me.typing) {
           conn.setState({ ...me, typing: false });
           this.broadcastPresence();
+        }
+        if (this.aiSetting() === "off") {
+          if (/@ai\b/i.test(text)) this.send(conn, { t: "error", message: "AI is turned off for this project." });
+          return;
         }
         const wantsAi = this.settings.aiMode === "always" || /@ai\b/i.test(text);
         if (wantsAi) {
@@ -419,7 +428,7 @@ export class Room extends Server<Env> {
         this.broadcastMsg({ t: "msg", message: edited });
         // If this was the last thing anyone said, swap the AI's answer to it for a new one.
         const after = recent.slice(idx + 1);
-        if (this.aiBusy || after.some((m) => m.role === "user")) return;
+        if (this.aiBusy || after.some((m) => m.role === "user") || this.aiSetting() === "off") return;
         const wantsAi = this.settings.aiMode === "always" || /@ai\b/i.test(text);
         if (!wantsAi) return;
         if (!this.allowAi(me.uid))
@@ -483,6 +492,7 @@ export class Room extends Server<Env> {
         return;
       }
       case "regenerate": {
+        if (this.aiSetting() === "off") return this.send(conn, { t: "error", message: "AI is turned off for this project." });
         if (this.aiBusy) return this.send(conn, { t: "error", message: "The AI is still answering — try again when it's done." });
         const [last] = this.loadMessages(1);
         if (!last || last.role !== "assistant") return;
@@ -509,8 +519,38 @@ export class Room extends Server<Env> {
           const instructions = String(p.assistant?.instructions ?? "").trim().slice(0, 4000);
           s.assistant = name || instructions ? { name, instructions } : undefined;
         }
+        if ("project" in p) {
+          const wasTurnedIn = !!s.project?.turnedInAt;
+          s.project = cleanProject(p.project, s.project);
+          // Clearing a turned-in project unlocks its files again.
+          if (wasTurnedIn && !s.project) await this.lockFiles(false);
+        }
         await this.ctx.storage.put("settings", s);
         this.broadcastMsg({ t: "settings", settings: s });
+        return;
+      }
+      case "turn_in": {
+        const p = this.settings.project;
+        if (!p) return;
+        if (p.turnedInAt) return;
+        p.turnedInAt = Date.now();
+        p.turnedInBy = me.name;
+        await this.ctx.storage.put("settings", this.settings);
+        await this.lockFiles(true);
+        this.broadcastMsg({ t: "settings", settings: this.settings });
+        this.notice(`${me.name} turned in the project. Its files are locked now.`);
+        return;
+      }
+      case "reopen": {
+        const p = this.settings.project;
+        if (!p?.turnedInAt) return;
+        if (!isHost) return this.send(conn, { t: "error", message: "Only the teacher (the host) can reopen a turned-in project." });
+        delete p.turnedInAt;
+        delete p.turnedInBy;
+        await this.ctx.storage.put("settings", this.settings);
+        await this.lockFiles(false);
+        this.broadcastMsg({ t: "settings", settings: this.settings });
+        this.notice(`${me.name} reopened the project. The group can edit again.`);
         return;
       }
       case "new_file": {
@@ -600,6 +640,30 @@ export class Room extends Server<Env> {
     }
   }
 
+  // ---------- projects ----------
+
+  private aiSetting(): AiSetting {
+    return this.settings?.project?.ai ?? "full";
+  }
+
+  /** Lock or unlock every file (a turned-in project's work stays as submitted). */
+  private async lockFiles(on: boolean) {
+    await Promise.all(
+      this.files().map((f) =>
+        getServerByName(this.env.Doc, `${this.name}--${f.id}`)
+          .then((s) => s.setLocked(on))
+          .catch(() => {}),
+      ),
+    );
+  }
+
+  /** A line from Huddle itself in the chat ("Maya turned in the project"). */
+  private notice(text: string) {
+    const m: ChatMessage = { id: crypto.randomUUID(), role: "system", authorId: "huddle", authorName: "Huddle", content: text, createdAt: Date.now() };
+    this.saveMessage(m);
+    this.broadcastMsg({ t: "msg", message: m });
+  }
+
   // ---------- AI ----------
 
   private allowAi(uid: string) {
@@ -612,6 +676,7 @@ export class Room extends Server<Env> {
   }
 
   private queueAi() {
+    if (this.aiSetting() === "off") return;
     if (this.aiBusy) {
       // Messages that arrive mid-answer are batched into the AI's next turn.
       this.aiPending = true;
@@ -721,7 +786,10 @@ export class Room extends Server<Env> {
         const memory = (await this.ctx.storage.get<string[]>("memory")) ?? [];
         // Asking for research ("deep research… cite the sites") turns research on for this turn,
         // even when the room's Deep Research switch is off.
-        const research = s.deepResearch || wantsResearch(this.lastUserText());
+        const aiRule = this.aiSetting();
+        const turnedIn = !!s.project?.turnedInAt;
+        // Tutor projects never research-and-write a doc for the students.
+        const research = aiRule === "full" && !turnedIn && (s.deepResearch || wantsResearch(this.lastUserText()));
         llm = [{ role: "system", content: this.systemPrompt(true, memory, research) }, ...withFreshNote(this.history())];
         let emptyRetried = false;
         // Models sometimes say "here's your image" without calling generate_image. Catch that once.
@@ -733,6 +801,7 @@ export class Room extends Server<Env> {
         const hasImages = this.loadMessages(HISTORY_FOR_AI).some((m) => m.meta?.attachments?.some((a) => a.type.startsWith("image/")));
         const tools = TOOL_DEFS.filter(
           (t) =>
+            toolAllowed(t.function.name, aiRule, turnedIn) &&
             (t.function.name !== "remember" || s.memory) &&
             (t.function.name !== "search_knowledge" || hasKnowledge) &&
             (t.function.name !== "describe_image" || hasImages),
@@ -784,6 +853,15 @@ export class Room extends Server<Env> {
           llm.push({ role: "assistant", content: res.content || null, tool_calls: res.toolCalls });
           for (const call of res.toolCalls) {
             unlinkInventedUrls(call, llm, sources);
+            // A model can still name a tool it wasn't offered; the project's rules win.
+            if (!toolAllowed(call.function.name, this.aiSetting(), !!this.settings?.project?.turnedInAt)) {
+              llm.push({
+                role: "tool",
+                tool_call_id: call.id,
+                content: "Not allowed in this project (the teacher's AI rules). Help the students without creating or changing files.",
+              });
+              continue;
+            }
             const output = await runTool(call.function.name, call.function.arguments, {
               env: this.env,
               roomCode: this.name,
@@ -895,7 +973,8 @@ export class Room extends Server<Env> {
   }
 
   private history(limit = HISTORY_FOR_AI): LlmMessage[] {
-    const msgs = this.loadMessages(limit).filter((m) => !m.meta?.error);
+    // Huddle's own notices ("Maya turned in the project") aren't part of the conversation.
+    const msgs = this.loadMessages(limit).filter((m) => !m.meta?.error && m.role !== "system");
     const lastAi = msgs.map((m) => m.role).lastIndexOf("assistant");
     return msgs.map((m, i) => {
       if (m.role !== "assistant") {
@@ -942,6 +1021,7 @@ export class Room extends Server<Env> {
           ]
         : []),
       `This room is called "${s.title}". Today's date: ${new Date().toISOString().slice(0, 10)}. People here now: ${people}.`,
+      ...(s.project ? projectPrompt(s.project) : []),
     ];
     if (withTools) {
       lines.push(

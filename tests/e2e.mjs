@@ -465,6 +465,114 @@ try {
   await erin.getByTestId("drive-file").filter({ hasText: "Renamed plan" }).waitFor();
   ok(true, "file menu actions work");
 
+  // ---------- Projects: AI rules, tutor mode, paste block, turn in ----------
+  const teach = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+  await teach.goto(BASE);
+  const projCode = await teach.evaluate(async () => {
+    localStorage.setItem("huddle.name", "Ms. Lee");
+    if (!localStorage.getItem("huddle.uid")) localStorage.setItem("huddle.uid", crypto.randomUUID());
+    const r = await fetch("/api/rooms", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        uid: localStorage.getItem("huddle.uid"),
+        title: "WWI slides",
+        project: { instructions: "Make 5 slides on one cause of WWI.", rubric: "Sources 50%", ai: "off", pasteGuard: true },
+      }),
+    });
+    return (await r.json()).code;
+  });
+  await teach.goto(`${BASE}/r/${projCode}`);
+  await teach.getByTestId("project-bar").waitFor();
+  const sam = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+  await sam.goto(`${BASE}/r/${projCode}`);
+  await sam.getByPlaceholder("Your name").fill("Sam");
+  await sam.getByRole("button", { name: /Join room/ }).click();
+  await sam.getByTestId("ai-chip").getByText("AI off").waitFor();
+  ok(true, "a student sees the project bar with the AI setting");
+  await sam.getByTestId("project-details-toggle").click();
+  await sam.getByTestId("project-details").getByText("Sources 50%").waitFor();
+  ok(true, "instructions and rubric show in the project bar");
+
+  await sam.getByTestId("composer").fill("@ai write our slides");
+  await sam.getByTestId("composer").press("Enter");
+  await sam.getByTestId("toast").getByText(/AI is turned off/).waitFor();
+  await sam.waitForTimeout(1500);
+  ok((await sam.getByTestId("ai-message").count()) === 0, "with AI off, @ai gets no AI reply");
+
+  // Paste block: outside text is refused (and the student is told); text copied inside Huddle pastes fine.
+  const pasteResult = await sam.evaluate(() => {
+    const box = document.querySelector('[data-testid="composer"]');
+    box.focus();
+    const paste = (text) => {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", text);
+      return box.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    };
+    const essay = "The alliance system turned a regional conflict into a world war in 1914.";
+    const outside = paste(essay);
+    box.value = essay;
+    box.setSelectionRange(0, essay.length);
+    document.dispatchEvent(new ClipboardEvent("copy", { bubbles: true, cancelable: true }));
+    box.value = "";
+    const inside = paste(essay);
+    return { outside, inside };
+  });
+  ok(pasteResult.outside === false && pasteResult.inside === true, "outside pastes are blocked; pastes copied inside Huddle work");
+  await sam.getByTestId("toast").getByText(/Pasting from outside Huddle is off/).waitFor();
+  ok(true, "a blocked paste tells the student why");
+
+  // The teacher switches the project to tutor only: the AI talks but makes no files.
+  await teach.getByRole("button", { name: /Room settings/ }).click();
+  await teach.getByTestId("ai-tutor").click();
+  await teach.getByTestId("project-save").click();
+  await teach.getByRole("button", { name: "Close settings" }).click();
+  await sam.getByTestId("ai-chip").getByText("Tutor only").waitFor();
+  await sam.getByTestId("composer").fill("make a doc with our plan");
+  await sam.getByTestId("composer").press("Enter");
+  await sam.getByTestId("ai-message").first().getByText(/mock AI/).waitFor();
+  await sam.waitForTimeout(1000);
+  ok((await sam.getByTestId("drive-file").count()) === 0, "in tutor mode the AI answers but makes no files");
+
+  // Full help: the AI makes a doc. Then the group turns the project in and the files lock.
+  await teach.getByRole("button", { name: /Room settings/ }).click();
+  await teach.getByTestId("ai-full").click();
+  await teach.getByTestId("project-save").click();
+  await teach.getByRole("button", { name: "Close settings" }).click();
+  await sam.getByTestId("ai-chip").getByText(/full help/).waitFor();
+  await sam.getByTestId("composer").fill("make a doc with our plan");
+  await sam.getByTestId("composer").press("Enter");
+  await sam.getByTestId("doc-editor").waitFor({ timeout: 15000 });
+  ok(true, "with full help the AI makes files");
+  sam.once("dialog", (d) => d.accept());
+  await sam.getByTestId("turn-in").click();
+  await sam.getByTestId("turned-in").waitFor();
+  await sam.getByTestId("locked-banner").waitFor();
+  ok((await sam.getByTestId("doc-editor").getAttribute("contenteditable")) === "false", "turning in makes the files read-only");
+  await teach.getByTestId("room-notice").getByText(/Sam turned in the project/).waitFor();
+  ok(true, "everyone sees who turned the project in");
+  ok((await sam.getByTestId("reopen").count()) === 0, "only the teacher can reopen");
+  // Even if someone forces their editor back on, the server refuses the edit.
+  await sam.evaluate(() => {
+    const ed = document.querySelector('[data-testid="doc-editor"]').editor;
+    ed.setEditable(true);
+    ed.commands.insertContent("SNEAKY EDIT");
+  });
+  await sam.waitForTimeout(2500);
+  await teach.reload();
+  await teach.getByTestId("project-bar").waitFor();
+  await teach.getByTestId("drive-file").first().click();
+  await teach.getByTestId("doc-editor").getByText("This doc was written by the").waitFor();
+  ok(!(await teach.getByTestId("doc-editor").innerText()).includes("SNEAKY EDIT"), "the server rejects edits to a turned-in file");
+  await sam.reload();
+  await sam.getByTestId("turned-in").waitFor();
+  teach.once("dialog", (d) => d.accept());
+  await teach.getByTestId("reopen").click();
+  await sam.getByTestId("turn-in").waitFor();
+  if (!(await sam.getByTestId("doc-editor").count())) await sam.getByTestId("drive-file").first().click();
+  await sam.waitForFunction(() => document.querySelector('[data-testid="doc-editor"]')?.getAttribute("contenteditable") === "true");
+  ok(true, "the teacher reopens it and the group can edit again");
+
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
   const statuses = await alice.evaluate(async () => {
     const ip = `e2e-${Math.random()}`;

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Collaboration from "@tiptap/extension-collaboration";
@@ -57,12 +58,14 @@ export function DocEditor({
   file,
   me,
   synced,
+  readOnly = false,
 }: {
   ydoc: Y.Doc;
   provider: YProvider;
   file: RoomFile;
   me: Identity;
   synced: boolean;
+  readOnly?: boolean;
 }) {
   const editor = useEditor({
     extensions: [
@@ -74,6 +77,9 @@ export function DocEditor({
       attributes: { class: "prose prose-zinc dark:prose-invert max-w-none px-6 py-6 md:px-10", "data-testid": "doc-editor" },
     },
   }, [ydoc, provider]);
+  useEffect(() => {
+    editor?.setEditable(!readOnly);
+  }, [editor, readOnly]);
 
   if (!editor) return null;
   const safeName = file.title.replace(/[^\w\- ]+/g, "").trim() || "document";

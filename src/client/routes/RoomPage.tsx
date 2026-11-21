@@ -10,6 +10,8 @@ import { setEditorSender } from "../lib/editorBridge";
 import { SettingsDialog } from "../components/SettingsDialog";
 import { PersonAvatar } from "../components/PersonAvatar";
 import { FeedbackDialog } from "../components/FeedbackDialog";
+import { ProjectBar } from "../components/ProjectBar";
+import { usePasteGuard } from "../lib/pasteGuard";
 import { ArrowLeft, ArrowRight, Check, Cloud, Copy, Cpu, DoorOpen, Link2, Menu, MessageSquare, Settings, Trash2, X } from "lucide-react";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 
@@ -55,6 +57,10 @@ export default function RoomPage() {
 
 function Room({ code, me }: { code: string; me: Identity }) {
   const { state, send, localProgress, clearToast, showToast, dismissNotice } = useRoom(code, me);
+  const project = state.settings?.project;
+  usePasteGuard(!!project?.pasteGuard && project.ai !== "full" && !project.pasteExempt.includes(me.uid), () =>
+    showToast("Pasting from outside Huddle is off for this project."),
+  );
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -253,8 +259,13 @@ function Room({ code, me }: { code: string; me: Identity }) {
               {state.settings.engine === "local" ? <Cpu className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}
               {state.settings.engine === "local" ? "Local mode" : "Free open models"}
               <span aria-hidden="true">·</span>
-              {state.settings.aiMode === "always" ? "AI replies to every message" : "AI replies on @ai"}
-              {state.settings.deepResearch && " · Deep Research"}
+              {state.settings.project?.ai === "off"
+                ? "AI is off for this project"
+                : state.settings.aiMode === "always"
+                  ? "AI replies to every message"
+                  : "AI replies on @ai"}
+              {state.settings.project?.ai === "tutor" && " · Tutor only"}
+              {state.settings.deepResearch && state.settings.project?.ai !== "tutor" && state.settings.project?.ai !== "off" && " · Deep Research"}
               {state.settings.memory && " · Memory on"}
             </div>
             {state.status !== "open" && <span className="text-xs text-amber-600 dark:text-amber-400">reconnecting…</span>}
@@ -286,6 +297,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
             </button>
           </div>
         )}
+        {state.settings.project && <ProjectBar project={state.settings.project} title={state.settings.title} isHost={isHost} send={send} />}
         <Chat
           messages={state.messages}
           members={state.members}
@@ -299,7 +311,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
 
       {file && (
         <section className="flex min-h-0 w-full flex-col border-l border-line lg:w-[48%]">
-          <FilePanel room={code} file={file} me={me} onClose={closeFile} onRename={renameFile} />
+          <FilePanel room={code} file={file} me={me} onClose={closeFile} onRename={renameFile} locked={!!state.settings.project?.turnedInAt} />
         </section>
       )}
 

@@ -120,6 +120,47 @@ export interface RoomSettings {
   memory?: boolean;
   /** Custom assistant: a name and standing instructions from the host. */
   assistant?: AssistantProfile;
+  /** Set when the room is a school project: the teacher (host) sets its rules. */
+  project?: ProjectSettings;
+}
+
+/** What the AI may do in a project: nothing, coach only, or full help. */
+export type AiSetting = "off" | "tutor" | "full";
+
+export interface ProjectSettings {
+  instructions: string;
+  rubric: string;
+  dueAt?: number;
+  ai: AiSetting;
+  /** Block pasting text that wasn't copied inside Huddle (AI off / tutor projects). */
+  pasteGuard: boolean;
+  /** People allowed to paste anyway (dictation and other accessibility tools). */
+  pasteExempt: string[];
+  turnedInAt?: number;
+  turnedInBy?: string;
+}
+
+export const PROJECT_LIMITS = { instructions: 6000, rubric: 4000, exempt: 100 } as const;
+
+/** Check and clamp a project patch from a client. Returns the merged project, or undefined to clear it. */
+export function cleanProject(patch: unknown, prev?: ProjectSettings): ProjectSettings | undefined {
+  if (patch === null) return undefined;
+  if (!patch || typeof patch !== "object") return prev;
+  const p = patch as Partial<ProjectSettings>;
+  const base: ProjectSettings = prev ?? { instructions: "", rubric: "", ai: "full", pasteGuard: false, pasteExempt: [] };
+  const next: ProjectSettings = { ...base };
+  if (typeof p.instructions === "string") next.instructions = p.instructions.slice(0, PROJECT_LIMITS.instructions);
+  if (typeof p.rubric === "string") next.rubric = p.rubric.slice(0, PROJECT_LIMITS.rubric);
+  if (p.dueAt === null || p.dueAt === undefined) {
+    if ("dueAt" in p) delete next.dueAt;
+  } else if (typeof p.dueAt === "number" && Number.isFinite(p.dueAt) && p.dueAt > 0) next.dueAt = Math.round(p.dueAt);
+  if (p.ai === "off" || p.ai === "tutor" || p.ai === "full") next.ai = p.ai;
+  if (typeof p.pasteGuard === "boolean") next.pasteGuard = p.pasteGuard;
+  if (Array.isArray(p.pasteExempt))
+    next.pasteExempt = [...new Set(p.pasteExempt.map(String).map((s) => s.slice(0, 64)))].slice(0, PROJECT_LIMITS.exempt);
+  // Paste blocking only makes sense when the AI can't write the work.
+  if (next.ai === "full") next.pasteGuard = false;
+  return next;
 }
 
 export interface AssistantProfile {
@@ -138,7 +179,10 @@ export type ClientMsg =
   | { t: "import_csv"; title: string; csv: string }
   | { t: "typing"; on: boolean }
   | { t: "stop" }
-  | { t: "settings"; patch: Partial<Omit<RoomSettings, "hostId">> }
+  | { t: "settings"; patch: Partial<Omit<RoomSettings, "hostId" | "project">> & { project?: Partial<ProjectSettings> | null } }
+  /** Lock the project's files as the submitted version (anyone); the host can reopen. */
+  | { t: "turn_in" }
+  | { t: "reopen" }
   | { t: "new_file"; kind: FileKind; title: string }
   | { t: "rename_file"; id: string; title: string }
   | { t: "delete_file"; id: string }
