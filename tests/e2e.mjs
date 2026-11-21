@@ -544,9 +544,39 @@ try {
   await sam.getByTestId("composer").press("Enter");
   await sam.getByTestId("doc-editor").waitFor({ timeout: 15000 });
   ok(true, "with full help the AI makes files");
-  sam.once("dialog", (d) => d.accept());
+
+  // Contribution receipt: Sam writes in the doc; the receipt credits the words that are still there.
+  const samDoc = sam.getByTestId("doc-editor");
+  // Put the cursor at the end of the doc, start a new paragraph and write in it.
+  await sam.evaluate(() => document.querySelector('[data-testid="doc-editor"]').editor.chain().focus("end").splitBlock().run());
+  await sam.keyboard.type("Nationalism mattered most in our view");
+  await sam.waitForTimeout(1500);
+  ok((await teach.getByTestId("open-receipt").count()) === 0, "the teacher has no receipt before the project is turned in");
+  await sam.getByTestId("open-receipt").click();
+  const samRow = sam.getByTestId("receipt-person").filter({ hasText: "Sam" });
+  await samRow.getByTestId("receipt-work").getByText("6 words").waitFor({ timeout: 10000 });
+  ok(true, "the receipt credits Sam with the 6 words Sam wrote");
+  ok(/asked the AI to make or change files 1 time/.test(await samRow.innerText()), "AI-made work is credited as AI help to whoever asked");
+  ok(/Huddle AI wrote/.test(await sam.getByTestId("receipt").innerText()), "the receipt shows what Huddle AI wrote separately");
+  ok((await sam.getByTestId("receipt-person").filter({ hasText: "Ms. Lee" }).count()) === 0, "the teacher isn't listed on the receipt");
+  await sam.getByTestId("receipt-note").fill("I wrote the conclusion and found two sources.");
+  await sam.getByTestId("receipt-note-save").click();
+  await sam.getByTestId("teacher-preview").click();
+  await samRow.getByText("I wrote the conclusion and found two sources.").waitFor();
+  ok(true, "notes save, and the teacher's-view preview shows them");
+  await sam.getByRole("button", { name: "Close receipt" }).click();
+
+  // Turning in goes through the receipt: the group's last look.
   await sam.getByTestId("turn-in").click();
+  await sam.getByTestId("receipt").getByText("Check your receipt, then turn it in").waitFor();
+  await sam.getByTestId("confirm-turn-in").click();
   await sam.getByTestId("turned-in").waitFor();
+  await teach.getByTestId("open-receipt").click();
+  const final = teach.getByTestId("receipt");
+  await final.getByText(/Final, turned in/).waitFor();
+  await final.getByText("I wrote the conclusion and found two sources.").waitFor();
+  ok(true, "after turning in, the teacher sees the frozen receipt with notes");
+  await teach.getByRole("button", { name: "Close receipt" }).click();
   await sam.getByTestId("locked-banner").waitFor();
   ok((await sam.getByTestId("doc-editor").getAttribute("contenteditable")) === "false", "turning in makes the files read-only");
   await teach.getByTestId("room-notice").getByText(/Sam turned in the project/).waitFor();

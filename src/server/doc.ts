@@ -8,6 +8,7 @@ import { applySheetOps, cellsOf, readSheet, type SheetOp } from "../shared/sheet
 import { applySlideOps, deckOutline, slidesOf, type SlideOp } from "../shared/slides-model";
 import { boardSummary, queueDrawing } from "../shared/whiteboard-model";
 import { addVersion, latestHtml } from "../shared/artifact-model";
+import { AI_AUTHOR, dayKey, sharesOf, type Author } from "../shared/contrib";
 import {
   addResponse,
   formMetaOf,
@@ -20,6 +21,8 @@ import {
   type PublicForm,
   type Question,
 } from "../shared/forms-model";
+
+const freshClientId = () => crypto.getRandomValues(new Uint32Array(1))[0];
 
 /** Take a version-history snapshot at most this often while people edit. */
 const SNAPSHOT_EVERY_MS = 10 * 60_000;
@@ -37,6 +40,97 @@ export class Doc extends YServer<Env> {
   /** Turned-in projects lock their files: edits from people's editors are refused. */
   private locked = false;
 
+  // ---------- who wrote what (contribution receipts) ----------
+
+  /** Yjs client id → the person (or Huddle AI) whose edits carry it. */
+  private authors = new Map<number, Author>();
+  /** day → uid (or "c:<client>" until we learn who that is) → edits that day. */
+  private activity: Record<string, Record<string, number>> = {};
+  /** Who server-side changes count for: the AI by default; null = nobody (restores, copies, starter content). */
+  private actor: Author | null = AI_AUTHOR;
+
+  async onStart() {
+    await super.onStart();
+    this.document.on("afterTransaction", (tr: Y.Transaction) => this.attribute(tr));
+    // People announce themselves (uid, name) in awareness, keyed by the same client id.
+    this.document.awareness.on("change", () => this.learnAuthors());
+  }
+
+  private personFor(client: number): Author | null {
+    const user = this.document.awareness.getStates().get(client)?.user as { uid?: unknown; name?: unknown } | undefined;
+    return user && typeof user.uid === "string" && user.uid
+      ? { uid: user.uid.slice(0, 64), name: String(user.name ?? "Someone").slice(0, 40) }
+      : null;
+  }
+
+  private attribute(tr: Y.Transaction) {
+    const changed: number[] = [];
+    tr.afterState.forEach((clock, client) => {
+      if (clock > (tr.beforeState.get(client) ?? 0)) changed.push(client);
+    });
+    if (!changed.length) return;
+    const fromPerson = !!tr.origin && typeof (tr.origin as { send?: unknown }).send === "function";
+    let learned = false;
+    const day = dayKey(Date.now());
+    for (const client of changed) {
+      let who = this.authors.get(client);
+      if (!who) {
+        const found = fromPerson ? this.personFor(client) : this.actor;
+        if (found) {
+          this.authors.set(client, found);
+          who = found;
+          learned = true;
+        } else if (!fromPerson) continue; // a restore or copy: nobody's new work
+      }
+      const key = who?.uid ?? `c:${client}`;
+      const today = (this.activity[day] ??= {});
+      today[key] = (today[key] ?? 0) + 1;
+    }
+    if (learned) this.ctx.waitUntil(this.ctx.storage.put("authors", [...this.authors]));
+  }
+
+  /** Edits that arrived before the person's name did get credited once they show up. */
+  private learnAuthors() {
+    let learned = false;
+    for (const day of Object.values(this.activity))
+      for (const key of Object.keys(day)) {
+        if (!key.startsWith("c:")) continue;
+        const client = Number(key.slice(2));
+        const who = this.authors.get(client) ?? this.personFor(client);
+        if (!who) continue;
+        if (!this.authors.has(client)) this.authors.set(client, who), (learned = true);
+        day[who.uid] = (day[who.uid] ?? 0) + day[key];
+        delete day[key];
+      }
+    if (learned) this.ctx.waitUntil(this.ctx.storage.put("authors", [...this.authors]));
+  }
+
+  /** Run a server-side change credited to `actor` (null: credited to nobody). */
+  private as<T>(actor: Author | null, fn: () => T): T {
+    const prev = this.actor;
+    this.actor = actor;
+    // A fresh client id per credited change, so each one maps to exactly one author.
+    this.document.clientID = freshClientId();
+    try {
+      return fn();
+    } finally {
+      this.actor = prev;
+      this.document.clientID = freshClientId();
+    }
+  }
+
+  /** What each person has in this file now, plus which days they worked on it. */
+  async contributions(kind: FileKind) {
+    this.learnAuthors();
+    const shares = sharesOf(this.document, kind, (c) => this.authors.get(c)?.uid ?? null);
+    const names: Record<string, string> = {};
+    for (const a of this.authors.values()) names[a.uid] = a.name;
+    const days: Record<string, string[]> = {};
+    for (const [day, people] of Object.entries(this.activity))
+      days[day] = Object.keys(people).filter((k) => !k.startsWith("c:"));
+    return { shares, names, days };
+  }
+
   isReadOnly() {
     return this.locked;
   }
@@ -49,6 +143,8 @@ export class Doc extends YServer<Env> {
 
   async onLoad() {
     this.locked = !!(await this.ctx.storage.get<boolean>("locked"));
+    this.authors = new Map((await this.ctx.storage.get<[number, Author][]>("authors")) ?? []);
+    this.activity = (await this.ctx.storage.get<Record<string, Record<string, number>>>("activity")) ?? {};
     const state = await this.readState("ydoc");
     if (state) return docFromState(state);
   }
@@ -56,6 +152,7 @@ export class Doc extends YServer<Env> {
   async onSave() {
     const state = Y.encodeStateAsUpdate(this.document);
     await this.writeState("ydoc", state);
+    await this.ctx.storage.put("activity", this.activity);
     // Version history: snapshot periodically while the file is being edited.
     const versions = (await this.ctx.storage.get<FileVersion[]>("versions")) ?? [];
     const lastAt = versions[versions.length - 1]?.at ?? 0;
@@ -119,7 +216,8 @@ export class Doc extends YServer<Env> {
     if (!state) return { ok: false as const, error: "Version not found" };
     // Keep the current state as a version too, so a restore can be undone.
     await this.saveVersion();
-    replaceContent(this.document, docFromState(state), kind);
+    // Restored text keeps no author: it isn't anyone's new work.
+    this.as(null, () => replaceContent(this.document, docFromState(state), kind));
     await this.onSave();
     return { ok: true as const };
   }
@@ -130,7 +228,7 @@ export class Doc extends YServer<Env> {
 
   /** Copy another file's content into this (new, empty) file. */
   async importState(state: Uint8Array, kind: FileKind) {
-    replaceContent(this.document, docFromState(new Uint8Array(state)), kind, "duplicate");
+    this.as(null, () => replaceContent(this.document, docFromState(new Uint8Array(state)), kind, "duplicate"));
     await this.onSave();
     return { ok: true };
   }
@@ -180,9 +278,9 @@ export class Doc extends YServer<Env> {
 
   // ---------- RPC: sheets ----------
 
-  async sheetOps(ops: SheetOp[], snapshotFirst = false) {
+  async sheetOps(ops: SheetOp[], snapshotFirst = false, actor: Author | null = AI_AUTHOR) {
     if (snapshotFirst && cellsOf(this.document).size) await this.saveVersion();
-    const done = applySheetOps(this.document, ops);
+    const done = this.as(actor, () => applySheetOps(this.document, ops));
     await this.onSave();
     return done;
   }
@@ -193,9 +291,9 @@ export class Doc extends YServer<Env> {
 
   // ---------- RPC: slides ----------
 
-  async slideOps(ops: SlideOp[], snapshotFirst = false) {
+  async slideOps(ops: SlideOp[], snapshotFirst = false, actor: Author | null = AI_AUTHOR) {
     if (snapshotFirst && slidesOf(this.document).length) await this.saveVersion();
-    const done = applySlideOps(this.document, ops);
+    const done = this.as(actor, () => applySlideOps(this.document, ops));
     await this.onSave();
     return done;
   }
@@ -238,7 +336,8 @@ export class Doc extends YServer<Env> {
     if (!form.questions.length) return { ok: false as const, error: "This form has no questions yet." };
     const v = validateAnswers(form.questions, input);
     if (!v.ok) return v;
-    addResponse(this.document, v.answers);
+    // Form responses come from outside the group: nobody's project work.
+    this.as(null, () => addResponse(this.document, v.answers));
     await this.onSave();
     return { ok: true as const };
   }

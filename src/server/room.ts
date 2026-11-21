@@ -18,7 +18,20 @@ import { FILE_INFO, isFileKind, type FileKind } from "../shared/files";
 import { colName } from "../shared/formula";
 import { chunkText, ftsQuery } from "../shared/knowledge";
 import { parseCsv } from "../shared/sheet-model";
-import { AVATAR_URL_RE, cleanProject, type AiSetting, type Attachment, type Ban, type ModerationAction, type PartyPerson, type ProjectSettings } from "../shared/protocol";
+import {
+  AVATAR_URL_RE,
+  cleanProject,
+  type AiSetting,
+  type Attachment,
+  type Ban,
+  type ModerationAction,
+  type PartyPerson,
+  type ProjectSettings,
+  type Receipt,
+  type ReceiptDay,
+  type ReceiptFile,
+  type ReceiptPerson,
+} from "../shared/protocol";
 import { deleteBlob } from "./blobs";
 import { bump, bumpLater, markActive } from "./stats";
 import { SKILLS } from "./ai/skills";
@@ -529,6 +542,28 @@ export class Room extends Server<Env> {
         this.broadcastMsg({ t: "settings", settings: s });
         return;
       }
+      case "receipt": {
+        const p = this.settings.project;
+        if (!p) return;
+        // Privacy: the teacher sees the receipt only once the group turns the project in.
+        if (isHost && !p.turnedInAt)
+          return this.send(conn, { t: "error", message: "You'll see the receipt once the group turns the project in." });
+        const frozen = p.turnedInAt ? await this.ctx.storage.get<Receipt>("receipt:final") : undefined;
+        this.send(conn, { t: "receipt", receipt: frozen ?? (await this.buildReceipt()) });
+        return;
+      }
+      case "receipt_note": {
+        const p = this.settings.project;
+        if (!p) return;
+        if (p.turnedInAt) return this.send(conn, { t: "error", message: "The project was turned in, so notes are locked." });
+        const notes = (await this.ctx.storage.get<Record<string, string>>("receiptNotes")) ?? {};
+        const text = String(msg.text ?? "").trim().slice(0, 500);
+        if (text) notes[me.uid] = text;
+        else delete notes[me.uid];
+        await this.ctx.storage.put("receiptNotes", notes);
+        this.send(conn, { t: "receipt", receipt: await this.buildReceipt() });
+        return;
+      }
       case "turn_in": {
         const p = this.settings.project;
         if (!p) return;
@@ -537,6 +572,8 @@ export class Room extends Server<Env> {
         p.turnedInBy = me.name;
         await this.ctx.storage.put("settings", this.settings);
         await this.lockFiles(true);
+        // The receipt is frozen with the files: this is the version the teacher grades.
+        await this.ctx.storage.put("receipt:final", await this.buildReceipt(true));
         this.broadcastMsg({ t: "settings", settings: this.settings });
         this.notice(`${me.name} turned in the project. Its files are locked now.`);
         return;
@@ -549,6 +586,7 @@ export class Room extends Server<Env> {
         delete p.turnedInBy;
         await this.ctx.storage.put("settings", this.settings);
         await this.lockFiles(false);
+        await this.ctx.storage.delete("receipt:final");
         this.broadcastMsg({ t: "settings", settings: this.settings });
         this.notice(`${me.name} reopened the project. The group can edit again.`);
         return;
@@ -561,7 +599,8 @@ export class Room extends Server<Env> {
         // Seed starter content on the server so two people opening it at once don't both add it.
         if (kind === "slides") {
           const stub = await getServerByName(this.env.Doc, `${this.name}--${f.id}`);
-          await stub.slideOps([{ op: "insert", slide: { layout: "title", title: "", body: "" } }]);
+          // Starter content isn't anyone's work, so it's credited to nobody.
+          await stub.slideOps([{ op: "insert", slide: { layout: "title", title: "", body: "" } }], false, null);
         }
         this.send(conn, { t: "open_file", id: f.id });
         return;
@@ -575,7 +614,7 @@ export class Room extends Server<Env> {
         await (await getServerByName(this.env.Doc, `${this.name}--${sheet.id}`)).sheetOps([
           { op: "set_range", start: "A1", rows: rows.map((r) => r.map((v) => (/^[=+\-@]/.test(v) && !/^-?\d/.test(v) ? `'${v}` : v))) },
           { op: "format", range: `A1:${colName(width - 1)}1`, bold: true, bg: "#eef2ff" },
-        ]);
+        ], false, { uid: me.uid, name: me.name });
         this.send(conn, { t: "open_file", id: sheet.id });
         return;
       }
@@ -590,7 +629,7 @@ export class Room extends Server<Env> {
           { op: "set_range", start: "A1", rows: rows.map((r) => r.map((v) => (/^[=+\-@]/.test(v) ? `'${v}` : v))) },
           { op: "format", range: `A1:${colName(width - 1)}1`, bold: true, bg: "#eef2ff" },
           { op: "col_width", col: "A", width: 140 },
-        ]);
+        ], false, null);
         this.send(conn, { t: "open_file", id: sheet.id });
         return;
       }
@@ -655,6 +694,100 @@ export class Room extends Server<Env> {
           .catch(() => {}),
       ),
     );
+  }
+
+  /**
+   * The project's contribution receipt: what each student has in the files now, the files they
+   * made, how much they chatted (counts only, never what was said), the days they worked, how
+   * often they asked the AI to make or change files, and their own note. The teacher isn't listed.
+   */
+  private async buildReceipt(final = false): Promise<Receipt> {
+    const s = this.settings!;
+    const files = this.files();
+    const perFile = await Promise.all(
+      files.map((f) =>
+        getServerByName(this.env.Doc, `${this.name}--${f.id}`)
+          .then((st) => st.contributions(f.kind))
+          .catch(() => null),
+      ),
+    );
+    const known = (await this.ctx.storage.get<Record<string, Omit<PartyPerson, "uid">>>("people")) ?? {};
+    const notes = (await this.ctx.storage.get<Record<string, string>>("receiptNotes")) ?? {};
+    const asks = (await this.ctx.storage.get<Record<string, number>>("aiAsks")) ?? {};
+    const people = new Map<string, ReceiptPerson>();
+    const person = (uid: string, name?: string) => {
+      let p = people.get(uid);
+      if (!p) {
+        p = { uid, name: known[uid]?.name ?? name ?? "Someone", words: 0, units: {}, filesCreated: 0, messages: 0, daysActive: 0, aiAsks: asks[uid] ?? 0 };
+        people.set(uid, p);
+      }
+      return p;
+    };
+    const days: Record<string, ReceiptDay["people"]> = {};
+    const workedOn = (day: string, uid: string) => ((days[day] ??= {})[uid] ??= { files: [], messages: 0 });
+    let aiWords = 0;
+    let aiUnits = 0;
+    const receiptFiles: ReceiptFile[] = [];
+    files.forEach((f, i) => {
+      const c = perFile[i];
+      if (!c) return;
+      receiptFiles.push({ id: f.id, title: f.title, kind: f.kind, shares: c.shares });
+      for (const [uid, share] of Object.entries(c.shares)) {
+        if (uid === "ai") {
+          aiWords += share.words;
+          aiUnits += share.units;
+          continue;
+        }
+        const p = person(uid, c.names[uid]);
+        p.words += share.words;
+        if (share.units) p.units[f.kind] = (p.units[f.kind] ?? 0) + share.units;
+      }
+      for (const [day, uids] of Object.entries(c.days))
+        for (const uid of uids) {
+          if (uid === "ai") continue;
+          person(uid, c.names[uid]);
+          const e = workedOn(day, uid);
+          if (!e.files.includes(f.title)) e.files.push(f.title);
+        }
+    });
+    for (const f of files) if (f.createdBy && f.createdBy !== "ai") person(f.createdBy).filesCreated++;
+    const chat = this.sql<{ uid: string; name: string; day: string; n: number }>`
+      SELECT author_id AS uid, MAX(author_name) AS name, date(created_at / 1000, 'unixepoch') AS day, COUNT(*) AS n
+      FROM messages WHERE role = 'user' GROUP BY author_id, day`;
+    for (const r of chat) {
+      person(r.uid, r.name).messages += r.n;
+      workedOn(r.day, r.uid).messages += r.n;
+    }
+    for (const uid of Object.keys(asks)) person(uid);
+    for (const [uid, note] of Object.entries(notes)) if (note) person(uid).note = note;
+    // The teacher sets the project up; they aren't graded on it.
+    if (s.project) {
+      people.delete(s.hostId);
+      for (const d of Object.values(days)) delete d[s.hostId];
+    }
+    for (const p of people.values()) p.daysActive = Object.values(days).filter((d) => d[p.uid]).length;
+    return {
+      title: s.title,
+      generatedAt: Date.now(),
+      final,
+      ...(s.project?.turnedInAt ? { turnedInAt: s.project.turnedInAt } : {}),
+      people: [...people.values()].sort((a, b) => a.name.localeCompare(b.name)),
+      files: receiptFiles,
+      days: Object.entries(days)
+        .filter(([, p]) => Object.keys(p).length)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([day, p]) => ({ day, people: p })),
+      aiWords,
+      aiUnits,
+    };
+  }
+
+  /** Credits a turn's file-making AI help to the students who asked for it. */
+  private async creditAiAsk(uids: string[]) {
+    if (!uids.length) return;
+    const asks = (await this.ctx.storage.get<Record<string, number>>("aiAsks")) ?? {};
+    for (const uid of uids) asks[uid] = (asks[uid] ?? 0) + 1;
+    await this.ctx.storage.put("aiAsks", asks);
   }
 
   /** A line from Huddle itself in the chat ("Maya turned in the project"). */
@@ -769,6 +902,11 @@ export class Room extends Server<Env> {
       // Everything saved up to now is part of this turn. Re-stamp the reply so it sorts
       // after the messages it answers (some may have landed during the await above).
       this.aiSeenUpTo = Date.now();
+      // The people this turn answers: everyone who spoke since the AI's last reply.
+      const recent = this.loadMessages(30);
+      const lastAiAt = recent.map((m) => m.role).lastIndexOf("assistant");
+      const askers = [...new Set(recent.slice(lastAiAt + 1).filter((m) => m.role === "user").map((m) => m.authorId))];
+      let creditedAsk = false;
       msg.createdAt = this.aiSeenUpTo + 1;
       if (budget !== "ok") {
         msg.content =
@@ -878,6 +1016,11 @@ export class Room extends Server<Env> {
               },
             });
             llm.push({ role: "tool", tool_call_id: call.id, content: output });
+            // On the receipt, AI-made work counts as AI help for whoever asked (once per turn).
+            if (!creditedAsk && /^(create_|edit_|draw_|make_)/.test(call.function.name)) {
+              creditedAsk = true;
+              await this.creditAiAsk(askers);
+            }
             if (this.env.DEBUG_AI) console.log(`[ai] ${call.function.name} -> ${output.slice(0, 300)}`);
             compactDocArgs(call);
           }

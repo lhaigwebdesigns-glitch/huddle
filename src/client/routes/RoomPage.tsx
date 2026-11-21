@@ -11,6 +11,7 @@ import { SettingsDialog } from "../components/SettingsDialog";
 import { PersonAvatar } from "../components/PersonAvatar";
 import { FeedbackDialog } from "../components/FeedbackDialog";
 import { ProjectBar } from "../components/ProjectBar";
+import { ReceiptDialog } from "../components/ReceiptDialog";
 import { usePasteGuard } from "../lib/pasteGuard";
 import { ArrowLeft, ArrowRight, Check, Cloud, Copy, Cpu, DoorOpen, Link2, Menu, MessageSquare, Settings, Trash2, X } from "lucide-react";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
@@ -64,6 +65,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
+  const [receiptMode, setReceiptMode] = useState<"view" | "turnin" | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -297,7 +299,9 @@ function Room({ code, me }: { code: string; me: Identity }) {
             </button>
           </div>
         )}
-        {state.settings.project && <ProjectBar project={state.settings.project} title={state.settings.title} isHost={isHost} send={send} />}
+        {state.settings.project && (
+          <ProjectBar project={state.settings.project} title={state.settings.title} isHost={isHost} send={send} onReceipt={setReceiptMode} />
+        )}
         <Chat
           messages={state.messages}
           members={state.members}
@@ -327,6 +331,16 @@ function Room({ code, me }: { code: string; me: Identity }) {
           bans={state.bans}
           send={send}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+      {receiptMode && state.settings.project && (
+        <ReceiptDialog
+          receipt={state.receipt}
+          meUid={state.you.uid}
+          isHost={isHost}
+          mode={state.settings.project.turnedInAt ? "view" : receiptMode}
+          send={send}
+          onClose={() => setReceiptMode(null)}
         />
       )}
       {showFeedback && <FeedbackDialog room={code} uid={me.uid} name={me.name} onClose={() => setShowFeedback(false)} />}

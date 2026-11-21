@@ -173,7 +173,53 @@ export interface SkillInfo {
   description: string;
 }
 
+/** One person's part of a project, as the group and the teacher see it. */
+export interface ReceiptPerson {
+  uid: string;
+  name: string;
+  /** Words they wrote that are still in the files (docs, slides, forms…). */
+  words: number;
+  /** Slides, cells, questions and shapes they made that are still there, by file kind. */
+  units: Partial<Record<FileKind, number>>;
+  filesCreated: number;
+  messages: number;
+  /** Days they worked on the project (edited a file or chatted). */
+  daysActive: number;
+  /** Times they asked the AI to make or change files (full-help projects). */
+  aiAsks: number;
+  note?: string;
+}
+export interface ReceiptFile {
+  id: string;
+  title: string;
+  kind: FileKind;
+  /** uid (or "ai") → what they have in this file now. */
+  shares: Record<string, { words: number; units: number }>;
+}
+export interface ReceiptDay {
+  day: string;
+  /** uid → which files they worked on that day, and how many chat messages they sent. */
+  people: Record<string, { files: string[]; messages: number }>;
+}
+export interface Receipt {
+  title: string;
+  generatedAt: number;
+  /** Frozen when the project was turned in. */
+  final: boolean;
+  turnedInAt?: number;
+  people: ReceiptPerson[];
+  files: ReceiptFile[];
+  days: ReceiptDay[];
+  /** Words written by Huddle AI that are still in the files. */
+  aiWords: number;
+  aiUnits: number;
+}
+
 export type ClientMsg =
+  /** Ask for the project's contribution receipt (answered with { t: "receipt" }). */
+  | { t: "receipt" }
+  /** Your own note on the receipt ("I did the research at the library"). */
+  | { t: "receipt_note"; text: string }
   | { t: "say"; text: string; attachments?: Attachment[] }
   /** Turn an uploaded CSV into a live sheet. */
   | { t: "import_csv"; title: string; csv: string }
@@ -235,4 +281,5 @@ export type ServerMsg =
   | { t: "kicked"; reason?: "kick" | "ban" | "deleted" }
   /** Host only: the banned list. */
   | { t: "bans"; bans: Ban[] }
+  | { t: "receipt"; receipt: Receipt }
   | { t: "error"; message: string };
