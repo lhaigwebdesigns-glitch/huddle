@@ -27,6 +27,9 @@ import {
   type ModerationAction,
   type PartyPerson,
   type ProjectSettings,
+  type Task,
+  type TaskBoard,
+  TASK_LIMITS,
   type Receipt,
   type ReceiptDay,
   type ReceiptFile,
@@ -38,11 +41,15 @@ import { SKILLS } from "./ai/skills";
 import { runTool, TOOL_DEFS } from "./ai/tools";
 import { collectUrls, stripUnverifiedLinks } from "./ai/citations";
 import { getProviders as getProvidersConfigured } from "./ai/models";
+import { templateById, type ProjectTemplate } from "../shared/templates";
 import { aiEnv } from "./ai/pc";
 
 const MAX_FILES = 100;
-/** Messages that create, rename or delete files: refused while a project is turned in. */
-const FILE_CHANGES = new Set<ClientMsg["t"]>(["new_file", "import_csv", "form_to_sheet", "duplicate_file", "rename_file", "delete_file"]);
+/** Messages that change files or tasks: refused while a project is turned in. */
+const FILE_CHANGES = new Set<ClientMsg["t"]>([
+  "new_file", "import_csv", "form_to_sheet", "duplicate_file", "rename_file", "delete_file",
+  "task_add", "task_update", "task_delete", "set_role",
+]);
 
 /** One line per file type the AI can create, for the system prompt. */
 const FILE_GUIDE = [
@@ -171,7 +178,7 @@ export class Room extends Server<Env> {
 
   // ---------- RPC (called from the HTTP API) ----------
 
-  async init(hostId: string, title: string, project?: Partial<ProjectSettings>) {
+  async init(hostId: string, title: string, project?: Partial<ProjectSettings>, templateId?: string) {
     if (this.settings) return { ok: false as const };
     this.settings = {
       hostId,
@@ -184,7 +191,20 @@ export class Room extends Server<Env> {
       ...(project && typeof project === "object" ? { project: cleanProject(project) } : {}),
     };
     await this.ctx.storage.put("settings", this.settings);
+    const template = this.settings.project ? templateById(templateId) : undefined;
+    if (template) await this.applyTemplate(template, hostId);
     return { ok: true as const };
+  }
+
+  /** A template's starter files (credited to nobody: it's not the group's work) and tasks. */
+  private async applyTemplate(t: ProjectTemplate, hostId: string) {
+    for (const f of t.files) {
+      const file = this.createFile(f.kind, f.title, hostId);
+      const stub = await getServerByName(this.env.Doc, `${this.name}--${file.id}`);
+      if (f.markdown) await stub.setMarkdown(f.markdown, "replace", null);
+      if (f.kind === "slides") await stub.slideOps([{ op: "insert", slide: { layout: "title", title: this.settings!.title, body: "" } }], false, null);
+    }
+    await this.addTasks(t.tasks.map((title) => ({ title })), hostId);
   }
 
   async info() {
@@ -311,10 +331,13 @@ export class Room extends Server<Env> {
 
   private async rememberPerson(uid: string, name: string, color: string) {
     const people = (await this.ctx.storage.get<Record<string, Omit<PartyPerson, "uid">>>("people")) ?? {};
+    const isNew = people[uid]?.name !== name;
     people[uid] = { name, color, lastSeen: Date.now() };
     const ids = Object.keys(people);
     if (ids.length > 500) for (const id of ids.sort((a, b) => people[a].lastSeen - people[b].lastSeen).slice(0, ids.length - 500)) delete people[id];
     await this.ctx.storage.put("people", people);
+    // Someone new can now be given tasks: refresh everyone's list of names.
+    if (isNew && this.settings?.project) this.broadcastMsg({ t: "tasks", board: await this.boardWithPeople(await this.board()) });
   }
 
   // ---------- connections ----------
@@ -355,6 +378,7 @@ export class Room extends Server<Env> {
       skills: SKILLS.map(({ name, description }) => ({ name, description })),
       providers: availableProviders(this.env).map((p) => `${p.label} · ${p.model}`),
       memory: (await this.ctx.storage.get<string[]>("memory")) ?? [],
+      ...(this.settings.project ? { board: await this.boardWithPeople(await this.board()) } : {}),
     });
     if (uid === this.settings.hostId) this.send(conn, { t: "bans", bans: await this.bans() });
     this.broadcastPresence();
@@ -564,6 +588,46 @@ export class Room extends Server<Env> {
         this.send(conn, { t: "receipt", receipt: await this.buildReceipt() });
         return;
       }
+      case "task_add": {
+        if (!this.settings.project) return;
+        const title = String(msg.title ?? "").trim().slice(0, TASK_LIMITS.title);
+        if (!title) return;
+        await this.addTasks([{ title, ownerUid: msg.ownerUid, dueAt: msg.dueAt }], me.uid);
+        return;
+      }
+      case "task_update": {
+        const b = await this.board();
+        const t = b.tasks.find((x) => x.id === msg.id);
+        if (!t) return;
+        if (typeof msg.title === "string" && msg.title.trim()) t.title = msg.title.trim().slice(0, TASK_LIMITS.title);
+        if (msg.ownerUid === null) delete t.ownerUid;
+        else if (typeof msg.ownerUid === "string") t.ownerUid = msg.ownerUid.slice(0, 64);
+        if (msg.dueAt === null) delete t.dueAt;
+        else if (typeof msg.dueAt === "number" && msg.dueAt > 0) t.dueAt = Math.round(msg.dueAt);
+        if (typeof msg.done === "boolean" && msg.done !== t.done) {
+          t.done = msg.done;
+          if (t.done) t.doneAt = Date.now();
+          else delete t.doneAt;
+        }
+        await this.saveBoard(b);
+        return;
+      }
+      case "task_delete": {
+        const b = await this.board();
+        const before = b.tasks.length;
+        b.tasks = b.tasks.filter((x) => x.id !== msg.id);
+        if (b.tasks.length !== before) await this.saveBoard(b);
+        return;
+      }
+      case "set_role": {
+        if (!this.settings.project) return;
+        const b = await this.board();
+        const role = String(msg.role ?? "").trim().slice(0, TASK_LIMITS.role);
+        if (role) b.roles[me.uid] = role;
+        else delete b.roles[me.uid];
+        await this.saveBoard(b);
+        return;
+      }
       case "turn_in": {
         const p = this.settings.project;
         if (!p) return;
@@ -760,6 +824,10 @@ export class Room extends Server<Env> {
     }
     for (const uid of Object.keys(asks)) person(uid);
     for (const [uid, note] of Object.entries(notes)) if (note) person(uid).note = note;
+    const board = await this.board();
+    for (const [uid, role] of Object.entries(board.roles)) if (role) person(uid).role = role;
+    for (const t of board.tasks)
+      if (t.ownerUid) (person(t.ownerUid).tasks ??= []).push({ title: t.title, done: t.done });
     // The teacher sets the project up; they aren't graded on it.
     if (s.project) {
       people.delete(s.hostId);
@@ -780,6 +848,50 @@ export class Room extends Server<Env> {
       aiWords,
       aiUnits,
     };
+  }
+
+  /** Last-read task board and people's names, for the AI's (synchronous) system prompt. */
+  private boardCache?: TaskBoard;
+  private nameCache: Record<string, string> = {};
+
+  private async board(): Promise<TaskBoard> {
+    this.boardCache = (await this.ctx.storage.get<TaskBoard>("board")) ?? { tasks: [], roles: {} };
+    return this.boardCache;
+  }
+
+  private async saveBoard(b: TaskBoard) {
+    const { people: _omit, ...stored } = b;
+    await this.ctx.storage.put("board", stored);
+    this.boardCache = stored;
+    this.broadcastMsg({ t: "tasks", board: await this.boardWithPeople(stored) });
+  }
+
+  /** The board plus the group's names (not the teacher), so owners show even when offline. */
+  private async boardWithPeople(b: TaskBoard): Promise<TaskBoard> {
+    const known = (await this.ctx.storage.get<Record<string, { name: string }>>("people")) ?? {};
+    const people = Object.fromEntries(Object.entries(known).filter(([uid]) => uid !== this.settings?.hostId).map(([uid, p]) => [uid, p.name]));
+    return { ...b, people };
+  }
+
+  /** Adds tasks (from a person, the AI or a template). Owners can be uids or names of people in the room. */
+  private async addTasks(items: { title: string; ownerUid?: string; owner?: string; dueAt?: number }[], by: string) {
+    const b = await this.board();
+    const known = (await this.ctx.storage.get<Record<string, { name: string }>>("people")) ?? {};
+    const byName = (n: string) => Object.entries(known).find(([, p]) => p.name.toLowerCase() === n.trim().toLowerCase())?.[0];
+    const now = Date.now();
+    const added: Task[] = [];
+    for (const it of items) {
+      const title = String(it.title ?? "").trim().slice(0, TASK_LIMITS.title);
+      if (!title || b.tasks.length >= TASK_LIMITS.tasks) continue;
+      const ownerUid = typeof it.ownerUid === "string" && it.ownerUid ? it.ownerUid.slice(0, 64) : it.owner ? byName(String(it.owner)) : undefined;
+      const t: Task = { id: crypto.randomUUID().slice(0, 8), title, done: false, createdBy: by, createdAt: now };
+      if (ownerUid) t.ownerUid = ownerUid;
+      if (typeof it.dueAt === "number" && it.dueAt > 0) t.dueAt = Math.round(it.dueAt);
+      b.tasks.push(t);
+      added.push(t);
+    }
+    if (added.length) await this.saveBoard(b);
+    return added;
   }
 
   /** Credits a turn's file-making AI help to the students who asked for it. */
@@ -922,6 +1034,11 @@ export class Room extends Server<Env> {
       } else {
         this.abort = new AbortController();
         const memory = (await this.ctx.storage.get<string[]>("memory")) ?? [];
+        if (s.project) {
+          await this.board();
+          const known = (await this.ctx.storage.get<Record<string, { name: string }>>("people")) ?? {};
+          this.nameCache = Object.fromEntries(Object.entries(known).map(([uid, p]) => [uid, p.name]));
+        }
         // Asking for research ("deep research… cite the sites") turns research on for this turn,
         // even when the room's Deep Research switch is off.
         const aiRule = this.aiSetting();
@@ -941,6 +1058,7 @@ export class Room extends Server<Env> {
           (t) =>
             toolAllowed(t.function.name, aiRule, turnedIn) &&
             (t.function.name !== "remember" || s.memory) &&
+            (t.function.name !== "add_tasks" || !!s.project) &&
             (t.function.name !== "search_knowledge" || hasKnowledge) &&
             (t.function.name !== "describe_image" || hasImages),
         );
@@ -1010,6 +1128,7 @@ export class Room extends Server<Env> {
               sources,
               remember: s.memory ? (fact) => this.remember(fact) : undefined,
               searchKnowledge: (q) => this.searchKnowledge(q),
+              addTasks: s.project ? (tasks) => this.addTasks(tasks, "ai").then((a) => a.length) : undefined,
               addImage: (a) => {
                 msg.meta!.images = [...(msg.meta!.images ?? []), a];
                 this.broadcastMsg({ t: "ai_step", id: msg.id, step: { kind: "other", label: `Image ready: ${a.name}` } });
@@ -1164,7 +1283,7 @@ export class Room extends Server<Env> {
           ]
         : []),
       `This room is called "${s.title}". Today's date: ${new Date().toISOString().slice(0, 10)}. People here now: ${people}.`,
-      ...(s.project ? projectPrompt(s.project) : []),
+      ...(s.project ? projectPrompt(s.project, Date.now(), this.boardCache, (uid) => this.nameCache[uid] ?? "someone") : []),
     ];
     if (withTools) {
       lines.push(

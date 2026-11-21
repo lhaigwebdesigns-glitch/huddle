@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { BookOpen, CalendarClock, ChevronDown, Lock, ReceiptText, RotateCcw, Send, Sparkles } from "lucide-react";
-import type { ClientMsg, ProjectSettings } from "../../shared/protocol";
+import { BookOpen, CalendarClock, ChevronDown, ListChecks, Lock, ReceiptText, RotateCcw, Send, Sparkles } from "lucide-react";
+import type { ClientMsg, ProjectSettings, TaskBoard } from "../../shared/protocol";
+import { TaskPanel } from "./TaskPanel";
 import { Markdown } from "./Markdown";
 
 const AI_LABEL: Record<ProjectSettings["ai"], string> = { off: "AI off", tutor: "Tutor only", full: "AI: full help" };
@@ -25,15 +26,22 @@ export function ProjectBar({
   isHost,
   send,
   onReceipt,
+  board,
+  meUid,
 }: {
   project: ProjectSettings;
   title: string;
   isHost: boolean;
   send: (m: ClientMsg) => void;
+  board?: TaskBoard;
+  meUid: string;
   /** Open the contribution receipt: to look at it, or as the last step before turning in. */
   onReceipt: (mode: "view" | "turnin") => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [tasksOpen, setTasksOpen] = useState(false);
+  const tasks = board?.tasks ?? [];
+  const mineLeft = tasks.filter((t) => t.ownerUid === meUid && !t.done).length;
   const overdue = !!project.dueAt && project.dueAt < Date.now() && !project.turnedInAt;
   const hasDetails = !!(project.instructions.trim() || project.rubric.trim());
   return (
@@ -56,6 +64,18 @@ export function ProjectBar({
           {AI_LABEL[project.ai]}
         </span>
         <span className="flex-1" />
+        {board && (
+          <button
+            onClick={() => setTasksOpen((o) => !o)}
+            aria-expanded={tasksOpen}
+            className="press flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-fg-muted hover:bg-surface-2 hover:text-fg"
+            data-testid="tasks-toggle"
+          >
+            <ListChecks className="h-3.5 w-3.5" aria-hidden />
+            Tasks {tasks.length > 0 && <span className="tabular">{tasks.filter((t) => t.done).length}/{tasks.length}</span>}
+            {mineLeft > 0 && <span className="rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-fg">{mineLeft} yours</span>}
+          </button>
+        )}
         {hasDetails && (
           <button
             onClick={() => setOpen((o) => !o)}
@@ -102,6 +122,11 @@ export function ProjectBar({
           </button>
         )}
       </div>
+      {tasksOpen && board && (
+        <div className="max-h-[45vh] overflow-y-auto border-t border-line px-4 py-3">
+          <TaskPanel board={board} meUid={meUid} locked={!!project.turnedInAt} send={send} />
+        </div>
+      )}
       {open && hasDetails && (
         <div className="max-h-[40vh] space-y-3 overflow-y-auto border-t border-line px-4 py-3 text-sm" data-testid="project-details">
           <p className="text-xs text-fg-subtle">{AI_HINT[project.ai]}</p>

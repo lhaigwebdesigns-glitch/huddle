@@ -30,7 +30,8 @@ function printReceipt(r: Receipt) {
   if (!w) return;
   const people = r.people
     .map(
-      (p) => `<section><h3>${esc(p.name)}</h3><p>${esc(workLine(p))}</p>
+      (p) => `<section><h3>${esc(p.name)}${p.role ? ` <span class="muted">(${esc(p.role)})</span>` : ""}</h3><p>${esc(workLine(p))}</p>
+      ${p.tasks?.length ? `<p>Tasks: ${p.tasks.filter((t) => t.done).length} of ${p.tasks.length} done (${p.tasks.map((t) => esc((t.done ? "✓ " : "") + t.title)).join(", ")})</p>` : ""}
       <p class="muted">${plural(p.filesCreated, "file", "files")} created · ${plural(p.messages, "chat message", "chat messages")} · active ${plural(p.daysActive, "day", "days")}${p.aiAsks ? ` · asked the AI to make or change files ${plural(p.aiAsks, "time", "times")}` : ""}</p>
       ${p.note ? `<blockquote>${esc(p.note)}</blockquote>` : ""}</section>`,
     )
@@ -188,6 +189,7 @@ export function ReceiptDialog({
                         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colorOf(p.uid) }} aria-hidden />
                         <span className="font-medium">{p.name}</span>
                         {p.uid === meUid && <span className="text-xs text-fg-subtle">(you)</span>}
+                        {p.role && <span className="rounded-full border border-line px-2 py-0.5 text-xs text-fg-muted">{p.role}</span>}
                       </div>
                       <p className="mt-1 text-sm tabular" data-testid="receipt-work">
                         {workLine(p)}
@@ -196,6 +198,11 @@ export function ReceiptDialog({
                         {plural(p.filesCreated, "file", "files")} created · {plural(p.messages, "chat message", "chat messages")} · active {plural(p.daysActive, "day", "days")}
                         {p.aiAsks > 0 && <> · asked the AI to make or change files {plural(p.aiAsks, "time", "times")}</>}
                       </p>
+                      {p.tasks && p.tasks.length > 0 && (
+                        <p className="mt-1 text-xs text-fg-muted" data-testid="receipt-tasks">
+                          Tasks: {p.tasks.filter((t) => t.done).length} of {p.tasks.length} done ({p.tasks.map((t) => `${t.done ? "✓ " : ""}${t.title}`).join(", ")})
+                        </p>
+                      )}
                       {p.uid === meUid && editable ? (
                         <div className="mt-2">
                           <textarea

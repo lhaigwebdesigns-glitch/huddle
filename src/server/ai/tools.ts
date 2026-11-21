@@ -21,6 +21,8 @@ export interface ToolContext {
   searchKnowledge?: (q: string) => Promise<{ name: string; chunk: string }[]>;
   /** Show a generated image in the AI's reply. */
   addImage?: (a: Attachment) => void;
+  /** Present only in project rooms: add tasks to the group's task list. */
+  addTasks?: (tasks: { title: string; owner?: string; dueAt?: number }[]) => Promise<number>;
 }
 
 export const TOOL_DEFS: ToolDef[] = [
@@ -244,6 +246,28 @@ export const TOOL_DEFS: ToolDef[] = [
           shape: { type: "string", enum: ["square", "landscape", "portrait"], description: "Default square." },
         },
         required: ["prompt"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "add_tasks",
+      description:
+        "Project rooms only: add tasks to the group's shared task list, e.g. when they ask you to split up the work or plan the project. Give each task a short title, and an owner (a person's name in the room) and due date (YYYY-MM-DD) only when the group said so.",
+      parameters: {
+        type: "object",
+        properties: {
+          tasks: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: { title: { type: "string" }, owner: { type: "string" }, due: { type: "string" } },
+              required: ["title"],
+            },
+          },
+        },
+        required: ["tasks"],
       },
     },
   },
@@ -535,6 +559,17 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
           ? "Image generation works once Huddle is deployed to Cloudflare (it isn't available in local dev). Tell the users."
           : `Error generating the image: ${String(err).slice(0, 150)}`;
       }
+    }
+    case "add_tasks": {
+      if (!ctx.addTasks) return "There's no task list here; tasks only exist in project rooms.";
+      const list = Array.isArray(args.tasks) ? (args.tasks as Record<string, unknown>[]) : [];
+      const tasks = list.slice(0, 20).map((t) => {
+        const due = typeof t.due === "string" ? Date.parse(t.due) : NaN;
+        return { title: String(t.title ?? ""), owner: t.owner ? String(t.owner) : undefined, dueAt: Number.isFinite(due) ? due : undefined };
+      });
+      ctx.step({ kind: "other", label: `Adding ${tasks.length} task${tasks.length === 1 ? "" : "s"}` });
+      const n = await ctx.addTasks(tasks);
+      return n ? `Added ${n} task${n === 1 ? "" : "s"} to the group's task list.` : "No tasks were added (the list may be full).";
     }
     case "remember": {
       if (!ctx.remember) return "Room memory is turned off; the host can turn it on in Room settings.";

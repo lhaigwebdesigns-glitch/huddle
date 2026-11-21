@@ -2,6 +2,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import PartySocket from "partysocket";
 import type {
   Receipt,
+  TaskBoard,
   ChatMessage,
   ClientMsg,
   Member,
@@ -35,6 +36,8 @@ export interface RoomState {
   notice?: string;
   /** The latest contribution receipt the server sent (projects). */
   receipt?: Receipt;
+  /** Project tasks and roles. */
+  board?: TaskBoard;
   /** Facts the AI remembers for this room (when memory is on). */
   memory: string[];
 }
@@ -63,9 +66,12 @@ function reducer(s: RoomState, a: Action): RoomState {
         skills: m.skills,
         providers: m.providers,
         memory: m.memory ?? [],
+        board: m.board,
       };
     case "memory":
       return { ...s, memory: m.facts };
+    case "tasks":
+      return { ...s, board: m.board };
     case "presence":
       return { ...s, members: m.members };
     case "msg":

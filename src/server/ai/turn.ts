@@ -83,6 +83,8 @@ const LOOKUP_TOOLS = new Set(["web_search", "fetch_url", "load_skill", "search_k
  */
 export function toolAllowed(name: string, ai: "off" | "tutor" | "full", turnedIn = false): boolean {
   if (ai === "off") return false;
+  // Planning who does what isn't doing the work, so tutors can add tasks too.
+  if (name === "add_tasks") return !turnedIn;
   const lookup = LOOKUP_TOOLS.has(name) || name.startsWith("read_");
   if (ai === "tutor") return lookup;
   if (turnedIn) return lookup || name === "generate_image";
@@ -93,6 +95,8 @@ export function toolAllowed(name: string, ai: "off" | "tutor" | "full", turnedIn
 export function projectPrompt(
   p: { instructions: string; rubric: string; dueAt?: number; ai: "off" | "tutor" | "full"; turnedInAt?: number; turnedInBy?: string },
   now = Date.now(),
+  board?: { tasks: { title: string; ownerUid?: string; dueAt?: number; done: boolean }[]; roles: Record<string, string> },
+  nameOf: (uid: string) => string = () => "someone",
 ): string[] {
   const lines = [
     `This room is a school group project. The teacher set it up; the people chatting are the students in the group.`,
@@ -103,6 +107,18 @@ export function projectPrompt(
     const left = p.dueAt - now;
     const when = new Date(p.dueAt).toISOString().replace("T", " ").slice(0, 16) + " UTC";
     lines.push(left > 0 ? `Due: ${when} (in about ${Math.max(1, Math.round(left / 3_600_000))} hours).` : `Due: ${when} (the due date has passed).`);
+  }
+  if (board) {
+    const roles = Object.entries(board.roles).map(([uid, r]) => `${nameOf(uid)}: ${r}`);
+    if (roles.length) lines.push(`Roles in the group: ${roles.join("; ")}.`);
+    const day = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+    lines.push(
+      board.tasks.length
+        ? `The group's task list (use it to remind people what's theirs and what's due; add tasks with add_tasks when they plan or split up work):\n${board.tasks
+            .map((t) => `- [${t.done ? "x" : " "}] ${t.title}${t.ownerUid ? ` (owner: ${nameOf(t.ownerUid)})` : " (no owner yet)"}${t.dueAt ? ` due ${day(t.dueAt)}` : ""}`)
+            .join("\n")}`
+        : "The group has no tasks yet. If they plan the project or ask how to split it up, suggest tasks and add them with add_tasks.",
+    );
   }
   if (p.turnedInAt) lines.push(`The group turned this project in${p.turnedInBy ? ` (${p.turnedInBy})` : ""}. Its files are locked; you can still talk, but don't create or change files.`);
   if (p.ai === "tutor")

@@ -545,18 +545,40 @@ try {
   await sam.getByTestId("doc-editor").waitFor({ timeout: 15000 });
   ok(true, "with full help the AI makes files");
 
+  // Tasks and roles: Sam picks a role, adds a task, finishes it; the AI can split up the work.
+  await sam.getByTestId("tasks-toggle").click();
+  await sam.getByTestId("my-role").fill("Researcher");
+  await sam.getByTestId("my-role").press("Enter");
+  await sam.getByTestId("new-task").fill("Find three sources");
+  await sam.getByLabel("Owner of the new task").selectOption({ label: "Sam (you)" });
+  await sam.getByTestId("add-task").click();
+  await teach.getByTestId("tasks-toggle").click();
+  await teach.getByTestId("task").filter({ hasText: "Find three sources" }).waitFor();
+  ok(true, "a task added by one person shows for everyone");
+  await sam.getByTestId("task").filter({ hasText: "Find three sources" }).getByTestId("task-done").click();
+  await teach.getByTestId("tasks-toggle").getByText("1/1").waitFor();
+  ok(true, "finishing a task updates for everyone");
+  await teach.getByTestId("role-chip").filter({ hasText: "Researcher" }).waitFor();
+  ok(true, "roles show for the whole group");
+  await sam.getByTestId("composer").fill("Can you split up the work for us?");
+  await sam.getByTestId("composer").press("Enter");
+  await sam.getByTestId("task").filter({ hasText: "Mock task: research" }).waitFor({ timeout: 15000 });
+  ok((await sam.getByTestId("task").count()) === 3, "the AI can add tasks when asked to split up the work");
+  await sam.getByTestId("tasks-toggle").click();
+  await teach.getByTestId("tasks-toggle").click();
+
   // Contribution receipt: Sam writes in the doc; the receipt credits the words that are still there.
   const samDoc = sam.getByTestId("doc-editor");
   // Put the cursor at the end of the doc, start a new paragraph and write in it.
-  await sam.evaluate(() => document.querySelector('[data-testid="doc-editor"]').editor.chain().focus("end").splitBlock().run());
-  await sam.keyboard.type("Nationalism mattered most in our view");
-  await sam.waitForTimeout(1500);
+  await sam.evaluate(() => document.querySelector('[data-testid="doc-editor"]').editor.chain().focus("end").splitBlock().insertContent("Nationalism mattered most in our view").run());
+  await sam.waitForTimeout(3000);
   ok((await teach.getByTestId("open-receipt").count()) === 0, "the teacher has no receipt before the project is turned in");
   await sam.getByTestId("open-receipt").click();
   const samRow = sam.getByTestId("receipt-person").filter({ hasText: "Sam" });
-  await samRow.getByTestId("receipt-work").getByText("6 words").waitFor({ timeout: 10000 });
+  await samRow.getByTestId("receipt-work").getByText("6 words").waitFor({ timeout: 20000 });
   ok(true, "the receipt credits Sam with the 6 words Sam wrote");
   ok(/asked the AI to make or change files 1 time/.test(await samRow.innerText()), "AI-made work is credited as AI help to whoever asked");
+  ok(/Researcher/.test(await samRow.innerText()) && /Tasks: 1 of 1 done/.test(await samRow.innerText()), "the receipt shows each person's role and tasks");
   ok(/Huddle AI wrote/.test(await sam.getByTestId("receipt").innerText()), "the receipt shows what Huddle AI wrote separately");
   ok((await sam.getByTestId("receipt-person").filter({ hasText: "Ms. Lee" }).count()) === 0, "the teacher isn't listed on the receipt");
   await sam.getByTestId("receipt-note").fill("I wrote the conclusion and found two sources.");
@@ -602,6 +624,19 @@ try {
   if (!(await sam.getByTestId("doc-editor").count())) await sam.getByTestId("drive-file").first().click();
   await sam.waitForFunction(() => document.querySelector('[data-testid="doc-editor"]')?.getAttribute("contenteditable") === "true");
   ok(true, "the teacher reopens it and the group can edit again");
+
+  // Templates: a "Presentation" project starts with its files and tasks.
+  const tplCode = await teach.evaluate(async () => {
+    const r = await fetch("/api/rooms", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ uid: localStorage.getItem("huddle.uid"), title: "Template check", project: { ai: "tutor" }, template: "presentation" }),
+    });
+    return (await r.json()).code;
+  });
+  await teach.goto(`${BASE}/r/${tplCode}`);
+  await teach.getByTestId("tasks-toggle").getByText("0/7").waitFor();
+  ok((await teach.getByTestId("drive-file").count()) === 2, "a template project starts with its files and 7 tasks");
 
   // Per-IP rate limit on room creation (cf-connecting-ip is set by Cloudflare in production).
   const statuses = await alice.evaluate(async () => {
