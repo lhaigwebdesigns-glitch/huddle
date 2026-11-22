@@ -248,6 +248,35 @@ app.post("/api/forms/:code/:id", async (c) => {
   return c.json(res, res.ok ? 200 : 400);
 });
 
+// ---- Teacher pilot sign-ups (from the landing page) ----
+
+app.post("/api/pilot", async (c) => {
+  if (!c.env.DB) return c.json({ ok: false, error: "No database bound" }, 500);
+  if (!(await hit(c.env.DB, `pilot:${clientIp(c.req.raw)}`, 10, 3600)))
+    return c.json({ ok: false, error: "Too many sign-ups from this network in the last hour. Please try again later." }, 429);
+  const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
+  const field = (k: string, max: number) => String(b[k] ?? "").trim().slice(0, max);
+  const email = field("email", 200);
+  const problem = field("problem", 2000);
+  if (!field("name", 80) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return c.json({ ok: false, error: "Add your name and a working email so we can reply." }, 400);
+  if (problem.length < 10) return c.json({ ok: false, error: "Tell us a little about the last group project problem you dealt with." }, 400);
+  await ensureTables(c.env.DB);
+  await c.env.DB.prepare(
+    `INSERT INTO pilot_signups (created_at, name, email, school, grade, subject, class_size, classroom, problem) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(Date.now(), field("name", 80), email, field("school", 120), field("grade", 40), field("subject", 80), field("classSize", 20), field("classroom", 20), problem)
+    .run();
+  return c.json({ ok: true });
+});
+
+app.get("/api/admin/pilot", async (c) => {
+  if (!(await isAdmin(c))) return c.json({ error: "unauthorized" }, 401);
+  if (!c.env.DB) return c.json({ signups: [] });
+  await ensureTables(c.env.DB);
+  const { results } = await c.env.DB.prepare(`SELECT * FROM pilot_signups ORDER BY created_at DESC LIMIT 200`).all();
+  return c.json({ signups: results });
+});
+
 // ---- Feedback (stored in the free D1 database) ----
 
 app.post("/api/feedback", async (c) => {

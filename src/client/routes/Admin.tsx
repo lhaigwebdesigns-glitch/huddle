@@ -23,6 +23,39 @@ interface PcState {
 }
 
 /** "Use my PC for AI": off skips Ollama everywhere and frees the GPU right away (for games). */
+/** Teachers who signed up for the pilot on the landing page. */
+function PilotSignups({ token }: { token: string }) {
+  type Signup = { id: number; created_at: number; name: string; email: string; school: string; grade: string; subject: string; class_size: string; classroom: string; problem: string };
+  const [list, setList] = useState<Signup[] | null>(null);
+  useEffect(() => {
+    fetch("/api/admin/pilot", { headers: { "x-admin-token": token } })
+      .then((r) => (r.ok ? r.json() : Promise.resolve({ signups: [] })) as Promise<{ signups?: Signup[] }>)
+      .then((d) => setList(d.signups ?? []));
+  }, [token]);
+  return (
+    <section className="rounded-2xl border border-line p-4 text-sm" data-testid="pilot-signups">
+      <h2 className="font-semibold">Pilot sign-ups {list && <span className="font-normal text-fg-subtle">({list.length})</span>}</h2>
+      {list === null && <p className="mt-2 text-fg-subtle">Loading…</p>}
+      {list?.length === 0 && <p className="mt-2 text-fg-subtle">No teachers have signed up yet.</p>}
+      <ul className="mt-2 space-y-3">
+        {list?.map((s) => (
+          <li key={s.id} className="rounded-xl border border-line px-3 py-2.5">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <b>{s.name}</b>
+              <a href={`mailto:${s.email}`} className="text-fg-muted underline underline-offset-2">{s.email}</a>
+              <span className="ml-auto text-xs text-fg-subtle">{new Date(s.created_at).toLocaleString()}</span>
+            </div>
+            <div className="mt-0.5 text-xs text-fg-subtle">
+              {[s.school, s.subject, s.grade, s.class_size && `${s.class_size} students`, s.classroom && `Classroom: ${s.classroom}`].filter(Boolean).join(" · ")}
+            </div>
+            <p className="mt-1.5 text-fg-muted">{s.problem}</p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /** Models a provider retired. The router already skips them; update the model name in settings. */
 function ModelAlerts({ token }: { token: string }) {
   const [alerts, setAlerts] = useState<{ provider: string; model: string; at: number; message: string }[]>([]);
@@ -279,6 +312,7 @@ export default function Admin() {
         )}
         <div className="grid gap-x-4 lg:grid-cols-2">
           <ModelAlerts token={token} />
+          <PilotSignups token={token} />
           <KeyHealth token={token} />
           <PcSwitch token={token} onChanged={() => fetch("/api/health").then((r) => r.json()).then(setHealth)} />
         </div>
