@@ -13,7 +13,7 @@ Last updated Nov 22, 2026. Sizes: **S** = an evening, **M** = a weekend, **L** =
 - paste block
 - turn in with locked files
 
-**Builds 1–8 are live. Build 9 (assignments for every student) is built**, waiting to merge and deploy. Next: **Build 10** (timed assignments) and **Build 11** (the teacher's path), then the pilot.
+**Builds 1–9 are live. Build 10 (timed assignments) is built**, waiting to merge and deploy. Next: **Build 11** (the teacher's path), then the pilot.
 
 **Known limit of receipts:** when someone splits a paragraph in the middle (presses Enter inside it), the doc editor rewrites the text after the split, so that text is credited to the person who split it. Typing, deleting and pressing Enter at the end of a paragraph are counted correctly.
 
@@ -32,7 +32,7 @@ Each build is one PR, tested and deployed before the next one starts. Builds 1�
 | ✅ 7 | **Docs and slides basics** | 39, 40, 42, 45, 48, 52 | L | What students need to make real projects |
 | ✅ 8 | **New landing page** | 28–38 | M | Teachers need a page to sign up from |
 | ✅ 9 | **Assignments for every student** | new | L | One link per assignment; solo or groups; a room per student made on first click; per-student grading queue; work timeline |
-| ⬜ 10 | **Timed assignments** | new | M | Work windows (e.g. class time only), changing deadlines, extra-time requests, teacher overrides |
+| ✅ 10 | **Timed assignments** | new | M | Work windows (e.g. class time only), changing deadlines, extra-time requests, teacher overrides |
 | ⬜ 11 | **The teacher's path** | 72 + new | M | Today home screen, step-by-step assignment wizard, first-time tour, plain words everywhere |
 | | **The pilot with your teacher's class** | | | Fix her class's top complaints first |
 | ⬜ 12 | AI labels and "Who wrote this?" | 2, 4, 47 | M | After receipts prove useful |

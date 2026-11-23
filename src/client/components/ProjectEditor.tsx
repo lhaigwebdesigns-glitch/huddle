@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PROJECT_LIMITS, type AiSetting, type Member, type ProjectSettings } from "../../shared/protocol";
+import { DAY_NAMES, type Schedule } from "../../shared/schedule";
 
 export const AI_CHOICES: { value: AiSetting; label: string; hint: string }[] = [
   { value: "off", label: "AI off", hint: "No AI in this project. Students work on their own." },
@@ -23,7 +24,87 @@ export function fromLocalInput(v: string): number | null {
 
 const FIELD = "mt-1 w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-fg/40";
 
-export type ProjectDraft = Pick<ProjectSettings, "instructions" | "rubric" | "ai" | "pasteGuard" | "pasteExempt"> & { dueAt?: number };
+export type ProjectDraft = Pick<ProjectSettings, "instructions" | "rubric" | "ai" | "pasteGuard" | "pasteExempt"> & { dueAt?: number; schedule?: Schedule };
+
+const WEEK = [1, 2, 3, 4, 5, 6, 0];
+const localTz = () => {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+};
+
+/**
+ * When students may work on the assignment: any time, or only at set times (e.g. the class
+ * period). Optionally close it once the due date passes. Times are in the teacher's time zone.
+ */
+export function ScheduleEditor({ value, onChange }: { value?: Schedule; onChange: (s: Schedule | undefined) => void }) {
+  const timed = !!value?.windows.length;
+  const w = value?.windows[0] ?? { days: [1, 2, 3, 4, 5], start: "09:00", end: "09:50" };
+  const update = (patch: Partial<typeof w> | null, closeAtDue = value?.closeAtDue) => {
+    const windows = patch === null ? [] : [{ ...w, ...patch }];
+    onChange(windows.length || closeAtDue ? { windows, tz: value?.tz ?? localTz(), ...(closeAtDue ? { closeAtDue: true } : {}) } : undefined);
+  };
+  const choice = (on: boolean) => `press rounded-xl border px-3 py-1.5 text-left text-sm ${on ? "border-fg bg-surface-2 font-medium" : "border-line-strong text-fg-muted hover:text-fg"}`;
+  return (
+    <fieldset data-testid="schedule-editor">
+      <legend className="text-sm font-medium">When can students work on it?</legend>
+      <div className="mt-2 flex flex-wrap gap-2" role="radiogroup" aria-label="When students can work">
+        <button type="button" role="radio" aria-checked={!timed} onClick={() => update(null)} className={choice(!timed)} data-testid="schedule-anytime">
+          Any time
+        </button>
+        <button type="button" role="radio" aria-checked={timed} onClick={() => update({})} className={choice(timed)} data-testid="schedule-timed">
+          Only at set times (e.g. class time)
+        </button>
+      </div>
+      {timed && (
+        <div className="mt-3 space-y-2 rounded-xl border border-line px-3 py-2.5">
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Days">
+            {WEEK.map((d) => {
+              const on = w.days.includes(d);
+              return (
+                <button
+                  key={d}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => update({ days: on ? w.days.filter((x) => x !== d) : [...w.days, d].sort() })}
+                  className={`press w-11 rounded-lg border py-1 text-xs ${on ? "border-fg bg-surface-2 font-medium" : "border-line-strong text-fg-muted"}`}
+                >
+                  {DAY_NAMES[d]}
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <label className="flex items-center gap-1.5">
+              From
+              <input type="time" aria-label="Start time" value={w.start} onChange={(e) => update({ start: e.target.value })} className="rounded-lg border border-line-strong bg-transparent px-2 py-1" />
+            </label>
+            <label className="flex items-center gap-1.5">
+              to
+              <input type="time" aria-label="End time" value={w.end} onChange={(e) => update({ end: e.target.value })} className="rounded-lg border border-line-strong bg-transparent px-2 py-1" />
+            </label>
+          </div>
+          <p className="text-xs text-fg-subtle">Outside these times the files are read-only. Students can ask you for more time.</p>
+        </div>
+      )}
+      <label className="mt-2 flex items-start gap-2.5 text-sm">
+        <input
+          type="checkbox"
+          className="mt-0.5"
+          checked={!!value?.closeAtDue}
+          onChange={(e) => (timed ? update({}, e.target.checked) : update(null, e.target.checked))}
+          data-testid="close-at-due"
+        />
+        <span>
+          Close it after the due date
+          <span className="block text-xs text-fg-subtle">Students can still ask you for an extension.</span>
+        </span>
+      </label>
+    </fieldset>
+  );
+}
 
 export const EMPTY_PROJECT: ProjectDraft = { instructions: "", rubric: "", ai: "tutor", pasteGuard: false, pasteExempt: [] };
 
@@ -86,6 +167,7 @@ export function ProjectEditor({
           className={FIELD}
         />
       </label>
+      <ScheduleEditor value={value.schedule} onChange={(schedule) => set({ schedule })} />
       <fieldset>
         <legend className="text-sm font-medium">AI in this project</legend>
         <div className="mt-2 grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="AI setting">

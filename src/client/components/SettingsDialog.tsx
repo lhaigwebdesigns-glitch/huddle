@@ -6,6 +6,7 @@ import { formatCode } from "../../shared/code";
 import { X } from "lucide-react";
 import { ThemeToggle } from "./ui";
 import { EMPTY_PROJECT, ProjectEditor, type ProjectDraft } from "./ProjectEditor";
+import type { Schedule } from "../../shared/schedule";
 
 /** Host only: turn the room into a school project and set its rules. */
 function ProjectSection({ settings, members, send }: { settings: RoomSettings; members: Member[]; send: (m: ClientMsg) => void }) {
@@ -13,8 +14,8 @@ function ProjectSection({ settings, members, send }: { settings: RoomSettings; m
   const [draft, setDraft] = useState<ProjectDraft>(() => (saved ? { ...saved } : EMPTY_PROJECT));
   const [msg, setMsg] = useState("");
   const save = (d: ProjectDraft) => {
-    // dueAt: null clears a due date that was removed.
-    send({ t: "settings", patch: { project: { ...d, dueAt: (d.dueAt ?? null) as number | undefined } } });
+    // null clears a due date or schedule that was removed.
+    send({ t: "settings", patch: { project: { ...d, dueAt: (d.dueAt ?? null) as number | undefined, schedule: (d.schedule ?? null) as Schedule | undefined } } });
     setMsg("Saved");
     setTimeout(() => setMsg(""), 1500);
   };

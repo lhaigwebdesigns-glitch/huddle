@@ -335,7 +335,15 @@ function Room({ code, me }: { code: string; me: Identity }) {
 
       {file && (
         <section className="flex min-h-0 w-full flex-col border-l border-line lg:w-[48%]">
-          <FilePanel room={code} file={file} me={me} onClose={closeFile} onRename={renameFile} locked={!!state.settings.project?.turnedInAt} />
+          <FilePanel room={code} file={file} me={me} onClose={closeFile} onRename={renameFile} locked={!!state.settings.project?.turnedInAt || state.settings.project?.status?.open === false}
+            lockedNote={
+              state.settings.project?.turnedInAt
+                ? undefined
+                : state.settings.project?.status?.reason === "due"
+                  ? "The due date has passed, so this file is read-only. Use More time to ask your teacher for an extension."
+                  : "This assignment is closed right now, so this file is read-only. It opens again at the set time, or use More time to ask your teacher."
+            }
+          />
         </section>
       )}
 

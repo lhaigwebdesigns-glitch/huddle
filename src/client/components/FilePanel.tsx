@@ -105,6 +105,7 @@ export const FilePanel = memo(function FilePanel({
   onClose,
   onRename,
   locked = false,
+  lockedNote,
 }: {
   room: string;
   file: RoomFile;
@@ -112,6 +113,8 @@ export const FilePanel = memo(function FilePanel({
   onClose: () => void;
   onRename: (title: string) => void;
   locked?: boolean;
+  /** Why it's locked, when it isn't because the project was turned in. */
+  lockedNote?: string;
 }) {
   const [title, setTitle] = useState(file.title);
   const [history, setHistory] = useState(false);
@@ -147,7 +150,7 @@ export const FilePanel = memo(function FilePanel({
       {locked && (
         <div className="flex items-center gap-2 border-b border-line bg-sidebar px-4 py-2 text-xs text-fg-muted" role="status" data-testid="locked-banner">
           <Lock className="h-3.5 w-3.5 shrink-0" aria-hidden />
-          This project was turned in, so this file is read-only. Ask your teacher to reopen it to make changes.
+          {lockedNote ?? "This project was turned in, so this file is read-only. Ask your teacher to reopen it to make changes."}
         </div>
       )}
       <Body key={file.id} room={room} file={file} me={me} locked={locked} />

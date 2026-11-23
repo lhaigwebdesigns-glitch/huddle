@@ -127,6 +127,8 @@ export interface RoomSettings {
 }
 
 /** What the AI may do in a project: nothing, coach only, or full help. */
+import { cleanSchedule, type AccessOverride, type AccessState, type Schedule } from "./schedule";
+
 export type AiSetting = "off" | "tutor" | "full";
 
 export interface ProjectSettings {
@@ -142,6 +144,12 @@ export interface ProjectSettings {
   turnedInBy?: string;
   /** Asked at turn in ("What was hardest?"); the student's answer is their receipt note. */
   reflection?: string;
+  /** When students may work on it (e.g. class time only); none = any time. */
+  schedule?: Schedule;
+  /** This room's exceptions from the teacher: extra time now, or its own due date. Server-set. */
+  access?: AccessOverride;
+  /** Open or closed right now, worked out by the server. */
+  status?: AccessState;
 }
 
 export const PROJECT_LIMITS = { instructions: 6000, rubric: 4000, exempt: 100 } as const;
@@ -159,6 +167,11 @@ export function cleanProject(patch: unknown, prev?: ProjectSettings): ProjectSet
     if ("dueAt" in p) delete next.dueAt;
   } else if (typeof p.dueAt === "number" && Number.isFinite(p.dueAt) && p.dueAt > 0) next.dueAt = Math.round(p.dueAt);
   if (p.ai === "off" || p.ai === "tutor" || p.ai === "full") next.ai = p.ai;
+  if ("schedule" in p) {
+    const sch = cleanSchedule(p.schedule);
+    if (sch) next.schedule = sch;
+    else delete next.schedule;
+  }
   if (typeof p.reflection === "string") {
     const q = p.reflection.trim().slice(0, 300);
     if (q) next.reflection = q;
@@ -274,6 +287,8 @@ export type ClientMsg =
   | { t: "set_role"; role: string }
   /** Class rooms: send one message to the teacher, with a reason. */
   | { t: "report"; id: string; reason: string }
+  /** Ask the teacher for more time: open it now for an hour, or move the due date. */
+  | { t: "time_request"; kind: "open" | "extend"; days?: number; reason: string }
   | { t: "say"; text: string; attachments?: Attachment[] }
   /** Turn an uploaded CSV into a live sheet. */
   | { t: "import_csv"; title: string; csv: string }
