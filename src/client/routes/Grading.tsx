@@ -7,6 +7,7 @@ import { FilePanel } from "../components/FilePanel";
 import { FileIcon } from "../components/FileIcon";
 import { ReceiptDialog } from "../components/ReceiptDialog";
 import { Button } from "../components/ui";
+import { lateBy } from "../../shared/schedule";
 import { gradeTotal, parseRubric, rubricMax, type GradeData, type GradingView, type RubricRow } from "../../shared/classes";
 import type { FileKind } from "../../shared/files";
 import type { RoomFile } from "../../shared/protocol";
@@ -222,6 +223,16 @@ export default function Grading() {
                 ? view.group.members.map((u) => view.names[u] ?? "Someone").join(", ") || view.group.name
                 : `${view.group.name}: ${view.group.members.map((u) => view.names[u] ?? "Someone").join(", ") || "no students"}`}
             </h1>
+            {view.group.status?.turnedInAt && (
+              <p className="mt-0.5 text-xs text-fg-muted" data-testid="late-note">
+                {(() => {
+                  const late = lateBy(view.group.status.turnedInAt, view.group.status.dueAt);
+                  const hours = Math.round(late / 3_600_000);
+                  const when = late ? (hours >= 24 ? `${Math.round(hours / 24)} day${hours >= 36 ? "s" : ""} late` : `${Math.max(1, hours)} hour${hours > 1 ? "s" : ""} late`) : "on time";
+                  return `Turned in ${when}${view.group.status.extended ? " (with an extension)" : ""}`;
+                })()}
+              </p>
+            )}
           </div>
           {turnedIn && (
             <button

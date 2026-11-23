@@ -25,6 +25,14 @@ export interface GroupStatus {
   lastActivity?: number;
   turnedInAt?: number;
   files: number;
+  /** The due date that applies to this room (its extension, or the assignment's). */
+  dueAt?: number;
+  /** The teacher gave this room its own due date. */
+  extended?: boolean;
+  /** Timed assignments: open right now? */
+  open?: boolean;
+  /** Requests for more time waiting for the teacher. */
+  timeRequests?: number;
 }
 
 export interface RubricRow {
@@ -53,7 +61,7 @@ export interface GroupInfo {
 export interface Assignment {
   id: string;
   title: string;
-  project: Pick<ProjectSettings, "instructions" | "rubric" | "ai" | "dueAt" | "pasteGuard" | "reflection">;
+  project: Pick<ProjectSettings, "instructions" | "rubric" | "ai" | "dueAt" | "pasteGuard" | "reflection" | "schedule">;
   template?: string;
   createdAt: number;
   /** Solo: every student gets their own room. Groups: students share a room. */

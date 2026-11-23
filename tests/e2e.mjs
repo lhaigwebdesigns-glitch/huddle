@@ -817,6 +817,58 @@ try {
   ok(true, "Start grading → Save & next walks through every turned-in student, then says all are graded");
   await eve.close();
 
+  // ---------- Timed assignments: closed outside the set times, more time on request ----------
+  const classId = classUrl.split("/classes/")[1];
+  const timed = await park.evaluate(async (id) => {
+    // Open only on a day three days from now, so it's closed right now; due tomorrow.
+    const day = (new Date().getUTCDay() + 3) % 7;
+    const r = await fetch(`/api/classes/${id}/assignments`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        title: "Timed quiz",
+        mode: "solo",
+        project: { ai: "full", dueAt: Date.now() + 86_400_000, schedule: { windows: [{ days: [day], start: "09:00", end: "09:50" }], tz: "UTC" } },
+      }),
+    });
+    return (await r.json()).id;
+  }, classId);
+  await park.goto(classUrl);
+  const timedSection = park.getByTestId("assignment").filter({ hasText: "Timed quiz" });
+  await timedSection.getByTestId("schedule-summary").waitFor();
+  ok(/9:00am–9:50am/.test(await timedSection.getByTestId("schedule-summary").innerText()), "the class page shows when a timed assignment is open");
+  const cam = kids[2];
+  await cam.goto(`${classLink}/a/${timed}`);
+  await cam.waitForURL(/\/r\/[A-Z0-9]{6}$/, { timeout: 20000 });
+  await cam.getByTestId("access-chip").getByText(/Closed/).waitFor({ timeout: 15000 });
+  ok(true, "outside the set times the assignment shows as closed");
+  await cam.getByTestId("composer").fill("make a doc with our plan");
+  await cam.getByTestId("composer").press("Enter");
+  await cam.getByTestId("ai-message").first().waitFor({ timeout: 15000 });
+  await cam.waitForTimeout(1500);
+  ok((await cam.getByTestId("drive-file").count()) === 0, "while it's closed, nothing can make or change files (the AI included)");
+  // Cam asks for more time; the teacher approves from the class page.
+  await cam.getByTestId("ask-more-time").click();
+  await cam.getByTestId("ask-open").click();
+  await cam.getByTestId("time-reason").fill("I was at the dentist during class.");
+  await cam.getByTestId("send-time-request").click();
+  await cam.getByTestId("toast").getByText(/Sent to your teacher/).waitFor();
+  await park.reload();
+  const req = park.getByTestId("time-request").filter({ hasText: "Cam" });
+  await req.getByText("I was at the dentist during class.").waitFor();
+  await req.getByTestId("approve-time").click();
+  await cam.getByTestId("access-chip").getByText(/Open until/).waitFor({ timeout: 15000 });
+  await cam.getByTestId("room-notice").getByText(/Your teacher gave you more time/).waitFor();
+  ok(true, "a student asks for more time and the teacher's approval opens it right away");
+  // The teacher can also extend a due date without a request.
+  await park.reload();
+  const camRow = park.getByTestId("assignment").filter({ hasText: "Timed quiz" }).getByTestId("student-row").filter({ hasText: "Cam" });
+  await camRow.getByTestId("more-time").click();
+  await camRow.getByTestId("time-extend-1").click();
+  await cam.getByTestId("due-label").getByText("(extended)").waitFor({ timeout: 15000 });
+  ok(true, "the teacher can extend one student's due date from the dashboard");
+
+
 
   // Report: a student sends one message from the group chat to the teacher.
   const sameGroup = kids.findIndex((k, i) => i > 0 && rooms[i] === rooms[0]);

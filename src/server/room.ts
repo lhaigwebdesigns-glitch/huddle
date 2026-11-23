@@ -45,6 +45,7 @@ import { getProviders as getProvidersConfigured } from "./ai/models";
 import { templateById, type ProjectTemplate } from "../shared/templates";
 import { wordsFromChars } from "../shared/classes";
 import { checkMessage, safetyReply, SCHOOL_RULES } from "./ai/safety";
+import { accessState, dueFor, type AccessOverride, type TimeRequest } from "../shared/schedule";
 import { aiEnv } from "./ai/pc";
 
 const MAX_FILES = 100;
@@ -121,6 +122,8 @@ export class Room extends Server<Env> {
     this.sql`CREATE TABLE IF NOT EXISTS files (
       id TEXT PRIMARY KEY, kind TEXT, title TEXT, created_at INTEGER, created_by TEXT)`;
     this.settings = (await this.ctx.storage.get<RoomSettings>("settings")) ?? null;
+    // Timed assignments: open or close the work for the current time.
+    if (this.settings?.project) await this.applyAccess();
     // Uploaded text, searchable by the AI. FTS5 when available, plain LIKE otherwise.
     try {
       this.sql`CREATE VIRTUAL TABLE IF NOT EXISTS knowledge USING fts5(name, chunk, upload_id UNINDEXED)`;
@@ -196,6 +199,7 @@ export class Room extends Server<Env> {
     await this.ctx.storage.put("settings", this.settings);
     const template = this.settings.project ? templateById(templateId) : undefined;
     if (template) await this.applyTemplate(template, hostId);
+    if (this.settings.project) await this.applyAccess(true);
     return { ok: true as const };
   }
 
@@ -412,6 +416,8 @@ export class Room extends Server<Env> {
     const isHost = me.uid === this.settings.hostId;
     if (this.settings.project?.turnedInAt && FILE_CHANGES.has(msg.t))
       return this.send(conn, { t: "error", message: "This project was turned in, so its files are locked. The teacher can reopen it." });
+    if (this.settings.project?.status?.open === false && FILE_CHANGES.has(msg.t))
+      return this.send(conn, { t: "error", message: "This assignment is closed right now. You can still chat; the files open again at the set time." });
 
     switch (msg.t) {
       case "say": {
@@ -572,6 +578,7 @@ export class Room extends Server<Env> {
           if (wasTurnedIn && !s.project) await this.lockFiles(false);
         }
         await this.ctx.storage.put("settings", s);
+        if (s.project) await this.applyAccess(true);
         this.broadcastMsg({ t: "settings", settings: s });
         return;
       }
@@ -654,6 +661,26 @@ export class Room extends Server<Env> {
         });
         await this.ctx.storage.put("reports", reports.slice(-100));
         this.send(conn, { t: "error", message: "Reported to your teacher. Only that message was sent." });
+        return;
+      }
+      case "time_request": {
+        const p = this.settings.project;
+        if (!p) return;
+        if (isHost) return;
+        const requests = (await this.ctx.storage.get<TimeRequest[]>("timeRequests")) ?? [];
+        if (requests.some((r) => r.byUid === me.uid)) return this.send(conn, { t: "error", message: "You already asked for more time. Your teacher will answer soon." });
+        const kind = msg.kind === "extend" ? "extend" : "open";
+        requests.push({
+          id: crypto.randomUUID().slice(0, 8),
+          at: Date.now(),
+          byUid: me.uid,
+          byName: me.name,
+          kind,
+          ...(kind === "extend" ? { days: Math.max(1, Math.min(7, Math.round(Number(msg.days) || 1))) } : {}),
+          reason: String(msg.reason ?? "").trim().slice(0, 300),
+        });
+        await this.ctx.storage.put("timeRequests", requests.slice(-20));
+        this.send(conn, { t: "error", message: "Sent to your teacher. You'll see their answer here." });
         return;
       }
       case "turn_in": {
@@ -940,9 +967,99 @@ export class Room extends Server<Env> {
     await this.ctx.storage.put("settings", this.settings);
     await this.lockFiles(false);
     await this.ctx.storage.delete("receipt:final");
+    await this.applyAccess(true);
     this.broadcastMsg({ t: "settings", settings: this.settings! });
     this.notice(`${byName} reopened the project. The group can edit again.`);
     return true;
+  }
+
+  // ---------- timed assignments ----------
+
+  /**
+   * Opens or closes the work for the current time: outside the set times (or past the due
+   * date, if the teacher chose that) the files are read-only. Chat always works. Schedules
+   * an alarm for the next change. Turned-in work stays locked regardless.
+   */
+  private async applyAccess(force = false) {
+    const p = this.settings?.project;
+    if (!p) return;
+    const now = Date.now();
+    // Extra time that has run out is forgotten.
+    if (p.access?.openUntil && p.access.openUntil <= now) delete p.access.openUntil;
+    if (p.access && !p.access.openUntil && !p.access.dueAt) delete p.access;
+    const timed = !!p.schedule || !!p.access?.openUntil;
+    const state = timed ? accessState(p.schedule, p.dueAt, p.access, now) : undefined;
+    const before = p.status?.open;
+    if (state) p.status = state;
+    else delete p.status;
+    const changed = before !== state?.open || force;
+    if (changed) {
+      await this.ctx.storage.put("settings", this.settings);
+      if (!p.turnedInAt) await this.lockFiles(state ? !state.open : false);
+      this.broadcastMsg({ t: "settings", settings: this.settings! });
+    }
+    if (state?.nextChange) await this.ctx.storage.setAlarm(state.nextChange + 500);
+    else await this.ctx.storage.deleteAlarm();
+  }
+
+  async onAlarm() {
+    if (!this.settings) this.settings = (await this.ctx.storage.get<RoomSettings>("settings")) ?? null;
+    if (!this.settings?.project) return;
+    const wasOpen = this.settings.project.status?.open;
+    await this.applyAccess();
+    const nowOpen = this.settings.project.status?.open;
+    if (wasOpen !== nowOpen && nowOpen !== undefined)
+      this.notice(nowOpen ? "The assignment is open. You can work on the files now." : "The assignment is closed for now. The files are read-only; chat still works.");
+  }
+
+  /** The teacher changes the due date or the set times for this room (from the class page). */
+  async setTiming(patch: { dueAt?: number | null; schedule?: unknown }) {
+    if (!this.settings?.project) return { ok: false };
+    this.settings.project = cleanProject(patch, this.settings.project)!;
+    await this.applyAccess(true);
+    return { ok: true };
+  }
+
+  /** The teacher gives this room extra time: open it now for a while, or move its own due date. */
+  async grantTime(g: { openMinutes?: number; extendDays?: number; dueAt?: number | null }, note = true) {
+    const p = this.settings?.project;
+    if (!p) return { ok: false };
+    const now = Date.now();
+    const access: AccessOverride = { ...(p.access ?? {}) };
+    const said: string[] = [];
+    if (g.openMinutes && g.openMinutes > 0) {
+      access.openUntil = now + Math.min(24 * 60, g.openMinutes) * 60_000;
+      said.push(`it's open for the next ${g.openMinutes >= 60 ? `${Math.round(g.openMinutes / 60)} hour${g.openMinutes >= 120 ? "s" : ""}` : `${g.openMinutes} minutes`}`);
+    }
+    if (g.extendDays && g.extendDays > 0) {
+      const base = dueFor(p.dueAt, access) ?? now;
+      access.dueAt = Math.max(base, now) + Math.min(30, g.extendDays) * 86_400_000;
+      said.push(`your due date moved ${g.extendDays} day${g.extendDays === 1 ? "" : "s"} later`);
+    }
+    if (g.dueAt === null) delete access.dueAt;
+    else if (typeof g.dueAt === "number" && g.dueAt > 0) {
+      access.dueAt = Math.round(g.dueAt);
+      said.push("your due date changed");
+    }
+    p.access = access;
+    await this.applyAccess(true);
+    if (note && said.length) this.notice(`Your teacher gave you more time: ${said.join(", and ")}.`);
+    return { ok: true };
+  }
+
+  async timeRequests() {
+    return (await this.ctx.storage.get<TimeRequest[]>("timeRequests")) ?? [];
+  }
+
+  /** Approve (applies what the student asked for) or decline a request for more time. */
+  async answerTimeRequest(id: string, approve: boolean) {
+    const requests = (await this.ctx.storage.get<TimeRequest[]>("timeRequests")) ?? [];
+    const r = requests.find((x) => x.id === id);
+    if (!r) return { ok: false };
+    await this.ctx.storage.put("timeRequests", requests.filter((x) => x.id !== id));
+    if (approve) await this.grantTime(r.kind === "extend" ? { extendDays: r.days ?? 1 } : { openMinutes: 60 });
+    else this.notice(`Your teacher said no to ${r.byName}'s request for more time.`);
+    return { ok: true };
   }
 
   // ---------- RPC for the teacher's class pages (counts and turned-in work only, never the chat) ----------
@@ -968,6 +1085,10 @@ export class Room extends Server<Env> {
       tasksTotal: board.tasks.length,
       ...(lastActivity ? { lastActivity } : {}),
       ...(s.project?.turnedInAt ? { turnedInAt: s.project.turnedInAt } : {}),
+      ...(dueFor(s.project?.dueAt, s.project?.access) ? { dueAt: dueFor(s.project?.dueAt, s.project?.access) } : {}),
+      ...(s.project?.access?.dueAt ? { extended: true } : {}),
+      ...(s.project?.status ? { open: s.project.status.open } : {}),
+      timeRequests: ((await this.ctx.storage.get<TimeRequest[]>("timeRequests")) ?? []).length,
       files: this.files().length,
     };
   }
@@ -1146,7 +1267,7 @@ export class Room extends Server<Env> {
         // Asking for research ("deep research… cite the sites") turns research on for this turn,
         // even when the room's Deep Research switch is off.
         const aiRule = this.aiSetting();
-        const turnedIn = !!s.project?.turnedInAt;
+        const turnedIn = !!s.project?.turnedInAt || s.project?.status?.open === false;
         // Tutor projects never research-and-write a doc for the students.
         const research = aiRule === "full" && !turnedIn && (s.deepResearch || wantsResearch(this.lastUserText()));
         llm = [{ role: "system", content: this.systemPrompt(true, memory, research) }, ...withFreshNote(this.history())];
@@ -1226,7 +1347,7 @@ export class Room extends Server<Env> {
                 continue;
               }
             }
-            if (!toolAllowed(call.function.name, this.aiSetting(), !!this.settings?.project?.turnedInAt)) {
+            if (!toolAllowed(call.function.name, this.aiSetting(), !!this.settings?.project?.turnedInAt || this.settings?.project?.status?.open === false)) {
               llm.push({
                 role: "tool",
                 tool_call_id: call.id,

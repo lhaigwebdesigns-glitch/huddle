@@ -6,6 +6,7 @@ import { clientIp, hit } from "./db";
 import { makeCode, normalizeCode } from "../shared/code";
 import { cleanProject, type ProjectSettings, type Receipt, type Report } from "../shared/protocol";
 import { templateById } from "../shared/templates";
+import type { TimeRequest } from "../shared/schedule";
 import {
   CLASS_LIMITS,
   gradeTotal,
@@ -300,6 +301,7 @@ classes.post("/:id/assignments", async (c) => {
         dueAt: project.dueAt,
         pasteGuard: project.pasteGuard,
         ...(project.reflection ? { reflection: project.reflection } : {}),
+        ...(project.schedule ? { schedule: project.schedule } : {}),
       }),
       templateById(body.template)?.id ?? null,
       Date.now(),
@@ -409,6 +411,58 @@ classes.post("/:id/assignments/:aid/groups/:room/reopen", async (c) => {
   if (g instanceof Response) return g;
   const room = await getServerByName(c.env.Room, g.group.roomCode);
   return c.json(await room.teacherReopen("Your teacher"));
+});
+
+/** Change the due date or the set times for everyone (every room that exists now, and rooms made later). */
+classes.patch("/:id/assignments/:aid", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  const row = await c.env.DB!.prepare(`SELECT * FROM assignments WHERE id = ? AND class_id = ?`).bind(c.req.param("aid"), t.cls.id).first<AssignmentRow>();
+  if (!row) return c.json({ error: "Assignment not found." }, 404);
+  const body = await c.req.json<{ dueAt?: number | null; schedule?: unknown }>().catch(() => ({}) as { dueAt?: number | null; schedule?: unknown });
+  const patch: { dueAt?: number | null; schedule?: unknown } = {};
+  if ("dueAt" in body) patch.dueAt = body.dueAt;
+  if ("schedule" in body) patch.schedule = body.schedule;
+  const next = cleanProject(patch, cleanProject(JSON.parse(row.project))!)!;
+  const stored = { ...JSON.parse(row.project) };
+  if (next.dueAt) stored.dueAt = next.dueAt;
+  else delete stored.dueAt;
+  if (next.schedule) stored.schedule = next.schedule;
+  else delete stored.schedule;
+  await c.env.DB!.prepare(`UPDATE assignments SET project = ? WHERE id = ?`).bind(JSON.stringify(stored), row.id).run();
+  for (const g of await loadGroups(c.env.DB!, row.id))
+    if (!isPending(g.roomCode)) await (await getServerByName(c.env.Room, g.roomCode)).setTiming(patch).catch(() => null);
+  return c.json({ ok: true });
+});
+
+/** Give one student or group extra time: open it now for a while, extend their due date, or set it. */
+classes.post("/:id/assignments/:aid/groups/:room/time", async (c) => {
+  const g = await gradingContext(c);
+  if (g instanceof Response) return g;
+  const body = await c.req.json<{ openMinutes?: number; extendDays?: number; dueAt?: number | null }>().catch(() => ({}) as Record<string, never>);
+  return c.json(await (await getServerByName(c.env.Room, g.group.roomCode)).grantTime(body));
+});
+
+/** Requests for more time waiting across the class. */
+classes.get("/:id/time-requests", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  const out: (TimeRequest & { assignment: string; assignmentId: string; group: string; room: string })[] = [];
+  for (const a of await loadAssignments(c, t.cls.id, false))
+    for (const g of a.groups) {
+      if (isPending(g.roomCode)) continue;
+      const list = (await (await getServerByName(c.env.Room, g.roomCode)).timeRequests().catch(() => [])) as TimeRequest[];
+      for (const r of list) out.push({ ...r, assignment: a.title, assignmentId: a.id, group: g.name, room: g.roomCode });
+    }
+  out.sort((x, y) => x.at - y.at);
+  return c.json({ requests: out });
+});
+
+classes.post("/:id/assignments/:aid/groups/:room/time-requests/:rid", async (c) => {
+  const g = await gradingContext(c);
+  if (g instanceof Response) return g;
+  const body = await c.req.json<{ approve?: boolean }>().catch(() => ({}) as { approve?: boolean });
+  return c.json(await (await getServerByName(c.env.Room, g.group.roomCode)).answerTimeRequest(c.req.param("rid"), body.approve === true));
 });
 
 classes.get("/:id/assignments/:aid/grades.csv", async (c) => {

@@ -6,10 +6,11 @@ import { PROVIDER_LABEL, useAccount, signInUrl } from "../lib/account";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { formatCode } from "../../shared/code";
 import { timeAgo } from "../components/PartyLists";
-import { EMPTY_PROJECT, ProjectEditor, type ProjectDraft } from "../components/ProjectEditor";
+import { EMPTY_PROJECT, fromLocalInput, ProjectEditor, ScheduleEditor, toLocalInput, type ProjectDraft } from "../components/ProjectEditor";
+import { describeSchedule, type Schedule, type TimeRequest } from "../../shared/schedule";
 import { PROJECT_TEMPLATES } from "../../shared/templates";
 import { FILE_INFO } from "../../shared/files";
-import { assignmentPath, classroomShareUrl, gradeTotal, rubricMax, type Assignment, type ClassInfo, type ClassView, type GroupInfo } from "../../shared/classes";
+import { assignmentPath, classroomShareUrl, gradeTotal, isPending, rubricMax, type Assignment, type ClassInfo, type ClassView, type GroupInfo } from "../../shared/classes";
 
 async function api<T>(url: string, init?: RequestInit): Promise<T & { error?: string }> {
   const r = await fetch(url, init?.body ? { ...init, headers: { "content-type": "application/json", ...init.headers } } : init);
@@ -138,7 +139,7 @@ const STATUS: Record<string, { label: string; cls: string }> = {
 const statusOf = (g: GroupInfo) =>
   g.grade ? STATUS.graded : g.status?.turnedInAt ? STATUS.turned : g.status?.lastActivity ? STATUS.working : STATUS.idle;
 
-function GroupCard({ g, names, gradeUrl }: { g: GroupInfo; names: Record<string, string>; gradeUrl: string }) {
+function GroupCard({ g, names, gradeUrl, timeUrl, onChanged }: { g: GroupInfo; names: Record<string, string>; gradeUrl: string; timeUrl?: string; onChanged: () => void }) {
   const st = statusOf(g);
   const total = g.grade ? gradeTotal(g.grade) : null;
   return (
@@ -160,6 +161,11 @@ function GroupCard({ g, names, gradeUrl }: { g: GroupInfo; names: Record<string,
         Tasks {g.status?.tasksDone ?? 0}/{g.status?.tasksTotal ?? 0} · {g.status?.joined ?? 0} of {g.members.length} joined
         {g.status?.lastActivity ? ` · active ${timeAgo(g.status.lastActivity)}` : ""}
       </p>
+      {timeUrl && !g.status?.turnedInAt && (
+        <div className="mt-2.5">
+          <MoreTime url={timeUrl} onDone={onChanged} />
+        </div>
+      )}
       {g.status?.turnedInAt && (
         <Link to={gradeUrl} className="press mt-2.5 inline-flex rounded-lg bg-primary px-3 py-1 text-xs font-semibold text-primary-fg hover:bg-primary-hover" data-testid="grade-group">
           {g.grade ? "Review grade" : "Grade"}
@@ -176,7 +182,9 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
   const ungrouped = view.students.filter((s) => !grouped.has(s.uid));
   const [manage, setManage] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [editTimes, setEditTimes] = useState(false);
   const solo = a.mode === "solo";
+  const timeUrl = (room: string) => `/api/classes/${view.class.id}/assignments/${a.id}/groups/${room}/time`;
   const link = `${location.origin}${assignmentPath(view.class.code, a.id)}`;
   const due = a.project.dueAt ? new Date(a.project.dueAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
   const move = async (uid: string, room: string | null) => {
@@ -193,6 +201,7 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
         <h3 className="text-lg font-semibold tracking-tight">{a.title}</h3>
         <span className="rounded-full border border-line px-2 py-0.5 text-[11px] font-medium text-fg-muted">{solo ? "Solo" : "Groups"}</span>
         {due && <span className="text-xs text-fg-subtle">Due {due}</span>}
+        {a.project.schedule && <span className="text-xs text-fg-subtle" data-testid="schedule-summary">· {describeSchedule(a.project.schedule)}</span>}
         <span className="text-xs text-fg-subtle" data-testid="turned-in-count">
           · {turned} of {total} turned in
         </span>
@@ -225,6 +234,9 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
         >
           {copied ? <Check className="mr-1 inline h-3.5 w-3.5" /> : <Copy className="mr-1 inline h-3.5 w-3.5" />} {copied ? "Copied" : "Copy link"}
         </button>
+        <button onClick={() => setEditTimes(true)} className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2" data-testid="edit-times">
+          Edit times
+        </button>
         <a href={`/api/classes/${view.class.id}/assignments/${a.id}/grades.csv`} className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2" data-testid="export-csv">
           <Download className="mr-1 inline h-3.5 w-3.5" /> Grades CSV
         </a>
@@ -249,6 +261,7 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
                 </span>
                 <span className="w-28 text-xs text-fg-subtle">{g?.status?.lastActivity ? `active ${timeAgo(g.status.lastActivity)}` : ""}</span>
                 <span className="w-16 text-right text-sm font-semibold tabular">{score !== null && g?.grade ? `${score}/${rubricMax(g.grade.rows)}` : ""}</span>
+                {g && !isPending(g.roomCode) && !g.status?.turnedInAt && <MoreTime url={timeUrl(g.roomCode)} onDone={reload} />}
                 {g?.status?.turnedInAt ? (
                   <Link to={gradeUrl(g.roomCode)} className="press rounded-lg bg-primary px-2.5 py-1 text-xs font-semibold text-primary-fg hover:bg-primary-hover" data-testid="grade-group">
                     {g.grade ? "Review" : "Grade"}
@@ -264,7 +277,7 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
       ) : (
         <ul className="mt-3 grid gap-2 sm:grid-cols-2">
           {a.groups.map((g) => (
-            <GroupCard key={g.roomCode} g={g} names={names} gradeUrl={gradeUrl(g.roomCode)} />
+            <GroupCard key={g.roomCode} g={g} names={names} gradeUrl={gradeUrl(g.roomCode)} timeUrl={isPending(g.roomCode) ? undefined : timeUrl(g.roomCode)} onChanged={reload} />
           ))}
         </ul>
       )}
@@ -299,6 +312,17 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
             })}
           </ul>
         </div>
+      )}
+      {editTimes && (
+        <EditTimesDialog
+          classId={view.class.id}
+          a={a}
+          onClose={() => setEditTimes(false)}
+          onDone={() => {
+            setEditTimes(false);
+            reload();
+          }}
+        />
       )}
     </section>
   );
@@ -450,6 +474,128 @@ function NewAssignmentDialog({ classId, students, onDone, onClose }: { classId: 
   );
 }
 
+
+/** Give one student or group more time, right from the dashboard (no request needed). */
+function MoreTime({ url, onDone }: { url: string; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const give = async (body: object) => {
+    setBusy(true);
+    await api(url, { method: "POST", body: JSON.stringify(body) });
+    setBusy(false);
+    setOpen(false);
+    onDone();
+  };
+  const item = "press block w-full rounded-lg px-3 py-1.5 text-left text-sm hover:bg-surface-2 disabled:opacity-40";
+  return (
+    <span className="relative">
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className="press rounded-lg border border-line-strong px-2 py-1 text-xs hover:bg-surface-2" data-testid="more-time">
+        More time
+      </button>
+      {open && (
+        <span className="pop absolute right-0 top-full z-20 mt-1 block w-56 rounded-xl border border-line bg-surface p-1 shadow-lg" role="menu">
+          <button role="menuitem" disabled={busy} className={item} onClick={() => give({ openMinutes: 60 })} data-testid="time-open-hour">
+            Open it now for 1 hour
+          </button>
+          <button role="menuitem" disabled={busy} className={item} onClick={() => give({ extendDays: 1 })} data-testid="time-extend-1">
+            Extend the due date 1 day
+          </button>
+          <button role="menuitem" disabled={busy} className={item} onClick={() => give({ extendDays: 2 })}>
+            Extend the due date 2 days
+          </button>
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** Change the due date and set times for everyone in one assignment. */
+function EditTimesDialog({ classId, a, onClose, onDone }: { classId: string; a: Assignment; onClose: () => void; onDone: () => void }) {
+  const [dueAt, setDueAt] = useState<number | undefined>(a.project.dueAt);
+  const [schedule, setSchedule] = useState<Schedule | undefined>(a.project.schedule);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setBusy(true);
+    await api(`/api/classes/${classId}/assignments/${a.id}`, { method: "PATCH", body: JSON.stringify({ dueAt: dueAt ?? null, schedule: schedule ?? null }) });
+    setBusy(false);
+    onDone();
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-label="Edit times" onClick={(e) => e.stopPropagation()} className="pop w-full max-w-md rounded-[24px] border border-line bg-surface p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.4)]" data-testid="edit-times-dialog">
+        <h2 className="text-xl font-semibold tracking-tight">Times for {a.title}</h2>
+        <p className="mt-1 text-sm text-fg-muted">Changes apply to everyone right away. Students you gave extra time keep it.</p>
+        <label className="mt-4 block text-sm font-medium">
+          Due
+          <input type="datetime-local" aria-label="Due date for everyone" value={toLocalInput(dueAt)} onChange={(e) => setDueAt(fromLocalInput(e.target.value) ?? undefined)} className="mt-1 w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 text-sm" />
+        </label>
+        <div className="mt-4">
+          <ScheduleEditor value={schedule} onChange={setSchedule} />
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button variant="secondary" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={busy} data-testid="save-times">
+            {busy ? "Saving…" : "Save for everyone"}
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+type ClassTimeRequest = TimeRequest & { assignment: string; assignmentId: string; group: string; room: string };
+
+/** Students asking for more time: approve gives exactly what they asked for. */
+function TimeRequestsSection({ classId, onChange }: { classId: string; onChange: () => void }) {
+  const [list, setList] = useState<ClassTimeRequest[]>([]);
+  const load = useCallback(() => {
+    api<{ requests: ClassTimeRequest[] }>(`/api/classes/${classId}/time-requests`).then((d) => setList(d.requests ?? []));
+  }, [classId]);
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 30_000);
+    return () => clearInterval(t);
+  }, [load]);
+  if (!list.length) return null;
+  const answer = async (r: ClassTimeRequest, approve: boolean) => {
+    await api(`/api/classes/${classId}/assignments/${r.assignmentId}/groups/${r.room}/time-requests/${r.id}`, { method: "POST", body: JSON.stringify({ approve }) });
+    load();
+    onChange();
+  };
+  return (
+    <section className="mt-6 rounded-[20px] border border-line bg-surface p-4" data-testid="time-requests">
+      <h2 className="text-sm font-semibold">Needs your answer: {list.length} request{list.length === 1 ? "" : "s"} for more time</h2>
+      <ul className="mt-3 space-y-2">
+        {list.map((r) => (
+          <li key={r.room + r.id} className="rounded-xl border border-line px-3.5 py-2.5 text-sm" data-testid="time-request">
+            <div className="flex flex-wrap items-center gap-2">
+              <b>{r.byName}</b>
+              <span className="text-fg-muted">
+                {r.kind === "open" ? "asks to work on it now for an hour" : `asks for ${r.days ?? 1} more day${(r.days ?? 1) === 1 ? "" : "s"}`}
+              </span>
+              <span className="text-xs text-fg-subtle">
+                · {r.assignment}
+                {r.group !== r.byName ? ` · ${r.group}` : ""} · {timeAgo(r.at)}
+              </span>
+            </div>
+            {r.reason && <p className="mt-1 text-fg-muted">"{r.reason}"</p>}
+            <div className="mt-2 flex gap-2">
+              <Button size="sm" onClick={() => answer(r, true)} data-testid="approve-time">
+                Approve
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => answer(r, false)}>
+                Decline
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 type ClassReport = Report & { assignment: string; group: string; room: string };
 
 /** Messages students reported to the teacher: the only chat a teacher ever sees. */
@@ -557,6 +703,7 @@ export function ClassPage() {
         </div>
 
         <ReportsSection classId={view.class.id} />
+        <TimeRequestsSection classId={view.class.id} onChange={load} />
 
         <div className="mt-8 flex items-center gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-subtle">Assignments</h2>
