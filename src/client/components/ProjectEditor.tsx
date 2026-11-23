@@ -118,7 +118,10 @@ export function ProjectEditor({
   members = [],
   hostId,
   compact = false,
+  part = "all",
 }: {
+  /** "what" = instructions and rubric; "how" = due date, AI and pasting; "all" = everything. */
+  part?: "all" | "what" | "how";
   value: ProjectDraft;
   onChange: (next: ProjectDraft) => void;
   members?: Member[];
@@ -129,6 +132,8 @@ export function ProjectEditor({
   const students = members.filter((m) => m.uid !== hostId);
   return (
     <div className="space-y-4" data-testid="project-editor">
+      {part !== "how" && (
+      <>
       <label className="block">
         <span className="text-sm font-medium">Instructions</span>
         <textarea
@@ -136,7 +141,7 @@ export function ProjectEditor({
           value={value.instructions}
           maxLength={PROJECT_LIMITS.instructions}
           rows={compact ? 3 : 4}
-          placeholder="What should the group make? (e.g. A 5-slide presentation on a cause of World War I, with sources.)"
+          placeholder="What should students make? (e.g. A 5-slide presentation on a cause of World War I, with sources.)"
           onChange={(e) => set({ instructions: e.target.value })}
           className={FIELD}
         />
@@ -155,6 +160,10 @@ export function ProjectEditor({
           className={FIELD}
         />
       </label>
+      </>
+      )}
+      {part !== "what" && (
+      <>
       <label className="block">
         <span className="text-sm font-medium">
           Due <span className="font-normal text-fg-subtle">(optional)</span>
@@ -167,7 +176,7 @@ export function ProjectEditor({
           className={FIELD}
         />
       </label>
-      <ScheduleEditor value={value.schedule} onChange={(schedule) => set({ schedule })} />
+      {part === "all" && <ScheduleEditor value={value.schedule} onChange={(schedule) => set({ schedule })} />}
       <fieldset>
         <legend className="text-sm font-medium">AI in this project</legend>
         <div className="mt-2 grid gap-2 sm:grid-cols-3" role="radiogroup" aria-label="AI setting">
@@ -226,6 +235,8 @@ export function ProjectEditor({
             </div>
           )}
         </div>
+      )}
+      </>
       )}
     </div>
   );

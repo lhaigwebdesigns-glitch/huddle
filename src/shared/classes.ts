@@ -182,3 +182,15 @@ export function classroomShareUrl(url: string, title: string, body?: string): st
   if (body) q.set("body", body.slice(0, 500));
   return `https://classroom.google.com/share?${q}`;
 }
+
+/** The teacher's home screen: what needs them today, across every class. */
+export interface TodayView {
+  /** Turned-in work that isn't graded yet, per assignment. `first` is the room to open first. */
+  toGrade: { classId: string; className: string; assignmentId: string; title: string; mode: AssignmentMode; count: number; first: string }[];
+  /** Requests for more time and reported messages waiting, per class. */
+  answers: { classId: string; className: string; timeRequests: number; reports: number }[];
+  /** Assignments due in the next two days, with how many students (or groups) haven't started. */
+  dueSoon: { classId: string; className: string; assignmentId: string; title: string; dueAt: number; notStarted: number; total: number }[];
+  /** For the getting-started steps. */
+  setup: { hasClass: boolean; hasStudents: boolean; hasAssignment: boolean; hasGraded: boolean; firstClassId?: string };
+}
