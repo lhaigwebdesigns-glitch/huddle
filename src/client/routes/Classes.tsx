@@ -9,7 +9,7 @@ import { timeAgo } from "../components/PartyLists";
 import { EMPTY_PROJECT, ProjectEditor, type ProjectDraft } from "../components/ProjectEditor";
 import { PROJECT_TEMPLATES } from "../../shared/templates";
 import { FILE_INFO } from "../../shared/files";
-import { classroomShareUrl, gradeTotal, rubricMax, type Assignment, type ClassInfo, type ClassView, type GroupInfo } from "../../shared/classes";
+import { assignmentPath, classroomShareUrl, gradeTotal, rubricMax, type Assignment, type ClassInfo, type ClassView, type GroupInfo } from "../../shared/classes";
 
 async function api<T>(url: string, init?: RequestInit): Promise<T & { error?: string }> {
   const r = await fetch(url, init?.body ? { ...init, headers: { "content-type": "application/json", ...init.headers } } : init);
@@ -170,33 +170,42 @@ function GroupCard({ g, names, gradeUrl }: { g: GroupInfo; names: Record<string,
 }
 
 function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView; reload: () => void }) {
+  const nav = useNavigate();
   const names = Object.fromEntries(view.students.map((s) => [s.uid, s.name]));
   const grouped = new Set(a.groups.flatMap((g) => g.members));
   const ungrouped = view.students.filter((s) => !grouped.has(s.uid));
   const [manage, setManage] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const solo = a.mode === "solo";
+  const link = `${location.origin}${assignmentPath(view.class.code, a.id)}`;
+  const due = a.project.dueAt ? new Date(a.project.dueAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
   const move = async (uid: string, room: string | null) => {
     await api(`/api/classes/${view.class.id}/assignments/${a.id}/move`, { method: "POST", body: JSON.stringify({ uid, room }) });
     reload();
   };
   const turned = a.groups.filter((g) => g.status?.turnedInAt).length;
+  const waiting = a.groups.filter((g) => g.status?.turnedInAt && !g.grade);
+  const gradeUrl = (room: string) => `/classes/${view.class.id}/a/${a.id}/${room}`;
+  const total = solo ? view.students.length : a.groups.length;
   return (
     <section className="rounded-[20px] border border-line bg-surface p-4" data-testid="assignment">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-lg font-semibold tracking-tight">{a.title}</h3>
-        {a.project.dueAt && <span className="text-xs text-fg-subtle">Due {new Date(a.project.dueAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
-        <span className="text-xs text-fg-subtle">
-          · {turned} of {a.groups.length} turned in
+        <span className="rounded-full border border-line px-2 py-0.5 text-[11px] font-medium text-fg-muted">{solo ? "Solo" : "Groups"}</span>
+        {due && <span className="text-xs text-fg-subtle">Due {due}</span>}
+        <span className="text-xs text-fg-subtle" data-testid="turned-in-count">
+          · {turned} of {total} turned in
         </span>
         <span className="flex-1" />
-        <button onClick={() => setManage((m) => !m)} aria-pressed={manage} className="press rounded-lg px-2.5 py-1 text-xs text-fg-muted hover:bg-surface-2 hover:text-fg">
-          <Users className="mr-1 inline h-3.5 w-3.5" /> {manage ? "Done" : "Move students"}
-        </button>
+        {waiting.length > 0 && (
+          <Button size="sm" onClick={() => nav(gradeUrl(waiting[0].roomCode))} data-testid="start-grading">
+            Start grading ({waiting.length})
+          </Button>
+        )}
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <a
-          href={classroomShareUrl(
-            `${location.origin}/c/${view.class.code}`,
-            a.title,
-            `Group project on Huddle. Open the link, join the class with your name, then open your group's room.${a.project.dueAt ? ` Due ${new Date(a.project.dueAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}.` : ""}`,
-          )}
+          href={classroomShareUrl(link, a.title, `${solo ? "Open the link to start your own copy on Huddle." : "Open the link to join your group's room on Huddle."}${due ? ` Due ${due}.` : ""}`)}
           target="_blank"
           rel="noopener noreferrer"
           className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2"
@@ -204,18 +213,68 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
         >
           <ClassroomMark /> Post to Classroom
         </a>
+        <button
+          onClick={() => {
+            navigator.clipboard?.writeText(link).catch(() => {});
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+          className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2"
+          data-link={link}
+          data-testid="copy-assignment-link"
+        >
+          {copied ? <Check className="mr-1 inline h-3.5 w-3.5" /> : <Copy className="mr-1 inline h-3.5 w-3.5" />} {copied ? "Copied" : "Copy link"}
+        </button>
         <a href={`/api/classes/${view.class.id}/assignments/${a.id}/grades.csv`} className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2" data-testid="export-csv">
           <Download className="mr-1 inline h-3.5 w-3.5" /> Grades CSV
         </a>
+        {!solo && (
+          <button onClick={() => setManage((m) => !m)} aria-pressed={manage} className="press rounded-lg px-2.5 py-1 text-xs text-fg-muted hover:bg-surface-2 hover:text-fg">
+            <Users className="mr-1 inline h-3.5 w-3.5" /> {manage ? "Done" : "Move students"}
+          </button>
+        )}
       </div>
-      <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-        {a.groups.map((g) => (
-          <GroupCard key={g.roomCode} g={g} names={names} gradeUrl={`/classes/${view.class.id}/a/${a.id}/${g.roomCode}`} />
-        ))}
-      </ul>
-      {(manage || ungrouped.length > 0) && (
+
+      {solo ? (
+        <ul className="mt-3 divide-y divide-line rounded-xl border border-line" data-testid="student-list">
+          {view.students.map((s) => {
+            const g = a.groups.find((x) => x.members.includes(s.uid));
+            const st = g ? statusOf(g) : STATUS.idle;
+            const score = g?.grade ? gradeTotal(g.grade) : null;
+            return (
+              <li key={s.uid} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-2.5 text-sm" data-testid="student-row">
+                <span className="min-w-[8rem] flex-1 font-medium">{s.name}</span>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`} data-testid="student-status">
+                  {st.label}
+                </span>
+                <span className="w-28 text-xs text-fg-subtle">{g?.status?.lastActivity ? `active ${timeAgo(g.status.lastActivity)}` : ""}</span>
+                <span className="w-16 text-right text-sm font-semibold tabular">{score !== null && g?.grade ? `${score}/${rubricMax(g.grade.rows)}` : ""}</span>
+                {g?.status?.turnedInAt ? (
+                  <Link to={gradeUrl(g.roomCode)} className="press rounded-lg bg-primary px-2.5 py-1 text-xs font-semibold text-primary-fg hover:bg-primary-hover" data-testid="grade-group">
+                    {g.grade ? "Review" : "Grade"}
+                  </Link>
+                ) : (
+                  <span className="w-[3.25rem]" />
+                )}
+              </li>
+            );
+          })}
+          {!view.students.length && <li className="px-3.5 py-2.5 text-sm text-fg-subtle">No students yet. Share the class link.</li>}
+        </ul>
+      ) : (
+        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+          {a.groups.map((g) => (
+            <GroupCard key={g.roomCode} g={g} names={names} gradeUrl={gradeUrl(g.roomCode)} />
+          ))}
+        </ul>
+      )}
+      {!solo && (manage || ungrouped.length > 0) && (
         <div className="mt-3 rounded-xl border border-line px-3 py-2.5 text-sm">
-          {ungrouped.length > 0 && <p className="text-xs font-medium text-fg-muted">Not in a group yet: {ungrouped.map((s) => s.name).join(", ")}</p>}
+          {ungrouped.length > 0 && (
+            <p className="text-xs font-medium text-fg-muted">
+              Not in a group yet: {ungrouped.map((s) => s.name).join(", ")}. They'll be added to a group with space when they open the link, or you can pick one.
+            </p>
+          )}
           <ul className="mt-1.5 space-y-1">
             {(manage ? view.students : ungrouped).map((s) => {
               const current = a.groups.find((g) => g.members.includes(s.uid))?.roomCode ?? "";
@@ -245,11 +304,16 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
   );
 }
 
+const DEFAULT_REFLECTION = "What was hardest about this assignment?";
+
 function NewAssignmentDialog({ classId, students, onDone, onClose }: { classId: string; students: number; onDone: () => void; onClose: () => void }) {
   const [title, setTitle] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [project, setProject] = useState<ProjectDraft>(EMPTY_PROJECT);
+  const [mode, setMode] = useState<"solo" | "groups">("solo");
   const [size, setSize] = useState(3);
+  const [reflect, setReflect] = useState(true);
+  const [reflection, setReflection] = useState(DEFAULT_REFLECTION);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const template = PROJECT_TEMPLATES.find((t) => t.id === templateId);
@@ -266,12 +330,19 @@ function NewAssignmentDialog({ classId, students, onDone, onClose }: { classId: 
     setErr("");
     const d = await api<{ id: string }>(`/api/classes/${classId}/assignments`, {
       method: "POST",
-      body: JSON.stringify({ title: title.trim(), project, groupSize: size, ...(templateId ? { template: templateId } : {}) }),
+      body: JSON.stringify({
+        title: title.trim(),
+        project: { ...project, ...(reflect && reflection.trim() ? { reflection: reflection.trim() } : {}) },
+        mode,
+        groupSize: size,
+        ...(templateId ? { template: templateId } : {}),
+      }),
     });
     setBusy(false);
     if (d.error || !d.id) return setErr(d.error ?? "Couldn't create the assignment.");
     onDone();
   };
+  const choice = (on: boolean) => `press rounded-xl border px-3 py-2 text-left text-sm ${on ? "border-fg bg-surface-2" : "border-line-strong hover:border-fg/40"}`;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]" onClick={onClose}>
       <form
@@ -284,12 +355,44 @@ function NewAssignmentDialog({ classId, students, onDone, onClose }: { classId: 
         data-testid="new-assignment"
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold tracking-tight">New group assignment</h2>
+          <h2 className="text-xl font-semibold tracking-tight">New assignment</h2>
           <button type="button" onClick={onClose} className="press rounded-full p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <p className="mt-1 text-sm text-fg-muted">Every group gets its own project room with these rules. You'll see progress and grade turned-in work here, never their chat.</p>
+        <p className="mt-1 text-sm text-fg-muted">You'll get one link to post in Google Classroom. Each student who opens it gets their own room (or their group's), and everything shows up here for grading.</p>
+
+        <fieldset className="mt-5">
+          <legend className="text-sm font-medium">How do students work?</legend>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Solo or groups">
+            <button type="button" role="radio" aria-checked={mode === "solo"} onClick={() => setMode("solo")} className={choice(mode === "solo")} data-testid="mode-solo">
+              <div className="font-medium">On their own</div>
+              <div className="mt-0.5 text-xs text-fg-subtle">Every student gets their own room and their own grade.</div>
+            </button>
+            <button type="button" role="radio" aria-checked={mode === "groups"} onClick={() => setMode("groups")} className={choice(mode === "groups")} data-testid="mode-groups">
+              <div className="font-medium">In groups</div>
+              <div className="mt-0.5 text-xs text-fg-subtle">Groups share a room; each person's part shows on the receipt.</div>
+            </button>
+          </div>
+          {mode === "groups" && (
+            <label className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+              <span className="font-medium">Groups of</span>
+              <input
+                type="number"
+                min={1}
+                max={10}
+                value={size}
+                aria-label="Group size"
+                onChange={(e) => setSize(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+                className="w-16 rounded-lg border border-line-strong bg-transparent px-2 py-1"
+              />
+              <span className="text-fg-subtle">
+                → {groups} group{groups === 1 ? "" : "s"} for {students} student{students === 1 ? "" : "s"}, picked at random. Late joiners go into a group with space.
+              </span>
+            </label>
+          )}
+        </fieldset>
+
         <fieldset className="mt-5">
           <legend className="text-sm font-medium">Start from a template</legend>
           <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Template">
@@ -309,7 +412,7 @@ function NewAssignmentDialog({ classId, students, onDone, onClose }: { classId: 
           </div>
           {template && (
             <p className="mt-2 text-xs text-fg-subtle">
-              Each group gets {template.files.map((f) => `${f.title} (${FILE_INFO[f.kind].label.toLowerCase()})`).join(" and ")}, plus {template.tasks.length} starter tasks.
+              Each {mode === "solo" ? "student" : "group"} gets {template.files.map((f) => `${f.title} (${FILE_INFO[f.kind].label.toLowerCase()})`).join(" and ")}, plus {template.tasks.length} starter tasks.
             </p>
           )}
         </fieldset>
@@ -320,28 +423,26 @@ function NewAssignmentDialog({ classId, students, onDone, onClose }: { classId: 
         <div className="mt-4">
           <ProjectEditor value={project} onChange={setProject} />
         </div>
-        <label className="mt-4 flex items-center gap-2 text-sm">
-          <span className="font-medium">Groups of</span>
-          <input
-            type="number"
-            min={1}
-            max={10}
-            value={size}
-            aria-label="Group size"
-            onChange={(e) => setSize(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
-            className="w-16 rounded-lg border border-line-strong bg-transparent px-2 py-1"
-          />
-          <span className="text-fg-subtle">
-            → {groups} group{groups === 1 ? "" : "s"} for {students} student{students === 1 ? "" : "s"}, picked at random. You can move people after.
-          </span>
-        </label>
+        <details className="mt-4 rounded-xl border border-line px-3 py-2.5">
+          <summary className="cursor-pointer text-sm font-medium">More options</summary>
+          <label className="mt-3 flex items-start gap-2.5 text-sm">
+            <input type="checkbox" className="mt-0.5" checked={reflect} onChange={(e) => setReflect(e.target.checked)} data-testid="reflect-toggle" />
+            <span>
+              <span className="font-medium">Ask a reflection question when students turn in</span>
+              <span className="block text-xs text-fg-subtle">Their answer shows on the receipt. It takes them half a minute and tells you a lot.</span>
+            </span>
+          </label>
+          {reflect && (
+            <Input aria-label="Reflection question" maxLength={300} value={reflection} onChange={(e) => setReflection(e.target.value)} className="mt-2" />
+          )}
+        </details>
         {err && <p className="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">{err}</p>}
         <div className="mt-5 flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancel
           </Button>
           <Button type="submit" disabled={busy} data-testid="create-assignment">
-            {busy ? "Creating rooms…" : "Create assignment"}
+            {busy ? "Creating…" : "Create assignment"}
           </Button>
         </div>
       </form>

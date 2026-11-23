@@ -53,11 +53,40 @@ export interface GroupInfo {
 export interface Assignment {
   id: string;
   title: string;
-  project: Pick<ProjectSettings, "instructions" | "rubric" | "ai" | "dueAt" | "pasteGuard">;
+  project: Pick<ProjectSettings, "instructions" | "rubric" | "ai" | "dueAt" | "pasteGuard" | "reflection">;
   template?: string;
   createdAt: number;
+  /** Solo: every student gets their own room. Groups: students share a room. */
+  mode: AssignmentMode;
+  groupSize: number;
+  /** Rooms that exist so far (solo rooms appear when a student first opens the assignment). */
   groups: GroupInfo[];
 }
+
+export type AssignmentMode = "solo" | "groups";
+
+/** A group whose room hasn't been made yet (it's made when the first member opens the assignment). */
+export const PENDING = "pending-";
+export const isPending = (roomCode: string) => roomCode.startsWith(PENDING);
+
+/**
+ * Where a student who joined after groups were made should go: the group with the most
+ * space that isn't full yet (-1 means start a new group).
+ */
+export function placeLateJoiner(groups: { members: string[] }[], size: number): number {
+  let best = -1;
+  groups.forEach((g, i) => {
+    if (g.members.length >= size) return;
+    if (best < 0 || g.members.length < groups[best].members.length) best = i;
+  });
+  return best;
+}
+
+/** The link a teacher posts to Classroom: every student who opens it lands in their own (or their group's) room. */
+export const assignmentPath = (classCode: string, assignmentId: string) => `/c/${classCode}/a/${assignmentId}`;
+
+/** About how many words a number of typed characters is (for the work timeline). */
+export const wordsFromChars = (chars: number) => Math.round(chars / 6);
 
 /** Everything the teacher's dashboard needs. */
 export interface ClassView {
@@ -82,7 +111,7 @@ export interface GradingView {
 export interface StudentClassView {
   name: string;
   joined: boolean;
-  assignments: { id: string; title: string; dueAt?: number; roomCode?: string; groupName?: string; turnedIn?: boolean }[];
+  assignments: { id: string; title: string; dueAt?: number; mode: AssignmentMode; roomCode?: string; groupName?: string; turnedIn?: boolean }[];
 }
 
 export const CLASS_LIMITS = { name: 80, students: 200, groupSize: 10 } as const;

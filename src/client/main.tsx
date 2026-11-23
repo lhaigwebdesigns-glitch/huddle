@@ -43,6 +43,7 @@ createRoot(document.getElementById("root")!).render(
         <Route path="/classes/:id" element={<Suspense fallback={null}><ClassPage /></Suspense>} />
         <Route path="/classes/:id/a/:aid/:room" element={<Suspense fallback={null}><Grading /></Suspense>} />
         <Route path="/c/:code" element={<StudentClass />} />
+        <Route path="/c/:code/a/:aid" element={<StudentClass />} />
         <Route path="/s/:id" element={<SharedChat />} />
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/terms" element={<Terms />} />

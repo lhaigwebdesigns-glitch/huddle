@@ -1,27 +1,73 @@
-import { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowRight, BookOpen, Check } from "lucide-react";
 import { ageConfirmed, confirmAge, getIdentity, setName } from "../lib/identity";
 import { AgeCheck } from "./RoomPage";
 import { signInUrl, useAccount } from "../lib/account";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { normalizeCode } from "../../shared/code";
-import type { StudentClassView } from "../../shared/classes";
+import { assignmentPath, type AssignmentMode, type StudentClassView } from "../../shared/classes";
 
-/** /c/:code: a student joins a class with its code, then sees their assignments and group rooms. */
+type AssignmentInfo = { className: string; title: string; mode: AssignmentMode; dueAt?: number };
+
+const dueText = (ms?: number) => (ms ? ` · due ${new Date(ms).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "");
+
+/**
+ * /c/:code: a student joins a class with its code, then sees their assignments.
+ * /c/:code/a/:aid: an assignment link (what teachers post to Classroom). After joining if
+ * needed, it opens the student's own room (solo) or their group's room, made on first open.
+ */
 export default function StudentClass() {
-  const code = normalizeCode(useParams().code ?? "");
+  const params = useParams();
+  const code = normalizeCode(params.code ?? "");
+  const aid = params.aid ?? "";
+  const nav = useNavigate();
   const [me] = useState(() => getIdentity());
   const [view, setView] = useState<StudentClassView | null>(null);
+  const [info, setInfo] = useState<AssignmentInfo | null>(null);
   const [err, setErr] = useState("");
+  const [opening, setOpening] = useState(false);
   const [name, setNameInput] = useState(me.name);
   const [age, setAge] = useState(ageConfirmed);
   const account = useAccount();
+  const opened = useRef(false);
+
   const load = () =>
     fetch(`/api/classes/join/${code}?uid=${encodeURIComponent(me.uid)}`)
       .then((r) => r.json() as Promise<StudentClassView & { error?: string }>)
       .then((d) => (d.error ? setErr(d.error) : setView(d)));
-  useEffect(() => void load(), [code]);
+
+  /** Finds or makes this student's room for the assignment, then goes there. */
+  const openAssignment = async () => {
+    if (opened.current) return;
+    opened.current = true;
+    setOpening(true);
+    setErr("");
+    const r = await fetch(`/api/classes/join/${code}/a/${aid}/open`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ uid: me.uid }),
+    });
+    const d = (await r.json().catch(() => ({}))) as { roomCode?: string; needsJoin?: boolean; error?: string };
+    if (d.roomCode) return nav(`/r/${d.roomCode}`, { replace: true });
+    opened.current = false;
+    setOpening(false);
+    if (!d.needsJoin) setErr(d.error ?? "Couldn't open the assignment. Try again.");
+  };
+
+  useEffect(() => {
+    void load();
+    if (aid)
+      fetch(`/api/classes/join/${code}/a/${aid}`)
+        .then((r) => r.json() as Promise<AssignmentInfo & { error?: string }>)
+        .then((d) => (d.error ? setErr(d.error) : setInfo(d)));
+  }, [code, aid]);
+
+  // An assignment link opens the room straight away once the student is in the class.
+  useEffect(() => {
+    if (aid && view?.joined && info) void openAssignment();
+  }, [aid, view?.joined, info]);
+
   const join = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -35,8 +81,91 @@ export default function StudentClass() {
     });
     const d = (await r.json()) as { error?: string };
     if (d.error) return setErr(d.error);
+    setErr("");
     load();
   };
+
+  const card = (() => {
+    if (err && !view) return <p className="text-sm text-fg-muted">{err}</p>;
+    if (!view || (aid && !info && !err)) return <p className="text-sm text-fg-subtle">Loading…</p>;
+    if (!view.joined)
+      return (
+        <form onSubmit={join}>
+          <div className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{info ? view.name : "Join a class"}</div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">{info ? info.title : view.name}</h1>
+          {info && <p className="mt-1 text-sm text-fg-subtle">{(info.mode === "solo" ? "Your own work" : "Group project") + dueText(info.dueAt)}</p>}
+          <p className="mt-3 text-[15px] text-fg-muted">Type your name the way your teacher will recognize it.</p>
+          <Input autoFocus maxLength={32} value={name} onChange={(e) => setNameInput(e.target.value)} placeholder="Your name" aria-label="Your name" className="mt-4 h-11" />
+          <AgeCheck checked={age} onChange={setAge} />
+          {err && (
+            <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">
+              {err}
+            </p>
+          )}
+          <Button className="mt-3 w-full" size="lg" data-testid="join-class">
+            {info ? "Start" : "Join class"} <ArrowRight className="h-4 w-4" />
+          </Button>
+        </form>
+      );
+    if (aid)
+      return (
+        <div role="status" data-testid="opening-assignment">
+          <div className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{view.name}</div>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">{info?.title}</h1>
+          <p className="mt-3 text-[15px] text-fg-muted">{opening ? "Opening your room…" : err || "Getting things ready…"}</p>
+          {err && !opening && (
+            <Button className="mt-4 w-full" onClick={() => void openAssignment()}>
+              Try again
+            </Button>
+          )}
+          <Link to={`/c/${code}`} className="mt-4 inline-block text-sm text-fg-muted underline underline-offset-2 hover:text-fg">
+            See all your assignments
+          </Link>
+        </div>
+      );
+    return (
+      <div>
+        <div className="flex items-center gap-1.5 text-xs font-medium text-fg-subtle">
+          <Check className="h-3.5 w-3.5" /> You're in this class
+        </div>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{view.name}</h1>
+        {account.user === null && account.providers.includes("google") && (
+          <p className="mt-2 text-xs text-fg-subtle">
+            Using more than one device?{" "}
+            <a href={signInUrl("google", `/c/${code}`)} className="font-medium text-fg-muted underline underline-offset-2 hover:text-fg" data-testid="student-google">
+              Sign in with your school Google account
+            </a>{" "}
+            to keep this class everywhere.
+          </p>
+        )}
+        <h2 className="mt-6 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Your assignments</h2>
+        {view.assignments.length === 0 && <p className="mt-2 text-sm text-fg-muted">Nothing yet. Your teacher's assignments will show up here.</p>}
+        <ul className="mt-2 space-y-2">
+          {view.assignments.map((a) => (
+            <li key={a.id} className="rounded-2xl border border-line px-4 py-3" data-testid="student-assignment">
+              <div className="flex items-center gap-2">
+                <BookOpen className="h-4 w-4 shrink-0 text-fg-muted" />
+                <span className="min-w-0 flex-1 font-medium">{a.title}</span>
+                {a.turnedIn && <span className="text-xs text-fg-subtle">Turned in</span>}
+              </div>
+              <p className="mt-0.5 text-xs text-fg-subtle">
+                {a.mode === "solo" ? "Your own work" : (a.groupName ?? "Group project")}
+                {dueText(a.dueAt)}
+              </p>
+              <Link
+                to={assignmentPath(code, a.id)}
+                className="press mt-2.5 inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover"
+                data-testid="open-group-room"
+              >
+                {a.mode === "solo" ? "Open your work" : "Open your group's room"} <ArrowRight className="h-4 w-4" />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  })();
+
   return (
     <div className="flex min-h-full flex-col bg-sidebar">
       <header className="flex h-14 items-center gap-2 px-4">
@@ -48,61 +177,7 @@ export default function StudentClass() {
       </header>
       <main className="flex flex-1 items-start justify-center px-4 pb-16 pt-[8vh]">
         <div className="rise w-full max-w-md rounded-[24px] border border-line bg-bg p-7 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.18)]" data-testid="student-class">
-          {err && !view ? (
-            <p className="text-sm text-fg-muted">{err}</p>
-          ) : !view ? (
-            <p className="text-sm text-fg-subtle">Loading…</p>
-          ) : !view.joined ? (
-            <form onSubmit={join}>
-              <div className="text-xs font-medium uppercase tracking-wide text-fg-subtle">Join a class</div>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight">{view.name}</h1>
-              <p className="mt-1.5 text-[15px] text-fg-muted">Type your name the way your teacher will recognize it.</p>
-              <Input autoFocus maxLength={32} value={name} onChange={(e) => setNameInput(e.target.value)} placeholder="Your name" aria-label="Your name" className="mt-5 h-11" />
-              <AgeCheck checked={age} onChange={setAge} />
-              {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">{err}</p>}
-              <Button className="mt-3 w-full" size="lg" data-testid="join-class">
-                Join class <ArrowRight className="h-4 w-4" />
-              </Button>
-            </form>
-          ) : (
-            <div>
-              <div className="flex items-center gap-1.5 text-xs font-medium text-fg-subtle">
-                <Check className="h-3.5 w-3.5" /> You're in this class
-              </div>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight">{view.name}</h1>
-              {account.user === null && account.providers.includes("google") && (
-                <p className="mt-2 text-xs text-fg-subtle">
-                  Using more than one device?{" "}
-                  <a href={signInUrl("google", `/c/${code}`)} className="font-medium text-fg-muted underline underline-offset-2 hover:text-fg" data-testid="student-google">
-                    Sign in with your school Google account
-                  </a>{" "}
-                  to keep this class everywhere.
-                </p>
-              )}
-              <h2 className="mt-6 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Your assignments</h2>
-              {view.assignments.length === 0 && <p className="mt-2 text-sm text-fg-muted">Nothing yet. Your teacher's group projects will show up here.</p>}
-              <ul className="mt-2 space-y-2">
-                {view.assignments.map((a) => (
-                  <li key={a.id} className="rounded-2xl border border-line px-4 py-3" data-testid="student-assignment">
-                    <div className="flex items-center gap-2">
-                      <BookOpen className="h-4 w-4 shrink-0 text-fg-muted" />
-                      <span className="min-w-0 flex-1 font-medium">{a.title}</span>
-                      {a.turnedIn && <span className="text-xs text-fg-subtle">Turned in</span>}
-                    </div>
-                    <p className="mt-0.5 text-xs text-fg-subtle">
-                      {a.groupName ?? "Your teacher hasn't put you in a group yet"}
-                      {a.dueAt && ` · due ${new Date(a.dueAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}`}
-                    </p>
-                    {a.roomCode && (
-                      <Link to={`/r/${a.roomCode}`} className="press mt-2.5 inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover" data-testid="open-group-room">
-                        Open your group's room <ArrowRight className="h-4 w-4" />
-                      </Link>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {card}
         </div>
       </main>
     </div>

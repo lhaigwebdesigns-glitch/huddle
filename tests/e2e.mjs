@@ -697,6 +697,7 @@ try {
   await park.getByTestId("roster").getByText("Dee").waitFor();
   ok(true, "students join with the class link, and the teacher sees the roster");
   await park.getByTestId("new-assignment-btn").click();
+  await park.getByTestId("mode-groups").click();
   await park.getByTestId("a-template-presentation").click();
   await park.getByLabel("Assignment title").fill("WWI presentation");
   await park.getByLabel("Group size").fill("2");
@@ -704,7 +705,7 @@ try {
   await park.getByTestId("group-card").nth(1).waitFor({ timeout: 20000 });
   ok((await park.getByTestId("group-card").count()) === 2, "an assignment makes one project room per group");
   const post = new URL(await park.getByTestId("post-to-classroom").getAttribute("href"));
-  ok(post.searchParams.get("title") === "WWI presentation" && post.searchParams.get("url") === classLink, "each assignment can be posted to Classroom with its title");
+  ok(post.searchParams.get("title") === "WWI presentation" && (post.searchParams.get("url") ?? "").startsWith(`${classLink}/a/`), "each assignment is posted to Classroom with its title and its own link");
   const rooms = [];
   for (const k of kids) {
     await k.reload();
@@ -717,6 +718,7 @@ try {
   // One group turns in.
   const first = kids[0];
   await first.getByTestId("turn-in").click();
+  await first.getByTestId("receipt-note").fill("I made the title slide.");
   await first.getByTestId("confirm-turn-in").click();
   await first.getByTestId("turned-in").waitFor();
   await park.reload();
@@ -746,8 +748,83 @@ try {
   await park.waitForURL(/\/classes\/[a-z0-9]+\/a\/[a-z0-9]+\/[A-Z0-9]{6}$/, { timeout: 15000 });
   ok(true, "a teacher opening a group's room is sent to grading, not the chat");
 
+  // ---------- Solo assignments: one link, a room for every student, made on first open ----------
+  await park.goto(classUrl);
+  await park.getByTestId("new-assignment-btn").click();
+  await park.getByTestId("mode-solo").click();
+  await park.getByLabel("Assignment title").fill("Reading response");
+  await park.getByTestId("ai-full").click();
+  await park.getByTestId("create-assignment").click();
+  const soloSection = park.getByTestId("assignment").filter({ hasText: "Reading response" });
+  await soloSection.getByTestId("student-row").first().waitFor();
+  ok(
+    (await soloSection.getByTestId("student-row").count()) === 4 && (await soloSection.getByTestId("student-status").filter({ hasText: "Not started" }).count()) === 4,
+    "a solo assignment lists every student as Not started, before any rooms exist",
+  );
+  const soloLink = await soloSection.getByTestId("copy-assignment-link").getAttribute("data-link");
+  ok(/\/c\/[A-Z0-9]{6}\/a\/[a-z0-9]+$/.test(soloLink), "each assignment has its own link to post to Classroom");
+  const soloRooms = [];
+  for (const k of [kids[0], kids[1]]) {
+    await k.goto(soloLink);
+    await k.waitForURL(/\/r\/[A-Z0-9]{6}$/, { timeout: 20000 });
+    await k.getByTestId("project-bar").waitFor();
+    soloRooms.push(k.url().split("/r/")[1]);
+  }
+  ok(soloRooms[0] !== soloRooms[1] && !rooms.includes(soloRooms[0]), "each student who opens the link gets their own room");
+  await kids[0].goto(soloLink);
+  await kids[0].waitForURL(/\/r\/[A-Z0-9]{6}$/, { timeout: 20000 });
+  ok(kids[0].url().endsWith(soloRooms[0]), "opening the link again goes back to the same room");
+  // A student who wasn't in the class yet joins from the assignment link and still gets a room.
+  const eve = await (await browser.newContext({ viewport: { width: 1200, height: 900 } })).newPage();
+  await eve.goto(soloLink);
+  await eve.getByText("Reading response").first().waitFor();
+  await eve.getByLabel("Your name").fill("Eve");
+  await eve.getByTestId("join-class").click();
+  await eve.waitForURL(/\/r\/[A-Z0-9]{6}$/, { timeout: 20000 });
+  ok(!soloRooms.includes(eve.url().split("/r/")[1]), "a student who joins late gets their own room from the same link");
+
+  // Work timeline: a large paste shows openly on the student's receipt.
+  const ben = kids[1];
+  await ben.getByTestId("composer").fill("make a doc with our plan");
+  await ben.getByTestId("composer").press("Enter");
+  await ben.getByTestId("doc-editor").waitFor({ timeout: 15000 });
+  await ben.evaluate(() =>
+    document.querySelector('[data-testid="doc-editor"]').editor.chain().focus("end").insertContent(`<p>${"Reading responses help me think about the story. ".repeat(10)}</p>`).run(),
+  );
+  await ben.waitForTimeout(2500);
+  await ben.getByTestId("turn-in").click();
+  await ben.getByTestId("timeline-paste").first().waitFor({ timeout: 20000 });
+  ok(true, "a large paste shows on the work timeline");
+  ok(await ben.getByTestId("confirm-turn-in").isDisabled(), "the reflection question must be answered before turning in");
+  await ben.getByTestId("reflection-question").getByText("What was hardest about this assignment?").waitFor();
+  await ben.getByTestId("receipt-note").fill("Finding quotes that matched my point.");
+  await ben.getByTestId("confirm-turn-in").click();
+  await ben.getByTestId("turned-in").waitFor();
+  // Ava turns in too, then the teacher grades with Start grading → Save & next.
+  await kids[0].getByTestId("turn-in").click();
+  await kids[0].getByTestId("receipt-note").fill("Staying focused.");
+  await kids[0].getByTestId("confirm-turn-in").click();
+  await kids[0].getByTestId("turned-in").waitFor();
+  await park.goto(classUrl);
+  await soloSection.getByTestId("start-grading").getByText("Start grading (2)").waitFor();
+  await soloSection.getByTestId("start-grading").click();
+  await park.getByTestId("grader").waitFor();
+  const firstGraded = await park.getByTestId("grading-title").innerText();
+  await park.getByTestId("save-next").click();
+  await park.waitForFunction((t) => document.querySelector('[data-testid="grading-title"]')?.textContent !== t, firstGraded);
+  await park.getByTestId("save-next").click();
+  await park.getByTestId("all-graded").waitFor();
+  ok(true, "Start grading → Save & next walks through every turned-in student, then says all are graded");
+  await eve.close();
+
+
   // Report: a student sends one message from the group chat to the teacher.
   const sameGroup = kids.findIndex((k, i) => i > 0 && rooms[i] === rooms[0]);
+  // The solo checks moved these students into their own rooms; go back to the group rooms.
+  for (const i of [0, sameGroup]) {
+    await kids[i].goto(`${BASE}/r/${rooms[i]}`);
+    await kids[i].getByTestId("composer").waitFor();
+  }
   await kids[0].getByTestId("composer").fill("this is a mean message");
   await kids[0].getByTestId("composer").press("Enter");
   const partner = kids[sameGroup];

@@ -1,6 +1,6 @@
 # Huddle Projects: build plan
 
-Last updated Nov 21, 2026. Sizes: **S** = an evening, **M** = a weekend, **L** = a few weekends.
+Last updated Nov 22, 2026. Sizes: **S** = an evening, **M** = a weekend, **L** = a few weekends.
 
 **Status:** ✅ done · 🟡 partly done · ⬜ not started
 
@@ -13,13 +13,13 @@ Last updated Nov 21, 2026. Sizes: **S** = an evening, **M** = a weekend, **L** =
 - paste block
 - turn in with locked files
 
-**Builds 1–7 are live. Build 8 (the new landing page) is built**, waiting to merge and deploy. **Next: the pilot with your teacher's class.** Every pre-pilot build is done.
+**Builds 1–8 are live. Build 9 (assignments for every student) is built**, waiting to merge and deploy. Next: **Build 10** (timed assignments) and **Build 11** (the teacher's path), then the pilot.
 
 **Known limit of receipts:** when someone splits a paragraph in the middle (presses Enter inside it), the doc editor rewrites the text after the split, so that text is credited to the person who split it. Typing, deleting and pressing Enter at the end of a paragraph are counted correctly.
 
 ## The builds, in order
 
-Each build is one PR, tested and deployed before the next one starts. The first 8 builds are what the pilot needs.
+Each build is one PR, tested and deployed before the next one starts. Builds 1–11 come before the pilot.
 
 | Build | What | Items | Size | Why now |
 |---|---|---|---|---|
@@ -31,18 +31,50 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 | ✅ 6 | **Safety and limits** | 64, 66, 67, 68, 69, 70, 62, 63 | M | Required before any students use it |
 | ✅ 7 | **Docs and slides basics** | 39, 40, 42, 45, 48, 52 | L | What students need to make real projects |
 | ✅ 8 | **New landing page** | 28–38 | M | Teachers need a page to sign up from |
+| ✅ 9 | **Assignments for every student** | new | L | One link per assignment; solo or groups; a room per student made on first click; per-student grading queue; work timeline |
+| ⬜ 10 | **Timed assignments** | new | M | Work windows (e.g. class time only), changing deadlines, extra-time requests, teacher overrides |
+| ⬜ 11 | **The teacher's path** | 72 + new | M | Today home screen, step-by-step assignment wizard, first-time tour, plain words everywhere |
 | | **The pilot with your teacher's class** | | | Fix her class's top complaints first |
-| ⬜ 9 | AI labels and "Who wrote this?" | 2, 4, 47 | M | After receipts prove useful |
-| ⬜ 10 | Classroom connection | 16, 17, 18, 21 | L | After Google approves the access |
-| ⬜ 11 | Confusion summary | 26, 27 | L | Only if your teacher says she'd use it |
-| ⬜ 12 | The rest of Priority 2 | 41, 43, 44, 49–51, 54–59, 61, 71–74 | L | Polish after the pilot |
-| ⬜ 13 | Paid plans | 75–78 | M | Before charging |
+| ⬜ 12 | AI labels and "Who wrote this?" | 2, 4, 47 | M | After receipts prove useful |
+| ⬜ 13 | Classroom connection | 16, 17, 18, 21 | L | After Google approves the access |
+| ⬜ 14 | Confusion summary | 26, 27 | L | Only if your teacher says she'd use it |
+| ⬜ 15 | The rest of Priority 2 | 41, 43, 44, 49–51, 54–59, 61, 71, 73, 74 | L | Polish after the pilot |
+| ⬜ 16 | Paid plans | 75–78 | M | Before charging |
 
-**One step that isn't code:** have the conversation with your teacher before Build 4. Her answers about grading, Classroom and school app approval decide how Builds 4 and 5 look.
+**Steps that aren't code:** talk to your teacher (grading, Classroom, school app approval, and whether she'd want "where they got stuck"); have the privacy policy reviewed; decide about paid AI; later, a domain and an adult-owned Google Cloud project for the Classroom connection.
+
+## Builds 9–11 (next, before the pilot)
+
+### Build 9: assignments for every student
+- **One link per assignment** (`/c/CODE/a/ID`), posted to Classroom once. The same link works for solo and group work.
+- **Solo or groups,** chosen per assignment. Solo gives every student their own room.
+- **Rooms made on first click,** so late joiners just work, and big classes don't create dozens of empty rooms up front.
+- **One assignment page for the teacher:** a row per student (or group) with status, and a **grading queue**: Start grading → Save & next → done.
+- **Work timeline** for each student: words added per session, in class or at home, and large pastes shown openly.
+- **Reflection at turn in:** one short question ("What was hardest?").
+
+### Build 10: timed assignments
+- **Work windows:** e.g. "Mon–Fri, 9:10–9:55". Outside them, files are read-only with a note saying when they open again.
+- **Deadlines** changeable for everyone, one group or one student.
+- **Extra time:** students request it with a reason; teachers approve or decline from the dashboard.
+- **Overrides:** the teacher unlocks or extends anyone without a request (absences, accommodations).
+- **Grading** shows extensions and late turn-ins.
+
+### Build 11: the teacher's path
+- **Today home screen:** to grade, needs your answer (time requests, reports), heads-up (due soon, not started), or "You're all caught up."
+- **Step-by-step assignment wizard:** What is it → How students work → Share. Sensible defaults; advanced options hidden.
+- **First-time tour:** make a class, make an assignment, grade.
+- **Plain words and one main button per screen,** across every teacher page.
+
+### Waiting on the pilot
+- **"Where they got stuck"** for solo work (topics asked in tutor mode, shown to the student too).
+- **Focus record** for timed sessions (left the page N times), shown openly.
+
+Ask your teacher about both before building them.
 
 ---
 
-## Build 2: contribution receipts (next)
+## Build 2: contribution receipts (done)
 
 **Goal:** every project has a receipt. Each member's share of the work, built up automatically, which the group reviews together before turning it in.
 
@@ -146,9 +178,9 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 | # | Build | Size | Status |
 |---|---|---|---|
 | 1 | Track who did what in every file: words, edits, slides, cells, files, tasks | L | ✅ Build 2 (tasks in Build 3) |
-| 2 | Label AI help inside files (information only, no "% AI" score) | M | ⬜ Build 9 (receipts count AI help from Build 2) |
+| 2 | Label AI help inside files (information only, no "% AI" score) | M | ⬜ Build 12 (receipts count AI help from Build 2) |
 | 3 | Contribution receipt: share of the work, timeline, files touched, PDF | M | ✅ Build 2 |
-| 4 | "Who wrote this?" view | M | ⬜ Build 9 |
+| 4 | "Who wrote this?" view | M | ⬜ Build 12 |
 | 5 | Group review and notes before turning in | S | ✅ Build 2 |
 | 6 | "What your teacher sees" preview | S | ✅ Build 2 |
 | 7 | Privacy rules: teacher sees turned-in receipts only, never the chat | S | ✅ Builds 2 and 4 |
@@ -169,12 +201,12 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 |---|---|---|---|
 | 14 | Share to Classroom button | S | ✅ Build 5 |
 | 15 | Google sign-in as the main way in | S | ✅ Build 5 |
-| 16 | Classroom connection: roster, assignment, turned-in status | L | ⬜ Build 10 |
-| 17 | Automatic groups from the roster | M | 🟡 Random groups from the class roster (Build 4); Classroom roster in Build 10 |
-| 18 | Send grades back to Classroom | M | ⬜ Build 10 |
+| 16 | Classroom connection: roster, assignment, turned-in status | L | ⬜ Build 13 |
+| 17 | Automatic groups from the roster | M | 🟡 Random groups from the class roster (Build 4); Classroom roster in Build 13 |
+| 18 | Send grades back to Classroom | M | ⬜ Build 13 |
 | 19 | Google's review of Classroom access | M | 🟡 Checklist ready (docs/GOOGLE_CLASSROOM_REVIEW.md); needs your own domain and an adult-owned Google Cloud project first |
 | 20 | Huddle inside Classroom (add-on) | L | ⬜ After the pilot |
-| 21 | Assign, turn in and grade without Classroom | M | ⬜ Build 10 |
+| 21 | Assign, turn in and grade without Classroom | M | ⬜ Build 13 |
 
 ### 4. Teacher tools
 | # | Build | Size | Status |
@@ -183,8 +215,8 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 | 23 | Teacher dashboard (submitted work only) | M | ✅ Build 4 |
 | 24 | Grading screen | L | ✅ Build 4 |
 | 25 | Grade export | S | ✅ Build 4 (CSV) |
-| 26 | Confusion summary | L | ⬜ Build 11, only if the teacher wants it |
-| 27 | "I'm still stuck, tell my teacher" button | S | ⬜ Build 11 |
+| 26 | Confusion summary | L | ⬜ Build 14, only if the teacher wants it |
+| 27 | "I'm still stuck, tell my teacher" button | S | ⬜ Build 14 |
 
 ### 5. Landing page
 | # | Change | Size | Status |
@@ -196,39 +228,39 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 |---|---|---|---|
 | 39 | Images | M | ✅ Build 7 |
 | 40 | Tables | M | ✅ Build 7 |
-| 41 | Comments | L | ⬜ Build 12 |
+| 41 | Comments | L | ⬜ Build 15 |
 | 42 | Highlight, color, links, checklists, alignment | S | ✅ Build 7 |
-| 43 | Outline, word count, page count | S | ⬜ Build 12 |
-| 44 | Citations | M | ⬜ Build 12 |
+| 43 | Outline, word count, page count | S | ⬜ Build 15 |
+| 44 | Citations | M | ⬜ Build 15 |
 | 45 | Export to PDF and Word in school format | M | ✅ Build 7 |
-| 46 | Section owners | S | ⬜ Build 12 (slide owners shipped in Build 7) |
-| 47 | AI on selected text | M | ⬜ Build 9 |
+| 46 | Section owners | S | ⬜ Build 15 (slide owners shipped in Build 7) |
+| 47 | AI on selected text | M | ⬜ Build 12 |
 
 ### 7. Slides
 | # | Build | Size | Status |
 |---|---|---|---|
 | 48 | Free placement | L | ✅ Build 7 (free-layout slides: text, images, shapes; drag, resize, snap guides) |
-| 49 | More layouts and themes | M | ⬜ Build 12 |
-| 50 | Images on slides | M | ⬜ Build 12 |
+| 49 | More layouts and themes | M | ⬜ Build 15 |
+| 50 | Images on slides | M | ⬜ Build 15 |
 | 51 | Speaker notes | S | ✅ Already there |
 | 52 | Presenter mode | M | ✅ Already there (present, notes, the room follows along) |
 | 53 | Slide owners | S | ✅ Build 7 |
-| 54 | Reorder, duplicate, sorter view | S | ⬜ Build 12 |
-| 55 | Better AI decks | M | ⬜ Build 12 |
+| 54 | Reorder, duplicate, sorter view | S | ⬜ Build 15 |
+| 55 | Better AI decks | M | ⬜ Build 15 |
 | 56 | PDF export and Google Slides check | S | 🟡 PPTX and PDF (print) work, including free-layout slides; Google Slides import not checked |
 
 ### 8. Sheets, forms and whiteboard
 | # | Build | Size | Status |
 |---|---|---|---|
-| 57 | Sheets: sort, filter, freeze, resize, tabs | M | ⬜ Build 12 |
+| 57 | Sheets: sort, filter, freeze, resize, tabs | M | ⬜ Build 15 |
 | 58 | Forms into sheets and charts | S | 🟡 Partly exists |
-| 59 | Whiteboard basics and a brainstorm template | M | ⬜ Build 12 |
+| 59 | Whiteboard basics and a brainstorm template | M | ⬜ Build 15 |
 
 ### 9. AI
 | # | Build | Size | Status |
 |---|---|---|---|
 | 60 | Group-aware AI | M | ✅ Builds 1 and 3 (knows tasks, owners, roles; can add tasks) |
-| 61 | Feedback against the rubric | M | 🟡 The AI has the rubric (Build 1); a dedicated button in Build 12 |
+| 61 | Feedback against the rubric | M | 🟡 The AI has the rubric (Build 1); a dedicated button in Build 15 |
 | 62 | Paid AI fallback and per-room limits | M | 🟡 Per-room and per-person limits exist; a paid fallback needs your OK to spend money |
 | 63 | Self-repairing router | S | ✅ Build 6 (skips retired models, alerts on /admin) |
 
@@ -246,12 +278,12 @@ Each build is one PR, tested and deployed before the next one starts. The first 
 ### 11. Feel and polish
 | # | Build | Size | Status |
 |---|---|---|---|
-| 71 | Phone experience everywhere | M | ⬜ Build 12 |
-| 72 | First-project walkthrough | S | ⬜ Build 12 |
-| 73 | In-app reminders | M | ⬜ Build 12 |
-| 74 | Fast on slow Wi-Fi | S | ⬜ Build 12 |
+| 71 | Phone experience everywhere | M | ⬜ Build 15 |
+| 72 | First-project walkthrough | S | ⬜ Build 11 |
+| 73 | In-app reminders | M | ⬜ Build 15 |
+| 74 | Fast on slow Wi-Fi | S | ⬜ Build 15 |
 
 ### 12. Before you charge
 | # | Build | Size | Status |
 |---|---|---|---|
-| 75–78 | Plans, Stripe (owned by your guardian), billing page, founding price | M | ⬜ Build 13 |
+| 75–78 | Plans, Stripe (owned by your guardian), billing page, founding price | M | ⬜ Build 16 |

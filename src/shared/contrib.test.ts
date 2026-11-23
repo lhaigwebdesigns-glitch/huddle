@@ -59,3 +59,21 @@ describe("contribution shares", () => {
     expect(sharesOf(d, "doc", who)).toEqual({});
   });
 });
+
+describe("work timeline", () => {
+  it("counts the characters one edit added, so a big paste stands out from typing", async () => {
+    const { insertedChars, PASTE_CHARS } = await import("./contrib");
+    const doc = new Y.Doc();
+    doc.clientID = 7;
+    const t = doc.getText("t");
+    t.insert(0, "a");
+    const before = (Y.decodeStateVector(Y.encodeStateVector(doc)).get(7) ?? 0);
+    t.insert(1, "b");
+    expect(insertedChars(doc, 7, before)).toBe(1);
+    const beforePaste = (Y.decodeStateVector(Y.encodeStateVector(doc)).get(7) ?? 0);
+    t.insert(2, "x".repeat(450));
+    expect(insertedChars(doc, 7, beforePaste)).toBe(450);
+    expect(450 >= PASTE_CHARS).toBe(true);
+    expect(insertedChars(doc, 99, 0)).toBe(0);
+  });
+});

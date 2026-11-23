@@ -87,3 +87,26 @@ export function sharesOf(doc: Y.Doc, kind: FileKind, authorOf: (client: number) 
 
 /** "Mon, Nov 23" style key for a timeline day (UTC, so every server agrees). */
 export const dayKey = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/** An insert this big in one go is shown on the work timeline as a paste. */
+export const PASTE_CHARS = 300;
+
+/**
+ * Characters of text one client added since `fromClock` (what a single edit typed or pasted).
+ * New pieces are at the end of the client's list, so this walks backwards and stops early.
+ */
+export function insertedChars(doc: Y.Doc, client: number, fromClock: number): number {
+  const structs = doc.store.clients.get(client);
+  if (!structs) return 0;
+  let chars = 0;
+  for (let i = structs.length - 1; i >= 0; i--) {
+    const s = structs[i];
+    if (s.id.clock + s.length <= fromClock) break;
+    if (s instanceof Y.Item && s.content instanceof Y.ContentString) {
+      // Only the part of this piece that's new in this edit.
+      const start = Math.max(0, fromClock - s.id.clock);
+      chars += Math.max(0, s.content.str.length - start);
+    }
+  }
+  return chars;
+}

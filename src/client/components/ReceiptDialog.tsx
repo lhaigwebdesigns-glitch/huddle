@@ -48,7 +48,7 @@ function printReceipt(r: Receipt) {
     .map(
       (d) =>
         `<li><b>${esc(dayLabel(d.day))}</b>: ${Object.entries(d.people)
-          .map(([uid, e]) => `${esc(r.people.find((p) => p.uid === uid)?.name ?? "Someone")} (${[...e.files.map(esc), e.messages ? plural(e.messages, "message", "messages") : ""].filter(Boolean).join(", ")})`)
+          .map(([uid, e]) => `${esc(r.people.find((p) => p.uid === uid)?.name ?? "Someone")} (${[e.words ? `~${plural(e.words, "word", "words")}` : "", ...e.files.map(esc), e.messages ? plural(e.messages, "message", "messages") : "", ...(e.pastes ?? []).map((p) => `pasted ~${p.words} words at ${new Date(p.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`)].filter(Boolean).join(", ")})`)
           .join("; ")}</li>`,
     )
     .join("");
@@ -92,6 +92,7 @@ export function ReceiptDialog({
   send,
   onClose,
   embedded = false,
+  reflection,
 }: {
   receipt?: Receipt;
   meUid: string;
@@ -101,6 +102,8 @@ export function ReceiptDialog({
   onClose: () => void;
   /** Shown inside another page (the teacher's grading screen) instead of as a dialog. */
   embedded?: boolean;
+  /** The teacher's reflection question: the student's note answers it, and is required to turn in. */
+  reflection?: string;
 }) {
   const r = receipt;
   // Ask for a fresh receipt on open, and keep a live one current while it's open.
@@ -126,6 +129,32 @@ export function ReceiptDialog({
     setNoteSaved(true);
     setTimeout(() => setNoteSaved(false), 1500);
   };
+  // Where you write your note (or answer the teacher's reflection question).
+  const noteBox = (
+        <div className="mt-2">
+          {reflection && (
+            <p className="mb-1 text-sm font-medium" data-testid="reflection-question">
+              {reflection}
+            </p>
+          )}
+          <textarea
+            aria-label={reflection ?? "Your note for the receipt"}
+            value={note}
+            maxLength={500}
+            rows={2}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder={reflection ? "Your answer (your teacher will read this)" : "Add a note about your part (e.g. I did the research at the library)"}
+            className="w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-fg/40"
+            data-testid="receipt-note"
+          />
+          <div className="mt-1 flex items-center gap-2">
+            <button onClick={saveNote} className="press rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-fg hover:bg-primary-hover" data-testid="receipt-note-save">
+              Save note
+            </button>
+            {noteSaved && <span className="text-xs text-fg-subtle">Saved</span>}
+          </div>
+        </div>
+  );
 
   return (
     <div
@@ -217,30 +246,20 @@ export function ReceiptDialog({
                         </p>
                       )}
                       {p.uid === meUid && editable ? (
-                        <div className="mt-2">
-                          <textarea
-                            aria-label="Your note for the receipt"
-                            value={note}
-                            maxLength={500}
-                            rows={2}
-                            onChange={(e) => setNote(e.target.value)}
-                            placeholder="Add a note about your part (e.g. I did the research at the library)"
-                            className="w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-fg/40"
-                            data-testid="receipt-note"
-                          />
-                          <div className="mt-1 flex items-center gap-2">
-                            <button onClick={saveNote} className="press rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-fg hover:bg-primary-hover" data-testid="receipt-note-save">
-                              Save note
-                            </button>
-                            {noteSaved && <span className="text-xs text-fg-subtle">Saved</span>}
-                          </div>
-                        </div>
+                        noteBox
                       ) : (
                         p.note && <blockquote className="mt-2 border-l-2 border-line-strong pl-3 text-sm text-fg-muted">{p.note}</blockquote>
                       )}
                     </li>
                   ))}
                 </ul>
+                {editable && !mine && (
+                  <div className="mt-2 rounded-2xl border border-dashed border-line px-4 py-3" data-testid="my-note-card">
+                    <div className="text-sm font-medium">You</div>
+                    <p className="text-xs text-fg-subtle">Nothing of yours is in the files yet.</p>
+                    {noteBox}
+                  </div>
+                )}
                 {(r.aiWords > 0 || r.aiUnits > 0) && (
                   <p className="mt-2 flex items-center gap-2 text-xs text-fg-subtle">
                     <span className="h-2.5 w-2.5 rounded-full" style={{ background: AI_COLOR }} aria-hidden />
@@ -286,8 +305,19 @@ export function ReceiptDialog({
                             {i > 0 && <span className="text-fg-subtle"> · </span>}
                             <span className="font-medium">{nameOf(uid)}</span>{" "}
                             <span className="text-fg-muted">
-                              {[e.files.join(", "), e.messages ? plural(e.messages, "message", "messages") : ""].filter(Boolean).join(", ")}
+                              {[
+                                e.words ? `~${plural(e.words, "word", "words")}` : "",
+                                e.files.join(", "),
+                                e.messages ? plural(e.messages, "message", "messages") : "",
+                              ]
+                                .filter(Boolean)
+                                .join(", ")}
                             </span>
+                            {e.pastes?.map((p) => (
+                              <span key={p.at} className="ml-1 rounded-full bg-surface-2 px-1.5 py-0.5 text-[11px] text-fg-muted" data-testid="timeline-paste">
+                                pasted ~{p.words} words, {new Date(p.at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                              </span>
+                            ))}
                           </span>
                         ))}
                       </span>
@@ -305,13 +335,14 @@ export function ReceiptDialog({
             <button onClick={onClose} className="press rounded-lg px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-2 hover:text-fg">
               Not yet
             </button>
+            {reflection && !note.trim() && <p className="w-full text-xs text-fg-muted">Answer the question above before you turn in.</p>}
             <button
               onClick={() => {
                 if (note !== (mine?.note ?? "")) send({ t: "receipt_note", text: note });
                 send({ t: "turn_in" });
                 onClose();
               }}
-              disabled={!r}
+              disabled={!r || (!!reflection && !note.trim())}
               className="press flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover disabled:opacity-40"
               data-testid="confirm-turn-in"
             >
