@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Check, Copy, Download, Flag, GraduationCap, Plus, Users, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, Check, CircleCheck, Clock, Copy, Download, Flag, GraduationCap, Plus, Users, X } from "lucide-react";
 import type { Report } from "../../shared/protocol";
 import { PROVIDER_LABEL, useAccount, signInUrl } from "../lib/account";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
@@ -10,7 +10,7 @@ import { EMPTY_PROJECT, fromLocalInput, ProjectEditor, ScheduleEditor, toLocalIn
 import { describeSchedule, type Schedule, type TimeRequest } from "../../shared/schedule";
 import { PROJECT_TEMPLATES } from "../../shared/templates";
 import { FILE_INFO } from "../../shared/files";
-import { assignmentPath, classroomShareUrl, gradeTotal, isPending, rubricMax, type Assignment, type ClassInfo, type ClassView, type GroupInfo } from "../../shared/classes";
+import { assignmentPath, classroomShareUrl, gradeTotal, isPending, rubricMax, type Assignment, type ClassInfo, type ClassView, type GroupInfo, type TodayView } from "../../shared/classes";
 
 async function api<T>(url: string, init?: RequestInit): Promise<T & { error?: string }> {
   const r = await fetch(url, init?.body ? { ...init, headers: { "content-type": "application/json", ...init.headers } } : init);
@@ -43,7 +43,10 @@ function TeacherShell({ children, back }: { children: React.ReactNode; back?: { 
           </Link>
         )}
         <span className="flex-1" />
-        <Link to="/dashboard" className="text-sm text-fg-muted hover:text-fg">
+        <Link to="/classes" className="text-sm font-medium text-fg-muted hover:text-fg" data-testid="nav-today">
+          Today
+        </Link>
+        <Link to="/dashboard" className="hidden text-sm text-fg-muted hover:text-fg sm:inline">
           Your rooms
         </Link>
         <ThemeToggle />
@@ -84,8 +87,11 @@ export function ClassesPage() {
   const [list, setList] = useState<ClassInfo[] | null>(null);
   const [name, setName] = useState("");
   const [err, setErr] = useState("");
+  const [today, setToday] = useState<TodayView | null>(null);
   useEffect(() => {
-    if (account.user) api<{ classes: ClassInfo[] }>("/api/classes").then((d) => setList(d.classes ?? []));
+    if (!account.user) return;
+    api<{ classes: ClassInfo[] }>("/api/classes").then((d) => setList(d.classes ?? []));
+    api<TodayView>("/api/classes/today").then((d) => !d.error && setToday(d));
   }, [account.user]);
   if (!account.user) return <TeacherShell><SignInFirst /></TeacherShell>;
   const create = async (e: React.FormEvent) => {
@@ -98,16 +104,19 @@ export function ClassesPage() {
   return (
     <TeacherShell>
       <div className="mx-auto max-w-3xl px-4 pb-16 pt-8 sm:px-8">
-        <h1 className="rise text-3xl font-semibold tracking-tight">Your classes</h1>
-        <p className="rise rise-1 mt-1 text-fg-muted">Students join with the class code. You assign group projects to the whole class at once.</p>
-        <form onSubmit={create} className="rise rise-2 mt-6 flex gap-2 rounded-2xl border border-line bg-surface p-2 shadow-sm">
-          <Input aria-label="Class name" placeholder="New class name (e.g. Period 3 History)" value={name} onChange={(e) => setName(e.target.value)} className="border-0 bg-transparent shadow-none" />
+        <h1 className="rise text-3xl font-semibold tracking-tight">Today</h1>
+        <p className="rise rise-1 mt-1 text-fg-muted">What needs you, across all your classes.</p>
+        {today && <GettingStarted setup={today.setup} />}
+        {today && <TodayPanel today={today} />}
+        <h2 className="mt-10 text-sm font-semibold uppercase tracking-wide text-fg-subtle">Your classes</h2>
+        <form onSubmit={create} className="mt-3 flex gap-2 rounded-2xl border border-line bg-surface p-2 shadow-sm">
+          <Input id="new-class-name" aria-label="Class name" placeholder="New class name (e.g. Period 3 History)" value={name} onChange={(e) => setName(e.target.value)} className="border-0 bg-transparent shadow-none" />
           <Button type="submit" data-testid="create-class">
             <Plus className="h-4 w-4" /> New class
           </Button>
         </form>
         {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">{err}</p>}
-        <ul className="mt-8 space-y-2">
+        <ul className="mt-3 space-y-2">
           {list === null && <li className="text-sm text-fg-subtle">Loading…</li>}
           {list?.length === 0 && <li className="text-sm text-fg-subtle">No classes yet. Make your first one above.</li>}
           {list?.map((c) => (
@@ -117,7 +126,7 @@ export function ClassesPage() {
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium">{c.name}</span>
                   <span className="text-xs text-fg-subtle">
-                    {c.students ?? 0} students · {c.assignments ?? 0} assignments
+                    {plural(c.students ?? 0, "student")} · {plural(c.assignments ?? 0, "assignment")}
                   </span>
                 </span>
                 <span className="font-mono text-sm tracking-[0.12em] text-fg-muted">{formatCode(c.code)}</span>
@@ -238,7 +247,7 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
           Edit times
         </button>
         <a href={`/api/classes/${view.class.id}/assignments/${a.id}/grades.csv`} className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2" data-testid="export-csv">
-          <Download className="mr-1 inline h-3.5 w-3.5" /> Grades CSV
+          <Download className="mr-1 inline h-3.5 w-3.5" /> Download grades
         </a>
         {!solo && (
           <button onClick={() => setManage((m) => !m)} aria-pressed={manage} className="press rounded-lg px-2.5 py-1 text-xs text-fg-muted hover:bg-surface-2 hover:text-fg">
@@ -330,7 +339,14 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
 
 const DEFAULT_REFLECTION = "What was hardest about this assignment?";
 
-function NewAssignmentDialog({ classId, students, onDone, onClose }: { classId: string; students: number; onDone: () => void; onClose: () => void }) {
+const WIZARD_STEPS = ["What is it?", "How do students work?", "Share it"] as const;
+
+/**
+ * New assignment, one step at a time: what it is, how students work on it, then share the link.
+ * Every choice has a sensible default, so a teacher can fill in a title, click Next twice and be done.
+ */
+function NewAssignmentDialog({ classId, classCode, students, onDone, onClose }: { classId: string; classCode: string; students: number; onDone: () => void; onClose: () => void }) {
+  const [step, setStep] = useState(0);
   const [title, setTitle] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [project, setProject] = useState<ProjectDraft>(EMPTY_PROJECT);
@@ -340,6 +356,8 @@ function NewAssignmentDialog({ classId, students, onDone, onClose }: { classId: 
   const [reflection, setReflection] = useState(DEFAULT_REFLECTION);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
+  const [made, setMade] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const template = PROJECT_TEMPLATES.find((t) => t.id === templateId);
   const groups = Math.max(1, Math.round(students / Math.max(1, size)));
   const pick = (id: string) => {
@@ -347,11 +365,19 @@ function NewAssignmentDialog({ classId, students, onDone, onClose }: { classId: 
     setTemplateId(id);
     setProject((p) => (t ? { ...p, instructions: t.instructions, rubric: t.rubric, ai: t.ai } : { ...EMPTY_PROJECT, dueAt: p.dueAt }));
   };
+  const link = made ? `${location.origin}${assignmentPath(classCode, made)}` : "";
+  const due = project.dueAt ? new Date(project.dueAt).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "";
+  // Once it's made, closing the dialog any way counts as done (the class page reloads).
+  const close = () => (made ? onDone() : onClose());
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return setErr("Give the assignment a title.");
-    setBusy(true);
     setErr("");
+    if (step === 0) {
+      if (!title.trim()) return setErr("Give the assignment a title.");
+      return setStep(1);
+    }
+    if (step !== 1) return;
+    setBusy(true);
     const d = await api<{ id: string }>(`/api/classes/${classId}/assignments`, {
       method: "POST",
       body: JSON.stringify({
@@ -363,12 +389,13 @@ function NewAssignmentDialog({ classId, students, onDone, onClose }: { classId: 
       }),
     });
     setBusy(false);
-    if (d.error || !d.id) return setErr(d.error ?? "Couldn't create the assignment.");
-    onDone();
+    if (d.error || !d.id) return setErr(d.error ?? "Couldn't make the assignment.");
+    setMade(d.id);
+    setStep(2);
   };
   const choice = (on: boolean) => `press rounded-xl border px-3 py-2 text-left text-sm ${on ? "border-fg bg-surface-2" : "border-line-strong hover:border-fg/40"}`;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]" onClick={close}>
       <form
         role="dialog"
         aria-modal="true"
@@ -379,95 +406,167 @@ function NewAssignmentDialog({ classId, students, onDone, onClose }: { classId: 
         data-testid="new-assignment"
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold tracking-tight">New assignment</h2>
-          <button type="button" onClick={onClose} className="press rounded-full p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg" aria-label="Close">
+          <h2 className="text-xl font-semibold tracking-tight">{step === 2 ? "Your assignment is ready" : "New assignment"}</h2>
+          <button type="button" onClick={close} className="press rounded-full p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg" aria-label="Close">
             <X className="h-4 w-4" />
           </button>
         </div>
-        <p className="mt-1 text-sm text-fg-muted">You'll get one link to post in Google Classroom. Each student who opens it gets their own room (or their group's), and everything shows up here for grading.</p>
+        <ol className="mt-3 flex gap-1.5" aria-label="Steps" data-testid="wizard-steps">
+          {WIZARD_STEPS.map((label, i) => (
+            <li key={label} className="min-w-0 flex-1" aria-current={i === step ? "step" : undefined}>
+              <div className={`h-1 rounded-full ${i <= step ? "bg-fg" : "bg-line"}`} />
+              <div className={`mt-1 truncate text-[11px] ${i === step ? "font-semibold text-fg" : "text-fg-subtle"}`}>
+                {i + 1}. {label}
+              </div>
+            </li>
+          ))}
+        </ol>
 
-        <fieldset className="mt-5">
-          <legend className="text-sm font-medium">How do students work?</legend>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Solo or groups">
-            <button type="button" role="radio" aria-checked={mode === "solo"} onClick={() => setMode("solo")} className={choice(mode === "solo")} data-testid="mode-solo">
-              <div className="font-medium">On their own</div>
-              <div className="mt-0.5 text-xs text-fg-subtle">Every student gets their own room and their own grade.</div>
-            </button>
-            <button type="button" role="radio" aria-checked={mode === "groups"} onClick={() => setMode("groups")} className={choice(mode === "groups")} data-testid="mode-groups">
-              <div className="font-medium">In groups</div>
-              <div className="mt-0.5 text-xs text-fg-subtle">Groups share a room; each person's part shows on the receipt.</div>
-            </button>
-          </div>
-          {mode === "groups" && (
-            <label className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-              <span className="font-medium">Groups of</span>
-              <input
-                type="number"
-                min={1}
-                max={10}
-                value={size}
-                aria-label="Group size"
-                onChange={(e) => setSize(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
-                className="w-16 rounded-lg border border-line-strong bg-transparent px-2 py-1"
-              />
-              <span className="text-fg-subtle">
-                → {groups} group{groups === 1 ? "" : "s"} for {students} student{students === 1 ? "" : "s"}, picked at random. Late joiners go into a group with space.
-              </span>
+        {step === 0 && (
+          <div className="mt-5 space-y-4">
+            <label className="block">
+              <span className="text-sm font-medium">Title</span>
+              <Input autoFocus aria-label="Assignment title" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Causes of World War I" className="mt-1" />
             </label>
-          )}
-        </fieldset>
-
-        <fieldset className="mt-5">
-          <legend className="text-sm font-medium">Start from a template</legend>
-          <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Template">
-            {[{ id: "", label: "Blank" }, ...PROJECT_TEMPLATES].map((t) => (
-              <button
-                key={t.id || "blank"}
-                type="button"
-                role="radio"
-                aria-checked={templateId === t.id}
-                onClick={() => pick(t.id)}
-                className={`press rounded-full border px-3 py-1 text-sm ${templateId === t.id ? "border-fg bg-surface-2 font-medium" : "border-line-strong text-fg-muted hover:text-fg"}`}
-                data-testid={`a-template-${t.id || "blank"}`}
-              >
-                {t.label}
-              </button>
-            ))}
+            <fieldset>
+              <legend className="text-sm font-medium">
+                Start from a template <span className="font-normal text-fg-subtle">(optional)</span>
+              </legend>
+              <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Template">
+                {[{ id: "", label: "Blank" }, ...PROJECT_TEMPLATES].map((t) => (
+                  <button
+                    key={t.id || "blank"}
+                    type="button"
+                    role="radio"
+                    aria-checked={templateId === t.id}
+                    onClick={() => pick(t.id)}
+                    className={`press rounded-full border px-3 py-1 text-sm ${templateId === t.id ? "border-fg bg-surface-2 font-medium" : "border-line-strong text-fg-muted hover:text-fg"}`}
+                    data-testid={`a-template-${t.id || "blank"}`}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+              {template && (
+                <p className="mt-2 text-xs text-fg-subtle">
+                  Each student or group starts with {template.files.map((f) => `${f.title} (${FILE_INFO[f.kind].label.toLowerCase()})`).join(" and ")}, plus {template.tasks.length} starter tasks.
+                </p>
+              )}
+            </fieldset>
+            <ProjectEditor part="what" value={project} onChange={setProject} />
           </div>
-          {template && (
-            <p className="mt-2 text-xs text-fg-subtle">
-              Each {mode === "solo" ? "student" : "group"} gets {template.files.map((f) => `${f.title} (${FILE_INFO[f.kind].label.toLowerCase()})`).join(" and ")}, plus {template.tasks.length} starter tasks.
+        )}
+
+        {step === 1 && (
+          <div className="mt-5 space-y-4">
+            <fieldset>
+              <legend className="text-sm font-medium">Alone or in groups?</legend>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Solo or groups">
+                <button type="button" role="radio" aria-checked={mode === "solo"} onClick={() => setMode("solo")} className={choice(mode === "solo")} data-testid="mode-solo">
+                  <div className="font-medium">On their own</div>
+                  <div className="mt-0.5 text-xs text-fg-subtle">Every student gets their own copy and their own grade.</div>
+                </button>
+                <button type="button" role="radio" aria-checked={mode === "groups"} onClick={() => setMode("groups")} className={choice(mode === "groups")} data-testid="mode-groups">
+                  <div className="font-medium">In groups</div>
+                  <div className="mt-0.5 text-xs text-fg-subtle">Groups work together, and you see what each person did.</div>
+                </button>
+              </div>
+              {mode === "groups" && (
+                <label className="mt-3 flex flex-wrap items-center gap-2 text-sm">
+                  <span className="font-medium">Groups of</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={size}
+                    aria-label="Group size"
+                    onChange={(e) => setSize(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
+                    className="w-16 rounded-lg border border-line-strong bg-transparent px-2 py-1"
+                  />
+                  <span className="text-fg-subtle">
+                    {students
+                      ? `→ about ${groups} group${groups === 1 ? "" : "s"}, picked at random. Students who join later go into a group with space.`
+                      : "Students are put into groups as they open the link."}
+                  </span>
+                </label>
+              )}
+            </fieldset>
+            <ProjectEditor part="how" value={project} onChange={setProject} />
+            <details className="rounded-xl border border-line px-3 py-2.5" data-testid="more-options">
+              <summary className="cursor-pointer text-sm font-medium">More options</summary>
+              <div className="mt-3 space-y-4">
+                <ScheduleEditor value={project.schedule} onChange={(schedule) => setProject((p) => ({ ...p, schedule }))} />
+                <label className="flex items-start gap-2.5 text-sm">
+                  <input type="checkbox" className="mt-0.5" checked={reflect} onChange={(e) => setReflect(e.target.checked)} data-testid="reflect-toggle" />
+                  <span>
+                    <span className="font-medium">Ask one question when students turn it in</span>
+                    <span className="block text-xs text-fg-subtle">Their answer shows with their work. It takes them half a minute and tells you a lot.</span>
+                  </span>
+                </label>
+                {reflect && <Input aria-label="Reflection question" maxLength={300} value={reflection} onChange={(e) => setReflection(e.target.value)} />}
+              </div>
+            </details>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="mt-5" data-testid="wizard-ready">
+            <p className="text-sm text-fg-muted">
+              Post this link in Google Classroom. When a student opens it, Huddle gives them {mode === "solo" ? "their own copy" : "their group's room"}, and their work shows up on this class page for grading.
             </p>
-          )}
-        </fieldset>
-        <label className="mt-4 block">
-          <span className="text-sm font-medium">Title</span>
-          <Input aria-label="Assignment title" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Causes of World War I" className="mt-1" />
-        </label>
-        <div className="mt-4">
-          <ProjectEditor value={project} onChange={setProject} />
-        </div>
-        <details className="mt-4 rounded-xl border border-line px-3 py-2.5">
-          <summary className="cursor-pointer text-sm font-medium">More options</summary>
-          <label className="mt-3 flex items-start gap-2.5 text-sm">
-            <input type="checkbox" className="mt-0.5" checked={reflect} onChange={(e) => setReflect(e.target.checked)} data-testid="reflect-toggle" />
-            <span>
-              <span className="font-medium">Ask a reflection question when students turn in</span>
-              <span className="block text-xs text-fg-subtle">Their answer shows on the receipt. It takes them half a minute and tells you a lot.</span>
-            </span>
-          </label>
-          {reflect && (
-            <Input aria-label="Reflection question" maxLength={300} value={reflection} onChange={(e) => setReflection(e.target.value)} className="mt-2" />
-          )}
-        </details>
+            <div className="mt-4 break-all rounded-xl border border-line bg-bg px-3 py-2 font-mono text-xs text-fg-muted" data-testid="wizard-link">
+              {link}
+            </div>
+            <div className="mt-4 flex flex-col gap-2">
+              <a
+                href={classroomShareUrl(link, title.trim(), `${mode === "solo" ? "Open the link to start your own copy on Huddle." : "Open the link to join your group's room on Huddle."}${due ? ` Due ${due}.` : ""}`)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="press flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover"
+                data-testid="wizard-post-to-classroom"
+              >
+                <ClassroomMark /> Post to Google Classroom
+              </a>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard?.writeText(link).catch(() => {});
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                }}
+                className="press flex items-center justify-center gap-1.5 rounded-xl border border-line-strong px-4 py-2 text-sm font-medium hover:bg-surface-2"
+                data-link={link}
+                data-testid="wizard-copy-link"
+              >
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? "Copied" : "Copy the link instead"}
+              </button>
+            </div>
+          </div>
+        )}
+
         {err && <p className="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">{err}</p>}
-        <div className="mt-5 flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={busy} data-testid="create-assignment">
-            {busy ? "Creating…" : "Create assignment"}
-          </Button>
+        <div className="mt-6 flex items-center gap-2">
+          {step === 1 && (
+            <Button type="button" variant="ghost" onClick={() => setStep(0)} data-testid="wizard-back">
+              Back
+            </Button>
+          )}
+          <span className="flex-1" />
+          {step === 0 && (
+            <Button type="submit" data-testid="wizard-next">
+              Next
+            </Button>
+          )}
+          {step === 1 && (
+            <Button type="submit" disabled={busy} data-testid="create-assignment">
+              {busy ? "Making it…" : "Make the assignment"}
+            </Button>
+          )}
+          {step === 2 && (
+            <Button type="button" variant="secondary" onClick={onDone} data-testid="wizard-done">
+              Done
+            </Button>
+          )}
         </div>
       </form>
     </div>
@@ -662,15 +761,15 @@ export function ClassPage() {
   }, [account.user, load]);
   const link = useMemo(() => (view ? `${location.origin}/c/${view.class.code}` : ""), [view]);
   if (!account.user) return <TeacherShell><SignInFirst /></TeacherShell>;
-  if (err) return <TeacherShell back={{ to: "/classes", label: "Classes" }}><p className="p-8 text-sm text-fg-muted">{err}</p></TeacherShell>;
-  if (!view) return <TeacherShell back={{ to: "/classes", label: "Classes" }}><p className="p-8 text-sm text-fg-subtle">Loading…</p></TeacherShell>;
+  if (err) return <TeacherShell back={{ to: "/classes", label: "Today" }}><p className="p-8 text-sm text-fg-muted">{err}</p></TeacherShell>;
+  if (!view) return <TeacherShell back={{ to: "/classes", label: "Today" }}><p className="p-8 text-sm text-fg-subtle">Loading…</p></TeacherShell>;
   return (
-    <TeacherShell back={{ to: "/classes", label: "Classes" }}>
+    <TeacherShell back={{ to: "/classes", label: "Today" }}>
       <div className="mx-auto max-w-4xl px-4 pb-16 pt-8 sm:px-8">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1">
             <h1 className="text-3xl font-semibold tracking-tight" data-testid="class-name">{view.class.name}</h1>
-            <p className="mt-1 text-sm text-fg-muted">{view.students.length} students joined</p>
+            <p className="mt-1 text-sm text-fg-muted">{view.students.length} student{view.students.length === 1 ? "" : "s"} joined</p>
           </div>
           <div className="rounded-2xl border border-line px-4 py-2.5">
             <div className="text-[11px] font-medium uppercase tracking-wide text-fg-subtle">Class code</div>
@@ -691,7 +790,7 @@ export function ClassPage() {
               </button>
             </div>
             <a
-              href={classroomShareUrl(link, `Join ${view.class.name} on Huddle`, "Open the link and type your name to join the class. Your group projects will show up there.")}
+              href={classroomShareUrl(link, `Join ${view.class.name} on Huddle`, "Open the link and type your name to join the class. Your assignments will show up there.")}
               target="_blank"
               rel="noopener noreferrer"
               className="press mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted hover:text-fg"
@@ -708,11 +807,21 @@ export function ClassPage() {
         <div className="mt-8 flex items-center gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-subtle">Assignments</h2>
           <span className="flex-1" />
-          <Button onClick={() => setNewA(true)} disabled={!view.students.length} data-testid="new-assignment-btn" title={view.students.length ? undefined : "Share the class code first: groups are made from the students who joined."}>
-            <Plus className="h-4 w-4" /> New assignment
-          </Button>
+          {view.assignments.length > 0 && (
+            <Button onClick={() => setNewA(true)} data-testid="new-assignment-btn">
+              <Plus className="h-4 w-4" /> New assignment
+            </Button>
+          )}
         </div>
-        {!view.students.length && <p className="mt-2 text-sm text-fg-subtle">Share the class link with your students. Once they've joined, you can make a group assignment.</p>}
+        {!view.assignments.length && (
+          <div className="mt-3 rounded-[20px] border border-dashed border-line-strong px-5 py-8 text-center" data-testid="no-assignments">
+            <p className="font-medium">No assignments yet</p>
+            <p className="mx-auto mt-1 max-w-sm text-sm text-fg-muted">Make one, post its link in Google Classroom, and students join the class just by opening it.</p>
+            <Button className="mt-4" onClick={() => setNewA(true)} data-testid="new-assignment-btn">
+              <Plus className="h-4 w-4" /> Make your first assignment
+            </Button>
+          </div>
+        )}
         <div className="mt-3 space-y-4">
           {view.assignments.map((a) => (
             <AssignmentSection key={a.id} a={a} view={view} reload={load} />
@@ -726,7 +835,7 @@ export function ClassPage() {
               {s.name}
               <button
                 onClick={async () => {
-                  if (!confirm(`Remove ${s.name} from this class? They'll be taken out of their groups and can't get back into the group rooms.`)) return;
+                  if (!confirm(`Remove ${s.name} from this class? They'll be taken out of their groups and won't be able to open this class's work.`)) return;
                   await api(`/api/classes/${view.class.id}/students/${encodeURIComponent(s.uid)}`, { method: "DELETE" });
                   load();
                 }}
@@ -743,7 +852,7 @@ export function ClassPage() {
 
         <section className="mt-12 rounded-[20px] border border-line p-4">
           <h2 className="text-sm font-semibold">Erase this class</h2>
-          <p className="mt-0.5 text-xs text-fg-subtle">Deletes every group room (chats, files and uploads), the roster and all grades. This can't be undone. Download grades first.</p>
+          <p className="mt-0.5 text-xs text-fg-subtle">Deletes all your students' work (chats, files and uploads), the student list and all grades. This can't be undone. Download grades first.</p>
           <button
             onClick={async () => {
               const typed = prompt(`This permanently erases "${view.class.name}" and all of its students' work. Type the class name to confirm:`);
@@ -761,6 +870,7 @@ export function ClassPage() {
       {newA && (
         <NewAssignmentDialog
           classId={view.class.id}
+          classCode={view.class.code}
           students={view.students.length}
           onClose={() => setNewA(false)}
           onDone={() => {
@@ -770,6 +880,178 @@ export function ClassPage() {
         />
       )}
     </TeacherShell>
+  );
+}
+
+const STEPS_KEY = "huddle.teacherSteps.hidden";
+
+/**
+ * The first-time path: make a class → make an assignment and post it → grade. Each step shows
+ * one button; finished steps get a check. It goes away once something is graded (or on "Hide").
+ */
+function GettingStarted({ setup }: { setup: TodayView["setup"] }) {
+  const [hidden, setHidden] = useState(() => {
+    try {
+      return localStorage.getItem(STEPS_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  if (hidden || setup.hasGraded) return null;
+  const cls = setup.firstClassId ? `/classes/${setup.firstClassId}` : "";
+  const steps = [
+    { done: setup.hasClass, label: "Make a class", hint: "One for each period you teach.", action: { label: "Make a class", onClick: () => document.getElementById("new-class-name")?.focus() } },
+    { done: setup.hasAssignment, label: "Make an assignment and post it in Google Classroom", hint: "Students open the link and start. No accounts needed.", action: { label: "Make an assignment", to: cls } },
+    { done: false, label: "Grade the work that's turned in", hint: "You'll see it on this page as soon as someone turns in.", action: { label: "Open your class", to: cls } },
+  ];
+  const current = steps.findIndex((x) => !x.done);
+  return (
+    <section className="rise rise-2 mt-6 rounded-[20px] border border-line bg-surface p-5" data-testid="getting-started">
+      <div className="flex items-center gap-2">
+        <h2 className="font-semibold">Getting started</h2>
+        <span className="text-xs text-fg-subtle">
+          Step {current + 1} of {steps.length}
+        </span>
+        <span className="flex-1" />
+        <button
+          onClick={() => {
+            try {
+              localStorage.setItem(STEPS_KEY, "1");
+            } catch {}
+            setHidden(true);
+          }}
+          className="press rounded-lg px-2 py-1 text-xs text-fg-muted hover:bg-surface-2 hover:text-fg"
+          data-testid="hide-steps"
+        >
+          Hide
+        </button>
+      </div>
+      <ol className="mt-3 space-y-2">
+        {steps.map((x, i) => (
+          <li key={x.label} className={`flex flex-wrap items-start gap-x-3 gap-y-2 rounded-xl px-3 py-2.5 ${i === current ? "bg-surface-2" : ""}`} data-testid="setup-step" data-done={x.done ? "1" : "0"}>
+            {x.done ? (
+              <CircleCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-label="Done" />
+            ) : (
+              <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${i === current ? "border-fg" : "border-line-strong text-fg-subtle"}`}>{i + 1}</span>
+            )}
+            <div className="min-w-[12rem] flex-1">
+              <div className={`text-sm font-medium ${x.done ? "text-fg-muted line-through decoration-fg-subtle" : ""}`}>{x.label}</div>
+              {i === current && <div className="mt-0.5 text-xs text-fg-subtle">{x.hint}</div>}
+            </div>
+            {i === current &&
+              ("to" in x.action && x.action.to ? (
+                <Link to={x.action.to} className="press flex shrink-0 items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover" data-testid="setup-next">
+                  {x.action.label} <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              ) : "onClick" in x.action ? (
+                <button onClick={x.action.onClick} className="press flex shrink-0 items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover" data-testid="setup-next">
+                  {x.action.label} <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              ) : null)}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+const dueText = (ms: number) => new Date(ms).toLocaleString([], { weekday: "short", hour: "numeric", minute: "2-digit" });
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+
+/** What needs the teacher right now: grading first, then answers, then what's due soon. */
+function TodayPanel({ today }: { today: TodayView }) {
+  const { toGrade, answers, dueSoon, setup } = today;
+  if (!setup.hasAssignment) return null;
+  if (!toGrade.length && !answers.length && !dueSoon.length) {
+    // While the getting-started steps are up, they say what to do next.
+    if (!setup.hasGraded) return null;
+    return (
+      <div className="rise rise-2 mt-6 flex items-center gap-3 rounded-[20px] border border-line bg-surface px-5 py-4" data-testid="all-caught-up">
+        <CircleCheck className="h-6 w-6 text-emerald-600 dark:text-emerald-400" aria-hidden />
+        <div>
+          <div className="font-medium">You're all caught up</div>
+          <div className="text-sm text-fg-muted">Nothing to grade or answer right now.</div>
+        </div>
+      </div>
+    );
+  }
+  const row = "flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3";
+  const go = "press flex shrink-0 items-center gap-1 rounded-lg px-3 py-1.5 text-sm font-semibold";
+  return (
+    <div className="rise rise-2 mt-6 space-y-5" data-testid="today">
+      {toGrade.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-subtle">Ready to grade</h2>
+          <ul className="mt-2 divide-y divide-line rounded-[20px] border border-line bg-surface">
+            {toGrade.map((x) => (
+              <li key={x.assignmentId} className={row} data-testid="today-grade">
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium">{x.title}</div>
+                  <div className="text-xs text-fg-subtle">
+                    {x.className} · {plural(x.count, x.mode === "solo" ? "student" : "group")} turned in
+                  </div>
+                </div>
+                <Link to={`/classes/${x.classId}/a/${x.assignmentId}/${x.first}`} className={`${go} bg-primary text-primary-fg hover:bg-primary-hover`} data-testid="today-grade-btn">
+                  Grade ({x.count}) <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {answers.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-subtle">Needs your answer</h2>
+          <ul className="mt-2 divide-y divide-line rounded-[20px] border border-line bg-surface">
+            {answers.map((x) => (
+              <li key={x.classId} className={row} data-testid="today-answer">
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium">{x.className}</div>
+                  <div className="flex flex-wrap gap-x-3 text-xs text-fg-subtle">
+                    {x.timeRequests > 0 && (
+                      <span>
+                        <Clock className="mr-1 inline h-3 w-3" aria-hidden />
+                        {plural(x.timeRequests, "request")} for more time
+                      </span>
+                    )}
+                    {x.reports > 0 && (
+                      <span>
+                        <Flag className="mr-1 inline h-3 w-3" aria-hidden />
+                        {plural(x.reports, "reported message")}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <Link to={`/classes/${x.classId}`} className={`${go} border border-line-strong hover:bg-surface-2`} data-testid="today-answer-btn">
+                  Answer <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {dueSoon.length > 0 && (
+        <section>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-subtle">Due soon</h2>
+          <ul className="mt-2 divide-y divide-line rounded-[20px] border border-line bg-surface">
+            {dueSoon.map((x) => (
+              <li key={x.assignmentId} className={row} data-testid="today-due">
+                <div className="min-w-0 flex-1">
+                  <div className="font-medium">{x.title}</div>
+                  <div className="text-xs text-fg-subtle">
+                    <CalendarClock className="mr-1 inline h-3 w-3" aria-hidden />
+                    {x.className} · due {dueText(x.dueAt)} · {x.notStarted} of {x.total} haven't started
+                  </div>
+                </div>
+                <Link to={`/classes/${x.classId}`} className={`${go} text-fg-muted hover:bg-surface-2 hover:text-fg`}>
+                  See who <ArrowRight className="h-3.5 w-3.5" />
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
   );
 }
 

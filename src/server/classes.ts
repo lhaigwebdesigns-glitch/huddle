@@ -26,6 +26,7 @@ import {
   type GroupInfo,
   type GroupStatus,
   type StudentClassView,
+  type TodayView,
 } from "../shared/classes";
 
 type C = Context<{ Bindings: Env }>;
@@ -181,6 +182,53 @@ classes.post("/", async (c) => {
     if (ok.meta.changes) return c.json({ id, code });
   }
   return c.json({ error: "Couldn't make a class code. Try again." }, 500);
+});
+
+/**
+ * The Today screen: everything that needs the teacher right now, across all their classes.
+ * Grading first, then answers (time requests, reports), then what's due soon.
+ */
+classes.get("/today", async (c) => {
+  const user = await currentUser(c.env, c.req.raw);
+  if (!user) return c.json({ error: "Sign in to see your classes." }, 401);
+  await ensureClassTables(c.env.DB!);
+  const db = c.env.DB!;
+  const { results: list } = await db.prepare(`SELECT * FROM classes WHERE teacher_id = ? ORDER BY created_at DESC`).bind(user.id).all<ClassRow>();
+  const view: TodayView = { toGrade: [], answers: [], dueSoon: [], setup: { hasClass: list.length > 0, hasStudents: false, hasAssignment: false, hasGraded: false, ...(list[0] ? { firstClassId: list[0].id } : {}) } };
+  const now = Date.now();
+  // Only the 20 newest classes, to keep this quick.
+  for (const cls of list.slice(0, 20)) {
+    const { results: roster } = await db.prepare(`SELECT uid FROM class_students WHERE class_id = ?`).bind(cls.id).all<{ uid: string }>();
+    if (roster.length) view.setup.hasStudents = true;
+    const assignments = await loadAssignments(c, cls.id, true);
+    if (assignments.length) view.setup.hasAssignment = true;
+    let timeRequests = 0;
+    let reports = 0;
+    for (const a of assignments) {
+      const real = a.groups.filter((g) => !isPending(g.roomCode));
+      if (real.some((g) => g.grade)) view.setup.hasGraded = true;
+      const waiting = real.filter((g) => g.status?.turnedInAt && !g.grade);
+      if (waiting.length) view.toGrade.push({ classId: cls.id, className: cls.name, assignmentId: a.id, title: a.title, mode: a.mode, count: waiting.length, first: waiting[0].roomCode });
+      for (const g of real) {
+        timeRequests += g.status?.timeRequests ?? 0;
+        const r = (await (await getServerByName(c.env.Room, g.roomCode)).reports().catch(() => [])) as Report[];
+        reports += r.length;
+      }
+      const due = a.project.dueAt;
+      if (due && due > now && due - now < 2 * 86_400_000) {
+        // Solo: students who haven't opened it, or opened it but haven't turned it in and done nothing.
+        // Groups: groups where nobody has opened the room.
+        const started = (g: GroupInfo) => !isPending(g.roomCode) && ((g.status?.joined ?? 0) > 0 || !!g.status?.turnedInAt);
+        const total = a.mode === "solo" ? roster.length : a.groups.length;
+        const begun = a.mode === "solo" ? a.groups.filter((g) => started(g) && g.members.some((m) => roster.some((r) => r.uid === m))).length : a.groups.filter(started).length;
+        const notStarted = Math.max(0, total - begun);
+        if (notStarted) view.dueSoon.push({ classId: cls.id, className: cls.name, assignmentId: a.id, title: a.title, dueAt: due, notStarted, total });
+      }
+    }
+    if (timeRequests || reports) view.answers.push({ classId: cls.id, className: cls.name, timeRequests, reports });
+  }
+  view.dueSoon.sort((x, y) => x.dueAt - y.dueAt);
+  return c.json(view);
 });
 
 classes.get("/:id", async (c) => {

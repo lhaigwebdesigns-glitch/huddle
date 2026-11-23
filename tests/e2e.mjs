@@ -674,8 +674,10 @@ try {
 
   // ---------- Classes: a teacher's class, a group assignment, progress and grading ----------
   const park = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
-  await park.goto(`${BASE}/api/auth/login/dev?name=Ms.%20Park&return=/classes`);
+  await park.goto(`${BASE}/api/auth/login/dev?name=Ms.%20Park%20${Date.now() % 100000}&return=/classes`);
   await park.waitForURL(/\/classes$/);
+  await park.getByTestId("getting-started").waitFor();
+  ok((await park.getByTestId("setup-step").first().getAttribute("data-done")) === "0", "a new teacher sees the getting-started steps, starting with making a class");
   await park.getByLabel("Class name").fill("Period 3 History");
   await park.getByTestId("create-class").click();
   await park.waitForURL(/\/classes\/[a-z0-9]+$/);
@@ -696,12 +698,19 @@ try {
   await park.reload();
   await park.getByTestId("roster").getByText("Dee").waitFor();
   ok(true, "students join with the class link, and the teacher sees the roster");
-  await park.getByTestId("new-assignment-btn").click();
-  await park.getByTestId("mode-groups").click();
+  await park.getByTestId("no-assignments").getByTestId("new-assignment-btn").click();
   await park.getByTestId("a-template-presentation").click();
+  await park.getByTestId("wizard-next").click();
+  ok((await park.getByRole("alert").innerText()).includes("title"), "the wizard asks for a title before going on");
   await park.getByLabel("Assignment title").fill("WWI presentation");
+  await park.getByTestId("wizard-next").click();
+  await park.getByTestId("mode-groups").click();
   await park.getByLabel("Group size").fill("2");
   await park.getByTestId("create-assignment").click();
+  await park.getByTestId("wizard-ready").waitFor();
+  const wizPost = new URL(await park.getByTestId("wizard-post-to-classroom").getAttribute("href"));
+  ok(wizPost.origin === "https://classroom.google.com" && (wizPost.searchParams.get("url") ?? "").startsWith(`${classLink}/a/`), "the wizard's last step is posting the assignment link to Classroom");
+  await park.getByTestId("wizard-done").click();
   await park.getByTestId("group-card").nth(1).waitFor({ timeout: 20000 });
   ok((await park.getByTestId("group-card").count()) === 2, "an assignment makes one project room per group");
   const post = new URL(await park.getByTestId("post-to-classroom").getAttribute("href"));
@@ -721,7 +730,15 @@ try {
   await first.getByTestId("receipt-note").fill("I made the title slide.");
   await first.getByTestId("confirm-turn-in").click();
   await first.getByTestId("turned-in").waitFor();
-  await park.reload();
+  // Today shows it's ready to grade, with one button straight to it.
+  await park.goto(`${BASE}/classes`);
+  const todayRow = park.getByTestId("today-grade").filter({ hasText: "WWI presentation" });
+  await todayRow.waitFor({ timeout: 20000 });
+  ok(/1 group turned in/.test(await todayRow.innerText()), "Today lists turned-in work that's ready to grade");
+  await todayRow.getByTestId("today-grade-btn").click();
+  await park.getByTestId("grader").waitFor();
+  ok(true, "Today's Grade button opens the grading screen");
+  await park.goto(classUrl);
   await park.getByTestId("group-status").getByText("Turned in").waitFor();
   ok(/Tasks 0\/7/.test(await park.getByTestId("group-progress").first().innerText()), "the dashboard shows each group's progress and who turned in");
   // The teacher grades it.
@@ -743,6 +760,10 @@ try {
   ok(lines.length === 5 && lines.some((l) => /,90,100,Great sources\.$/.test(l)) && lines.some((l) => /,100,100,100,Great sources\.$/.test(l)), "the grades CSV has every student, with per-student grades");
   await park.getByTestId("group-status").getByText("Graded").waitFor();
   ok(true, "graded groups show as Graded");
+  await park.goto(`${BASE}/classes`);
+  await park.getByTestId("all-caught-up").waitFor({ timeout: 20000 });
+  ok((await park.getByTestId("getting-started").count()) === 0, "once everything is graded, Today says you are all caught up and the getting-started steps go away");
+  await park.goto(classUrl);
   // The teacher never sits in a group's chat: opening the room link goes to grading.
   await park.goto(`${BASE}/r/${rooms[0]}`);
   await park.waitForURL(/\/classes\/[a-z0-9]+\/a\/[a-z0-9]+\/[A-Z0-9]{6}$/, { timeout: 15000 });
@@ -751,10 +772,12 @@ try {
   // ---------- Solo assignments: one link, a room for every student, made on first open ----------
   await park.goto(classUrl);
   await park.getByTestId("new-assignment-btn").click();
-  await park.getByTestId("mode-solo").click();
   await park.getByLabel("Assignment title").fill("Reading response");
+  await park.getByTestId("wizard-next").click();
+  await park.getByTestId("mode-solo").click();
   await park.getByTestId("ai-full").click();
   await park.getByTestId("create-assignment").click();
+  await park.getByTestId("wizard-done").click();
   const soloSection = park.getByTestId("assignment").filter({ hasText: "Reading response" });
   await soloSection.getByTestId("student-row").first().waitFor();
   ok(
