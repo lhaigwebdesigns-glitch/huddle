@@ -140,6 +140,8 @@ export interface ProjectSettings {
   pasteExempt: string[];
   turnedInAt?: number;
   turnedInBy?: string;
+  /** Asked at turn in ("What was hardest?"); the student's answer is their receipt note. */
+  reflection?: string;
 }
 
 export const PROJECT_LIMITS = { instructions: 6000, rubric: 4000, exempt: 100 } as const;
@@ -157,6 +159,11 @@ export function cleanProject(patch: unknown, prev?: ProjectSettings): ProjectSet
     if ("dueAt" in p) delete next.dueAt;
   } else if (typeof p.dueAt === "number" && Number.isFinite(p.dueAt) && p.dueAt > 0) next.dueAt = Math.round(p.dueAt);
   if (p.ai === "off" || p.ai === "tutor" || p.ai === "full") next.ai = p.ai;
+  if (typeof p.reflection === "string") {
+    const q = p.reflection.trim().slice(0, 300);
+    if (q) next.reflection = q;
+    else delete next.reflection;
+  }
   if (typeof p.pasteGuard === "boolean") next.pasteGuard = p.pasteGuard;
   if (Array.isArray(p.pasteExempt))
     next.pasteExempt = [...new Set(p.pasteExempt.map(String).map((s) => s.slice(0, 64)))].slice(0, PROJECT_LIMITS.exempt);
@@ -237,7 +244,8 @@ export interface ReceiptFile {
 export interface ReceiptDay {
   day: string;
   /** uid → which files they worked on that day, and how many chat messages they sent. */
-  people: Record<string, { files: string[]; messages: number }>;
+  /** words: about how many words they added that day; pastes: large pastes (time, about how many words). */
+  people: Record<string, { files: string[]; messages: number; words?: number; pastes?: { at: number; words: number }[] }>;
 }
 export interface Receipt {
   title: string;

@@ -8,7 +8,13 @@ import { applySheetOps, cellsOf, readSheet, type SheetOp } from "../shared/sheet
 import { applySlideOps, deckOutline, slidesOf, type SlideOp } from "../shared/slides-model";
 import { boardSummary, queueDrawing } from "../shared/whiteboard-model";
 import { addVersion, latestHtml } from "../shared/artifact-model";
-import { AI_AUTHOR, dayKey, sharesOf, type Author } from "../shared/contrib";
+import { AI_AUTHOR, dayKey, insertedChars, PASTE_CHARS, sharesOf, type Author } from "../shared/contrib";
+
+/** What one person typed in a file on one day: characters, and large pastes (time, size). */
+interface Typing {
+  chars: number;
+  pastes: { at: number; chars: number }[];
+}
 import {
   addResponse,
   formMetaOf,
@@ -46,6 +52,8 @@ export class Doc extends YServer<Env> {
   private authors = new Map<number, Author>();
   /** day → uid (or "c:<client>" until we learn who that is) → edits that day. */
   private activity: Record<string, Record<string, number>> = {};
+  /** day → uid (or "c:<client>") → characters typed that day, and large pastes (work timeline). */
+  private typing: Record<string, Record<string, Typing>> = {};
   /** Who server-side changes count for: the AI by default; null = nobody (restores, copies, starter content). */
   private actor: Author | null = AI_AUTHOR;
 
@@ -85,6 +93,15 @@ export class Doc extends YServer<Env> {
       const key = who?.uid ?? `c:${client}`;
       const today = (this.activity[day] ??= {});
       today[key] = (today[key] ?? 0) + 1;
+      // Work timeline: how much this person typed today, and any large paste (shown openly).
+      if (fromPerson) {
+        const chars = insertedChars(this.document, client, tr.beforeState.get(client) ?? 0);
+        if (chars) {
+          const t = ((this.typing[day] ??= {})[key] ??= { chars: 0, pastes: [] });
+          t.chars += chars;
+          if (chars >= PASTE_CHARS && t.pastes.length < 50) t.pastes.push({ at: Date.now(), chars });
+        }
+      }
     }
     if (learned) this.ctx.waitUntil(this.ctx.storage.put("authors", [...this.authors]));
   }
@@ -100,6 +117,16 @@ export class Doc extends YServer<Env> {
         if (!who) continue;
         if (!this.authors.has(client)) this.authors.set(client, who), (learned = true);
         day[who.uid] = (day[who.uid] ?? 0) + day[key];
+        delete day[key];
+      }
+    for (const day of Object.values(this.typing))
+      for (const key of Object.keys(day)) {
+        if (!key.startsWith("c:")) continue;
+        const who = this.authors.get(Number(key.slice(2)));
+        if (!who) continue;
+        const into = (day[who.uid] ??= { chars: 0, pastes: [] });
+        into.chars += day[key].chars;
+        into.pastes.push(...day[key].pastes);
         delete day[key];
       }
     if (learned) this.ctx.waitUntil(this.ctx.storage.put("authors", [...this.authors]));
@@ -128,7 +155,10 @@ export class Doc extends YServer<Env> {
     const days: Record<string, string[]> = {};
     for (const [day, people] of Object.entries(this.activity))
       days[day] = Object.keys(people).filter((k) => !k.startsWith("c:"));
-    return { shares, names, days };
+    const typing: Record<string, Record<string, Typing>> = {};
+    for (const [day, people] of Object.entries(this.typing))
+      typing[day] = Object.fromEntries(Object.entries(people).filter(([k]) => !k.startsWith("c:")));
+    return { shares, names, days, typing };
   }
 
   isReadOnly() {
@@ -145,6 +175,7 @@ export class Doc extends YServer<Env> {
     this.locked = !!(await this.ctx.storage.get<boolean>("locked"));
     this.authors = new Map((await this.ctx.storage.get<[number, Author][]>("authors")) ?? []);
     this.activity = (await this.ctx.storage.get<Record<string, Record<string, number>>>("activity")) ?? {};
+    this.typing = (await this.ctx.storage.get<Record<string, Record<string, Typing>>>("typing")) ?? {};
     const state = await this.readState("ydoc");
     if (state) return docFromState(state);
   }
@@ -153,6 +184,7 @@ export class Doc extends YServer<Env> {
     const state = Y.encodeStateAsUpdate(this.document);
     await this.writeState("ydoc", state);
     await this.ctx.storage.put("activity", this.activity);
+    await this.ctx.storage.put("typing", this.typing);
     // Version history: snapshot periodically while the file is being edited.
     const versions = (await this.ctx.storage.get<FileVersion[]>("versions")) ?? [];
     const lastAt = versions[versions.length - 1]?.at ?? 0;

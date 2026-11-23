@@ -359,6 +359,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
           meUid={state.you.uid}
           isHost={isHost}
           mode={state.settings.project.turnedInAt ? "view" : receiptMode}
+          reflection={state.settings.project.reflection}
           send={send}
           onClose={() => setReceiptMode(null)}
         />

@@ -15,7 +15,7 @@ import { SignInFirst, TeacherShell, api } from "./Classes";
 const STEPS = [1, 0.75, 0.5, 0.25, 0];
 
 /** Rubric rows with one-click scores, the group total, optional per-student grades and a comment. */
-function RubricGrader({ view, onSaved }: { view: GradingView; onSaved: () => void }) {
+function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: () => void; onNext: () => void }) {
   const initial = view.group.grade;
   const [rows, setRows] = useState<RubricRow[]>(() => initial?.rows ?? parseRubric(view.assignment.project.rubric ?? ""));
   const [scores, setScores] = useState<(number | null)[]>(() => initial?.scores ?? rows.map(() => null));
@@ -26,7 +26,7 @@ function RubricGrader({ view, onSaved }: { view: GradingView; onSaved: () => voi
   const total = gradeTotal({ scores });
   const setRow = (i: number, patch: Partial<RubricRow>) => setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const setScore = (i: number, v: number | null) => setScores((s) => rows.map((_, j) => (j === i ? v : (s[j] ?? null))));
-  const save = async () => {
+  const save = async (next = false) => {
     setStatus("Saving…");
     const body: Partial<GradeData> = { rows, scores: rows.map((_, i) => scores[i] ?? null), students, comment };
     const d = await api<{ ok: boolean }>(
@@ -34,7 +34,9 @@ function RubricGrader({ view, onSaved }: { view: GradingView; onSaved: () => voi
       { method: "PUT", body: JSON.stringify(body) },
     );
     setStatus(d.error ?? "Saved");
-    if (!d.error) onSaved();
+    if (d.error) return;
+    if (next) onNext();
+    else onSaved();
   };
   return (
     <section className="border-t border-line bg-surface px-4 py-4 sm:px-6" aria-label="Grade" data-testid="grader">
@@ -44,8 +46,11 @@ function RubricGrader({ view, onSaved }: { view: GradingView; onSaved: () => voi
           {total ?? "–"} / {max}
         </span>
         <span className="flex-1" />
-        <Button size="sm" onClick={save} data-testid="save-grade">
-          Save grade
+        <Button size="sm" variant="secondary" onClick={() => save()} data-testid="save-grade">
+          Save
+        </Button>
+        <Button size="sm" onClick={() => save(true)} data-testid="save-next">
+          Save & next
         </Button>
         {status && <span className="text-xs text-fg-subtle" role="status">{status}</span>}
       </div>
@@ -174,6 +179,14 @@ export default function Grading() {
   const [view, setView] = useState<GradingView | null>(null);
   const [err, setErr] = useState("");
   const [fileId, setFileId] = useState<string | null>(null);
+  const [allDone, setAllDone] = useState(false);
+  /** Save & next: go to the next turned-in work that isn't graded yet, or say everything is done. */
+  const goNext = async () => {
+    const d = await api<{ next: string | null }>(`/api/classes/${id}/assignments/${aid}/next-to-grade?after=${room}`);
+    if (d.next) return nav(`/classes/${id}/a/${aid}/${d.next}`);
+    setAllDone(true);
+    load();
+  };
   const load = () =>
     api<GradingView>(`/api/classes/${id}/assignments/${aid}/groups/${room}`).then((d) => {
       if (d.error) return setErr(d.error);
@@ -184,6 +197,7 @@ export default function Grading() {
     if (!account.user) return;
     setView(null);
     setFileId(null);
+    setAllDone(false);
     load();
   }, [account.user, id, aid, room]);
   const me = useMemo(() => getIdentity(), []);
@@ -204,7 +218,9 @@ export default function Grading() {
           <div className="min-w-0 flex-1">
             <div className="text-xs text-fg-subtle">{view.assignment.title}</div>
             <h1 className="text-xl font-semibold tracking-tight" data-testid="grading-title">
-              {view.group.name}: {view.group.members.map((u) => view.names[u] ?? "Someone").join(", ") || "no students"}
+              {view.assignment.mode === "solo"
+                ? view.group.members.map((u) => view.names[u] ?? "Someone").join(", ") || view.group.name
+                : `${view.group.name}: ${view.group.members.map((u) => view.names[u] ?? "Someone").join(", ") || "no students"}`}
             </h1>
           </div>
           {turnedIn && (
@@ -269,7 +285,16 @@ export default function Grading() {
                 )}
               </aside>
             </div>
-            <RubricGrader key={room} view={view} onSaved={load} />
+            {allDone && (
+              <div className="border-t border-line bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200 sm:px-6" role="status" data-testid="all-graded">
+                All turned-in work is graded.{" "}
+                <Link to={`/classes/${id}`} className="font-medium underline underline-offset-2">
+                  Back to the class
+                </Link>{" "}
+                to download the grades.
+              </div>
+            )}
+            <RubricGrader key={room} view={view} onSaved={load} onNext={() => void goNext()} />
           </>
         )}
       </div>

@@ -4,15 +4,19 @@ import type { Env } from "./env";
 import { currentUser, type User } from "./auth";
 import { clientIp, hit } from "./db";
 import { makeCode, normalizeCode } from "../shared/code";
-import { cleanProject, type Receipt, type Report } from "../shared/protocol";
+import { cleanProject, type ProjectSettings, type Receipt, type Report } from "../shared/protocol";
 import { templateById } from "../shared/templates";
 import {
   CLASS_LIMITS,
   gradeTotal,
+  isPending,
   makeGroups,
+  PENDING,
+  placeLateJoiner,
   rubricMax,
   toCsv,
   type Assignment,
+  type AssignmentMode,
   type ClassInfo,
   type ClassStudent,
   type ClassView,
@@ -35,6 +39,15 @@ function ensureClassTables(db: D1Database) {
       db.prepare(`CREATE TABLE IF NOT EXISTS class_groups (assignment_id TEXT, room_code TEXT, name TEXT, members TEXT, PRIMARY KEY (assignment_id, room_code))`),
       db.prepare(`CREATE TABLE IF NOT EXISTS grades (assignment_id TEXT, room_code TEXT, data TEXT, graded_at INTEGER, PRIMARY KEY (assignment_id, room_code))`),
     ])
+    // Added in Build 9: solo or groups, the group size for late joiners, and who hosts the rooms
+    // made later. Older assignments have NULLs here and count as groups.
+    .then(() =>
+      Promise.all(
+        [`ALTER TABLE assignments ADD COLUMN mode TEXT`, `ALTER TABLE assignments ADD COLUMN group_size INTEGER`, `ALTER TABLE assignments ADD COLUMN teacher_uid TEXT`].map((q) =>
+          db.prepare(q).run().catch(() => {}),
+        ),
+      ),
+    )
     .then(() => undefined)
     .catch((e) => {
       ready = null;
@@ -51,6 +64,17 @@ interface ClassRow {
   teacher_id: string;
   name: string;
   created_at: number;
+}
+interface AssignmentRow {
+  id: string;
+  class_id: string;
+  title: string;
+  project: string;
+  template: string | null;
+  created_at: number;
+  mode: string | null;
+  group_size: number | null;
+  teacher_uid: string | null;
 }
 const toInfo = (r: ClassRow): ClassInfo => ({ id: r.id, code: r.code, name: r.name, createdAt: r.created_at });
 
@@ -74,28 +98,48 @@ async function loadGrade(db: D1Database, assignmentId: string, room: string): Pr
   return row ? { ...(JSON.parse(row.data) as GradeData), gradedAt: row.graded_at } : undefined;
 }
 
+const toAssignment = (a: AssignmentRow, groups: GroupInfo[]): Assignment => ({
+  id: a.id,
+  title: a.title,
+  project: JSON.parse(a.project),
+  ...(a.template ? { template: a.template } : {}),
+  createdAt: a.created_at,
+  mode: a.mode === "solo" ? "solo" : "groups",
+  groupSize: a.group_size ?? 3,
+  groups,
+});
+
 async function loadAssignments(c: C, classId: string, withStatus: boolean): Promise<Assignment[]> {
-  const { results } = await c.env.DB!.prepare(`SELECT * FROM assignments WHERE class_id = ? ORDER BY created_at DESC`).bind(classId).all<{
-    id: string;
-    title: string;
-    project: string;
-    template: string | null;
-    created_at: number;
-  }>();
+  const { results } = await c.env.DB!.prepare(`SELECT * FROM assignments WHERE class_id = ? ORDER BY created_at DESC`).bind(classId).all<AssignmentRow>();
   return Promise.all(
     results.map(async (a) => {
       const groups = await loadGroups(c.env.DB!, a.id);
       if (withStatus)
         await Promise.all(
           groups.map(async (g) => {
+            // A group whose room isn't made yet hasn't started.
+            if (isPending(g.roomCode)) return;
             const room = await getServerByName(c.env.Room, g.roomCode);
             g.status = ((await room.groupStatus(g.members).catch(() => null)) as GroupStatus | null) ?? undefined;
             g.grade = await loadGrade(c.env.DB!, a.id, g.roomCode);
           }),
         );
-      return { id: a.id, title: a.title, project: JSON.parse(a.project), ...(a.template ? { template: a.template } : {}), createdAt: a.created_at, groups };
+      return toAssignment(a, groups);
     }),
   );
+}
+
+/** Makes one project room for an assignment, hosted by the teacher and linked to the class. */
+async function createRoom(c: C, hostUid: string, title: string, project: ProjectSettings, template: string | undefined, link: { classId: string; assignmentId: string; group: string }) {
+  for (let tries = 0; tries < 5; tries++) {
+    const code = makeCode();
+    const room = await getServerByName(c.env.Room, code);
+    const res = await room.init(hostUid, title.slice(0, 80), project, template);
+    if (!res.ok) continue;
+    await room.setClassLink(link);
+    return code;
+  }
+  return null;
 }
 
 export const classes = new Hono<{ Bindings: Env }>();
@@ -164,7 +208,7 @@ classes.delete("/:id/students/:uid", async (c) => {
       await c.env.DB!.prepare(`UPDATE class_groups SET members = ? WHERE assignment_id = ? AND room_code = ?`)
         .bind(JSON.stringify(g.members.filter((u) => u !== uid)), a.id, g.roomCode)
         .run();
-      await (await getServerByName(c.env.Room, g.roomCode)).removeStudent(t.user.uid, uid).catch(() => {});
+      if (!isPending(g.roomCode)) await (await getServerByName(c.env.Room, g.roomCode)).removeStudent(t.user.uid, uid).catch(() => {});
     }
   return c.json({ ok: true });
 });
@@ -175,7 +219,7 @@ classes.delete("/:id", async (c) => {
   if (t instanceof Response) return t;
   const assignments = await loadAssignments(c, t.cls.id, false);
   for (const a of assignments)
-    for (const g of a.groups) await (await getServerByName(c.env.Room, g.roomCode)).destroy(t.user.uid).catch(() => false);
+    for (const g of a.groups) if (!isPending(g.roomCode)) await (await getServerByName(c.env.Room, g.roomCode)).destroy(t.user.uid).catch(() => false);
   const ids = assignments.map((a) => a.id);
   const db = c.env.DB!;
   await db.batch([
@@ -197,6 +241,7 @@ classes.get("/:id/reports", async (c) => {
   const out: (Report & { assignment: string; group: string; room: string; assignmentId: string })[] = [];
   for (const a of await loadAssignments(c, t.cls.id, false))
     for (const g of a.groups) {
+      if (isPending(g.roomCode)) continue;
       const reports = (await (await getServerByName(c.env.Room, g.roomCode)).reports().catch(() => [])) as Report[];
       for (const r of reports) out.push({ ...r, assignment: a.title, assignmentId: a.id, group: g.name, room: g.roomCode });
     }
@@ -209,62 +254,67 @@ classes.post("/:id/reports/:room/:rid/dismiss", async (c) => {
   if (t instanceof Response) return t;
   const room = c.req.param("room");
   const inClass = (await loadAssignments(c, t.cls.id, false)).some((a) => a.groups.some((g) => g.roomCode === room));
-  if (!inClass) return c.json({ error: "Not found." }, 404);
+  if (!inClass || isPending(room)) return c.json({ error: "Not found." }, 404);
   return c.json(await (await getServerByName(c.env.Room, room)).dismissReport(c.req.param("rid")));
 });
 
+/**
+ * A new assignment. Solo: nothing is made until a student opens it. Groups: the groups are
+ * planned from the roster now, and each group's room is made when its first member opens it.
+ */
 classes.post("/:id/assignments", async (c) => {
   const t = await teacherClass(c);
   if (t instanceof Response) return t;
   const body = await c.req
-    .json<{ title?: string; project?: Record<string, unknown>; template?: string; groupSize?: number; groups?: string[][] }>()
+    .json<{ title?: string; project?: Record<string, unknown>; template?: string; mode?: string; groupSize?: number; groups?: string[][] }>()
     .catch(() => ({}) as Record<string, never>);
   const title = String(body.title ?? "").trim().slice(0, 80);
   if (!title) return c.json({ error: "Give the assignment a title." }, 400);
+  const mode: AssignmentMode = body.mode === "groups" ? "groups" : "solo";
+  const groupSize = Math.min(CLASS_LIMITS.groupSize, Math.max(1, Number(body.groupSize) || 3));
   const project = cleanProject(body.project ?? {})!;
-  const { results: roster } = await c.env.DB!.prepare(`SELECT uid FROM class_students WHERE class_id = ?`).bind(t.cls.id).all<{ uid: string }>();
-  const inClass = new Set(roster.map((r) => r.uid));
-  let groups: string[][] = Array.isArray(body.groups)
-    ? body.groups.map((g) => (Array.isArray(g) ? g.map(String).filter((u) => inClass.has(u)) : []))
-    : makeGroups([...inClass], Math.min(CLASS_LIMITS.groupSize, Math.max(1, Number(body.groupSize) || 3)));
-  groups = groups.filter((g, i) => g.length || i === 0);
-  if (!groups.length) groups = [[]];
-  if (groups.length > 40) return c.json({ error: "That's too many groups." }, 400);
-  const template = templateById(body.template)?.id;
   const id = newId();
-  const created: GroupInfo[] = [];
-  for (const [i, members] of groups.entries()) {
-    const name = `Group ${i + 1}`;
-    let code = "";
-    for (let tries = 0; tries < 5 && !code; tries++) {
-      const candidate = makeCode();
-      const room = await getServerByName(c.env.Room, candidate);
-      const res = await room.init(t.user.uid, `${title} · ${name}`, project, template);
-      if (res.ok) {
-        await room.setClassLink({ classId: t.cls.id, assignmentId: id, group: name });
-        code = candidate;
-      }
-    }
-    if (!code) return c.json({ error: "Couldn't create the group rooms. Try again." }, 500);
-    created.push({ roomCode: code, name, members });
+  const planned: GroupInfo[] = [];
+  if (mode === "groups") {
+    const { results: roster } = await c.env.DB!.prepare(`SELECT uid FROM class_students WHERE class_id = ?`).bind(t.cls.id).all<{ uid: string }>();
+    const inClass = new Set(roster.map((r) => r.uid));
+    let groups: string[][] = Array.isArray(body.groups)
+      ? body.groups.map((g) => (Array.isArray(g) ? g.map(String).filter((u) => inClass.has(u)) : []))
+      : makeGroups([...inClass], groupSize);
+    groups = groups.filter((g, i) => g.length || i === 0);
+    if (!groups.length) groups = [[]];
+    if (groups.length > 40) return c.json({ error: "That's too many groups." }, 400);
+    groups.forEach((members, i) => planned.push({ roomCode: `${PENDING}${newId()}`, name: `Group ${i + 1}`, members }));
   }
   await c.env.DB!.batch([
-    c.env.DB!.prepare(`INSERT INTO assignments (id, class_id, title, project, template, created_at) VALUES (?, ?, ?, ?, ?, ?)`).bind(
+    c.env.DB!.prepare(
+      `INSERT INTO assignments (id, class_id, title, project, template, created_at, mode, group_size, teacher_uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
       id,
       t.cls.id,
       title,
-      JSON.stringify({ instructions: project.instructions, rubric: project.rubric, ai: project.ai, dueAt: project.dueAt, pasteGuard: project.pasteGuard }),
-      template ?? null,
+      JSON.stringify({
+        instructions: project.instructions,
+        rubric: project.rubric,
+        ai: project.ai,
+        dueAt: project.dueAt,
+        pasteGuard: project.pasteGuard,
+        ...(project.reflection ? { reflection: project.reflection } : {}),
+      }),
+      templateById(body.template)?.id ?? null,
       Date.now(),
+      mode,
+      groupSize,
+      t.user.uid,
     ),
-    ...created.map((g) =>
+    ...planned.map((g) =>
       c.env.DB!.prepare(`INSERT INTO class_groups (assignment_id, room_code, name, members) VALUES (?, ?, ?, ?)`).bind(id, g.roomCode, g.name, JSON.stringify(g.members)),
     ),
   ]);
-  return c.json({ id, groups: created });
+  return c.json({ id, mode, groups: planned });
 });
 
-/** Put a student in a group (or take them out with room: null). */
+/** Put a student in a group (or take them out with room: null). Group assignments only. */
 classes.post("/:id/assignments/:aid/move", async (c) => {
   const t = await teacherClass(c);
   if (t instanceof Response) return t;
@@ -291,7 +341,7 @@ async function gradingContext(c: C) {
   const assignments = await loadAssignments(c, t.cls.id, false);
   const assignment = assignments.find((a) => a.id === c.req.param("aid"));
   const group = assignment?.groups.find((g) => g.roomCode === c.req.param("room"));
-  if (!assignment || !group) return c.json({ error: "Group not found." }, 404);
+  if (!assignment || !group || isPending(group.roomCode)) return c.json({ error: "Group not found." }, 404);
   return { ...t, assignment, group };
 }
 
@@ -311,9 +361,24 @@ classes.get("/:id/assignments/:aid/groups/:room", async (c) => {
     // Only turned-in work is shown to the teacher.
     files: work.turnedIn ? work.files : [],
     receipt: (work.receipt as Receipt | null) ?? null,
-    order: g.assignment.groups.map((x) => x.roomCode),
+    order: g.assignment.groups.filter((x) => !isPending(x.roomCode)).map((x) => x.roomCode),
   };
   return c.json(view);
+});
+
+/** The next turned-in, ungraded student or group after `after` (for Save & next), or null when all are graded. */
+classes.get("/:id/assignments/:aid/next-to-grade", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  const assignment = (await loadAssignments(c, t.cls.id, true)).find((a) => a.id === c.req.param("aid"));
+  if (!assignment) return c.json({ error: "Assignment not found." }, 404);
+  const waiting = assignment.groups.filter((g) => !isPending(g.roomCode) && g.status?.turnedInAt && !g.grade).map((g) => g.roomCode);
+  const after = c.req.query("after") ?? "";
+  const order = assignment.groups.map((g) => g.roomCode);
+  const from = order.indexOf(after);
+  // Prefer the next one after the current group, then wrap around to any that are still waiting.
+  const next = [...order.slice(from + 1), ...order.slice(0, Math.max(0, from))].find((code) => waiting.includes(code) && code !== after) ?? null;
+  return c.json({ next, waiting: waiting.filter((code) => code !== after).length });
 });
 
 classes.put("/:id/assignments/:aid/groups/:room/grade", async (c) => {
@@ -352,12 +417,14 @@ classes.get("/:id/assignments/:aid/grades.csv", async (c) => {
   const assignment = (await loadAssignments(c, t.cls.id, false)).find((a) => a.id === c.req.param("aid"));
   if (!assignment) return c.json({ error: "Assignment not found." }, 404);
   const { results } = await c.env.DB!.prepare(`SELECT uid, name FROM class_students WHERE class_id = ? ORDER BY name`).bind(t.cls.id).all<{ uid: string; name: string }>();
-  const rows: unknown[][] = [["Student", "Group", "Group grade", "Student grade", "Out of", "Comment"]];
+  const solo = assignment.mode === "solo";
+  const rows: unknown[][] = [["Student", solo ? "Work" : "Group", solo ? "Grade" : "Group grade", "Student grade", "Out of", "Comment"]];
   for (const s of results) {
     const group = assignment.groups.find((g) => g.members.includes(s.uid));
-    const grade = group ? await loadGrade(c.env.DB!, assignment.id, group.roomCode) : undefined;
+    const grade = group && !isPending(group.roomCode) ? await loadGrade(c.env.DB!, assignment.id, group.roomCode) : undefined;
     const total = grade ? gradeTotal(grade) : null;
-    rows.push([s.name, group?.name ?? "No group", total ?? "", grade?.students[s.uid] ?? total ?? "", grade ? rubricMax(grade.rows) : "", grade?.comment ?? ""]);
+    const where = solo ? (group ? "Started" : "Not started") : (group?.name ?? "No group");
+    rows.push([s.name, where, total ?? "", grade?.students[s.uid] ?? total ?? "", grade ? rubricMax(grade.rows) : "", grade?.comment ?? ""]);
   }
   const file = `${assignment.title.replace(/[^\w\- ]+/g, "").trim() || "grades"}.csv`;
   return new Response(toCsv(rows), {
@@ -381,16 +448,19 @@ classes.get("/join/:code", async (c) => {
   if (me) {
     for (const a of await loadAssignments(c, cls.id, false)) {
       const group = a.groups.find((g) => g.members.includes(uid));
+      const ready = group && !isPending(group.roomCode) ? group : undefined;
       let turnedIn = false;
-      if (group) {
-        const status = (await (await getServerByName(c.env.Room, group.roomCode)).groupStatus([]).catch(() => null)) as GroupStatus | null;
+      if (ready) {
+        const status = (await (await getServerByName(c.env.Room, ready.roomCode)).groupStatus([]).catch(() => null)) as GroupStatus | null;
         turnedIn = !!status?.turnedInAt;
       }
       view.assignments.push({
         id: a.id,
         title: a.title,
+        mode: a.mode,
         ...(a.project.dueAt ? { dueAt: a.project.dueAt } : {}),
-        ...(group ? { roomCode: group.roomCode, groupName: group.name, turnedIn } : {}),
+        ...(group && a.mode === "groups" ? { groupName: group.name } : {}),
+        ...(ready ? { roomCode: ready.roomCode, turnedIn } : {}),
       });
     }
   }
@@ -412,4 +482,92 @@ classes.post("/join/:code", async (c) => {
     .bind(cls.id, uid, name, Date.now())
     .run();
   return c.json({ ok: true });
+});
+
+async function assignmentByCode(c: C) {
+  const cls = await classByCode(c);
+  if (!cls) return null;
+  const a = await c.env.DB!.prepare(`SELECT * FROM assignments WHERE id = ? AND class_id = ?`).bind(c.req.param("aid"), cls.id).first<AssignmentRow>();
+  return a ? { cls, a } : null;
+}
+
+/** What the assignment link shows before a student opens it. */
+classes.get("/join/:code/a/:aid", async (c) => {
+  const found = await assignmentByCode(c);
+  if (!found) return c.json({ error: "That assignment link doesn't work any more. Ask your teacher for a new one." }, 404);
+  const a = toAssignment(found.a, []);
+  return c.json({ className: found.cls.name, title: a.title, mode: a.mode, ...(a.project.dueAt ? { dueAt: a.project.dueAt } : {}) });
+});
+
+/**
+ * Opening an assignment link: finds (or makes) this student's room and returns its code.
+ * Solo: their own room. Groups: their group's room; a student who joined late is put in the
+ * group with the most space, or a new one. Rooms are made here, on first open.
+ */
+classes.post("/join/:code/a/:aid/open", async (c) => {
+  const found = await assignmentByCode(c);
+  if (!found) return c.json({ error: "That assignment link doesn't work any more. Ask your teacher for a new one." }, 404);
+  const { cls, a } = found;
+  const body = await c.req.json<{ uid?: string }>().catch(() => ({}) as { uid?: string });
+  const uid = String(body.uid ?? "").slice(0, 64);
+  const student = uid ? await c.env.DB!.prepare(`SELECT name FROM class_students WHERE class_id = ? AND uid = ?`).bind(cls.id, uid).first<{ name: string }>() : null;
+  if (!student) return c.json({ needsJoin: true });
+  if (!(await hit(c.env.DB!, `assignopen:${clientIp(c.req.raw)}`, 300, 3600))) return c.json({ error: "Too many tries. Wait a bit." }, 429);
+  const db = c.env.DB!;
+  const assignment = toAssignment(a, []);
+  const project = cleanProject(assignment.project)!;
+  const host = a.teacher_uid;
+  const template = a.template ?? undefined;
+  const memberLike = `%"${uid.replace(/[%_"]/g, "")}"%`;
+
+  if (assignment.mode === "solo") {
+    const mine = await db.prepare(`SELECT room_code FROM class_groups WHERE assignment_id = ? AND members LIKE ?`).bind(a.id, memberLike).first<{ room_code: string }>();
+    if (mine) return c.json({ roomCode: mine.room_code });
+    if (!host) return c.json({ error: "This assignment can't make rooms. Ask your teacher to create it again." }, 500);
+    const code = await createRoom(c, host, `${a.title} · ${student.name}`, project, template, { classId: cls.id, assignmentId: a.id, group: student.name });
+    if (!code) return c.json({ error: "Couldn't open your room. Try again." }, 500);
+    // One room per student, even if they click twice at once: only the first insert wins.
+    const ins = await db
+      .prepare(
+        `INSERT INTO class_groups (assignment_id, room_code, name, members) SELECT ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM class_groups WHERE assignment_id = ? AND members LIKE ?)`,
+      )
+      .bind(a.id, code, student.name, JSON.stringify([uid]), a.id, memberLike)
+      .run();
+    if (ins.meta.changes) return c.json({ roomCode: code });
+    await (await getServerByName(c.env.Room, code)).destroy(host).catch(() => false);
+    const winner = await db.prepare(`SELECT room_code FROM class_groups WHERE assignment_id = ? AND members LIKE ?`).bind(a.id, memberLike).first<{ room_code: string }>();
+    return winner ? c.json({ roomCode: winner.room_code }) : c.json({ error: "Couldn't open your room. Try again." }, 500);
+  }
+
+  // Groups: find this student's group, or place a late joiner.
+  let groups = await loadGroups(db, a.id);
+  let group = groups.find((g) => g.members.includes(uid));
+  if (!group) {
+    const i = placeLateJoiner(groups, assignment.groupSize);
+    if (i >= 0) {
+      group = groups[i];
+      const members = [...group.members, uid];
+      // Only if nobody changed this group in the meantime.
+      const upd = await db
+        .prepare(`UPDATE class_groups SET members = ? WHERE assignment_id = ? AND room_code = ? AND members = ?`)
+        .bind(JSON.stringify(members), a.id, group.roomCode, JSON.stringify(group.members))
+        .run();
+      if (!upd.meta.changes) return c.json({ error: "Your class is busy for a second. Try again." }, 409);
+      group = { ...group, members };
+    } else {
+      group = { roomCode: `${PENDING}${newId()}`, name: `Group ${groups.length + 1}`, members: [uid] };
+      await db.prepare(`INSERT INTO class_groups (assignment_id, room_code, name, members) VALUES (?, ?, ?, ?)`).bind(a.id, group.roomCode, group.name, JSON.stringify(group.members)).run();
+    }
+  }
+  if (!isPending(group.roomCode)) return c.json({ roomCode: group.roomCode });
+  if (!host) return c.json({ error: "This assignment can't make rooms. Ask your teacher to create it again." }, 500);
+  const code = await createRoom(c, host, `${a.title} · ${group.name}`, project, template, { classId: cls.id, assignmentId: a.id, group: group.name });
+  if (!code) return c.json({ error: "Couldn't open your group's room. Try again." }, 500);
+  // The first member to open it makes the room; anyone racing them gets that same room.
+  const swap = await db.prepare(`UPDATE class_groups SET room_code = ? WHERE assignment_id = ? AND room_code = ?`).bind(code, a.id, group.roomCode).run();
+  if (swap.meta.changes) return c.json({ roomCode: code });
+  await (await getServerByName(c.env.Room, code)).destroy(host).catch(() => false);
+  groups = await loadGroups(db, a.id);
+  const now = groups.find((g) => g.members.includes(uid));
+  return now && !isPending(now.roomCode) ? c.json({ roomCode: now.roomCode }) : c.json({ error: "Try again in a moment." }, 409);
 });

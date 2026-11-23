@@ -43,6 +43,7 @@ import { runTool, TOOL_DEFS } from "./ai/tools";
 import { collectUrls, stripUnverifiedLinks } from "./ai/citations";
 import { getProviders as getProvidersConfigured } from "./ai/models";
 import { templateById, type ProjectTemplate } from "../shared/templates";
+import { wordsFromChars } from "../shared/classes";
 import { checkMessage, safetyReply, SCHOOL_RULES } from "./ai/safety";
 import { aiEnv } from "./ai/pc";
 
@@ -832,6 +833,15 @@ export class Room extends Server<Env> {
           person(uid, c.names[uid]);
           const e = workedOn(day, uid);
           if (!e.files.includes(f.title)) e.files.push(f.title);
+        }
+      // Work timeline: about how many words each person typed each day, and large pastes.
+      for (const [day, people] of Object.entries(c.typing ?? {}))
+        for (const [uid, t] of Object.entries(people)) {
+          if (uid === "ai") continue;
+          person(uid, c.names[uid]);
+          const e = workedOn(day, uid);
+          e.words = (e.words ?? 0) + wordsFromChars(t.chars);
+          for (const p of t.pastes) (e.pastes ??= []).push({ at: p.at, words: wordsFromChars(p.chars) });
         }
     });
     for (const f of files) if (f.createdBy && f.createdBy !== "ai") person(f.createdBy).filesCreated++;

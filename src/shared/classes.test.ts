@@ -64,3 +64,19 @@ describe("Share to Classroom", () => {
     expect(u.searchParams.get("body")).toBe("Join your group & start");
   });
 });
+
+describe("assignments for every student", () => {
+  it("puts a late joiner in the group with the most space, or a new group when all are full", async () => {
+    const { placeLateJoiner } = await import("./classes");
+    expect(placeLateJoiner([{ members: ["a", "b", "c"] }, { members: ["d"] }, { members: ["e", "f"] }], 3)).toBe(1);
+    expect(placeLateJoiner([{ members: ["a", "b"] }, { members: ["c", "d"] }], 2)).toBe(-1);
+    expect(placeLateJoiner([], 3)).toBe(-1);
+  });
+  it("knows which groups don't have a room yet, and builds the assignment link", async () => {
+    const { assignmentPath, isPending, PENDING, wordsFromChars } = await import("./classes");
+    expect(isPending(`${PENDING}abc`)).toBe(true);
+    expect(isPending("K7Q29F")).toBe(false);
+    expect(assignmentPath("K7Q29F", "abc123")).toBe("/c/K7Q29F/a/abc123");
+    expect(wordsFromChars(600)).toBe(100);
+  });
+});
