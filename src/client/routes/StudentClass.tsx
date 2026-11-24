@@ -6,6 +6,7 @@ import { AgeCheck } from "./RoomPage";
 import { signInUrl, useAccount } from "../lib/account";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { PERI, RockArt } from "../components/Rocks";
+import { HumanCheck, SignInGate } from "../components/SignInGate";
 import { normalizeCode } from "../../shared/code";
 import { assignmentPath, type AssignmentMode, type StudentClassView } from "../../shared/classes";
 
@@ -31,6 +32,8 @@ export default function StudentClass() {
   const [name, setNameInput] = useState(me.name);
   const [age, setAge] = useState(ageConfirmed);
   const account = useAccount();
+  const signedIn = !!account.user;
+  const [human, setHuman] = useState("");
   const opened = useRef(false);
 
   const load = () =>
@@ -57,12 +60,20 @@ export default function StudentClass() {
   };
 
   useEffect(() => {
+    if (!account.ready || (account.requireSignIn && !account.user)) return;
     void load();
     if (aid)
       fetch(`/api/classes/join/${code}/a/${aid}`)
         .then((r) => r.json() as Promise<AssignmentInfo & { error?: string }>)
         .then((d) => (d.error ? setErr(d.error) : setInfo(d)));
-  }, [code, aid]);
+  }, [code, aid, account.ready, account.user?.uid]);
+
+  // While waiting for the teacher, check every few seconds so the page opens as soon as they say yes.
+  useEffect(() => {
+    if (view?.status !== "waiting") return;
+    const t = setInterval(() => void load(), 6000);
+    return () => clearInterval(t);
+  }, [view?.status]);
 
   // An assignment link opens the room straight away once the student is in the class.
   useEffect(() => {
@@ -71,14 +82,14 @@ export default function StudentClass() {
 
   const join = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!signedIn && !name.trim()) return;
     if (!age) return setErr("Cairn is for ages 13 and up. Please check the box to confirm.");
-    setName(name.trim());
+    if (!signedIn) setName(name.trim());
     confirmAge();
     const r = await fetch(`/api/classes/join/${code}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ uid: me.uid, name: name.trim(), age13: true }),
+      body: JSON.stringify({ uid: me.uid, name: name.trim(), age13: true, human }),
     });
     const d = (await r.json()) as { error?: string };
     if (d.error) return setErr(d.error);
@@ -86,18 +97,59 @@ export default function StudentClass() {
     load();
   };
 
+  if (!account.ready) return <div className="p-8 text-sm text-fg-subtle">Loading…</div>;
+  if (account.requireSignIn && !account.user)
+    return (
+      <SignInGate
+        title={aid ? "Sign in to open your assignment" : "Sign in to join your class"}
+        message="Use your school Google account, so your teacher knows it's you."
+        providers={account.providers}
+      />
+    );
+
   const card = (() => {
     if (err && !view) return <p className="text-sm text-fg-muted">{err}</p>;
     if (!view || (aid && !info && !err)) return <p className="text-sm text-fg-subtle">Loading…</p>;
+    if (view.status === "waiting")
+      return (
+        <div className="text-center" role="status" data-testid="waiting-for-teacher">
+          <RockArt className="mx-auto h-20 w-20" body={PERI} pose="sit" prop="bubble" />
+          <h1 className="mt-2 text-2xl font-extrabold tracking-tight">Waiting for your teacher</h1>
+          <p className="mt-2 text-[15px] text-fg-muted">
+            Your email isn't on the class list for {view.name} yet, so we asked your teacher to let you in. This page opens by itself as soon as they do.
+          </p>
+          {account.user?.email && <p className="mt-3 text-sm text-fg-subtle">Signed in as {account.user.email}</p>}
+        </div>
+      );
+    if (view.status === "denied")
+      return (
+        <div className="text-center" role="status" data-testid="join-denied">
+          <RockArt className="mx-auto h-20 w-20" body={PERI} pose="hold" prop="book" />
+          <h1 className="mt-2 text-2xl font-extrabold tracking-tight">Your teacher didn't let you in</h1>
+          <p className="mt-2 text-[15px] text-fg-muted">
+            If that's a mistake, ask them to add {account.user?.email ?? "your school email"} to the class list for {view.name}, then open the link again.
+          </p>
+        </div>
+      );
     if (!view.joined)
       return (
         <form onSubmit={join}>
           <RockArt className="mb-2 h-16 w-16" body={PERI} pose="wave" />
           <h1 className="text-2xl font-extrabold tracking-tight">{info ? info.title : `Join ${view.name}`}</h1>
           {info && <p className="mt-1 text-sm text-fg-subtle">{view.name + " · " + (info.mode === "solo" ? "Your own work" : "Group project") + dueText(info.dueAt)}</p>}
-          <p className="mt-3 text-[15px] text-fg-muted">Type your name the way your teacher will recognize it.</p>
-          <Input autoFocus maxLength={32} value={name} onChange={(e) => setNameInput(e.target.value)} placeholder="Your name" aria-label="Your name" className="mt-4 h-11" />
+          {signedIn ? (
+            <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-sm" data-testid="joining-as">
+              Joining as <b>{account.user!.name}</b>
+              {account.user!.email && <span className="text-fg-subtle"> · {account.user!.email}</span>}
+            </p>
+          ) : (
+            <>
+              <p className="mt-3 text-[15px] text-fg-muted">Type your name the way your teacher will recognize it.</p>
+              <Input autoFocus maxLength={32} value={name} onChange={(e) => setNameInput(e.target.value)} placeholder="Your name" aria-label="Your name" className="mt-4 h-11" />
+            </>
+          )}
           <AgeCheck checked={age} onChange={setAge} />
+          <HumanCheck siteKey={account.turnstileSiteKey} onToken={setHuman} />
           {err && (
             <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">
               {err}
@@ -130,7 +182,7 @@ export default function StudentClass() {
         <div className="mt-1 flex items-center gap-1.5 text-sm text-fg-subtle">
           <Check className="h-3.5 w-3.5" /> You're in this class
         </div>
-        {account.user === null && account.providers.includes("google") && (
+        {account.user === null && !account.requireSignIn && account.providers.includes("google") && (
           <p className="mt-2 text-xs text-fg-subtle">
             Using more than one device?{" "}
             <a href={signInUrl("google", `/c/${code}`)} className="font-medium text-fg-muted underline underline-offset-2 hover:text-fg" data-testid="student-google">

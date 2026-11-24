@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { gradeTotal, makeGroups, parseRubric, rubricMax, toCsv } from "./classes";
+import { gradeTotal, makeGroups, parseEmails, parseRubric, rubricMax, toCsv } from "./classes";
 
 describe("rubric parsing", () => {
   it("reads percentages on one line", () => {
@@ -78,5 +78,19 @@ describe("assignments for every student", () => {
     expect(isPending("K7Q29F")).toBe(false);
     expect(assignmentPath("K7Q29F", "abc123")).toBe("/c/K7Q29F/a/abc123");
     expect(wordsFromChars(600)).toBe(100);
+  });
+});
+
+describe("class list emails", () => {
+  it("reads emails pasted one per line, or with commas, spaces or semicolons", () => {
+    expect(parseEmails("ava@school.org\nBen@School.org, cam@school.org; dee@school.org  eli@school.org")).toEqual([
+      "ava@school.org", "ben@school.org", "cam@school.org", "dee@school.org", "eli@school.org",
+    ]);
+  });
+  it("drops duplicates and things that aren't emails", () => {
+    expect(parseEmails("ava@school.org ava@school.org Ava Smith <ava@school.org> not-an-email @school.org")).toEqual(["ava@school.org"]);
+  });
+  it("stops at the limit", () => {
+    expect(parseEmails(Array.from({ length: 20 }, (_, i) => `s${i}@x.org`).join(" "), 5)).toHaveLength(5);
   });
 });

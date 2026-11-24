@@ -27,7 +27,12 @@ import {
   type GroupStatus,
   type StudentClassView,
   type TodayView,
+  type ClassAccess,
+  type WaitingStudent,
+  parseEmails,
 } from "../shared/classes";
+import { signInRequired } from "./auth";
+import { isHuman, NOT_HUMAN } from "./turnstile";
 
 type C = Context<{ Bindings: Env }>;
 
@@ -50,6 +55,16 @@ function ensureClassTables(db: D1Database) {
         ),
       ),
     )
+    // Added in Build 13: class lists by email, a waiting list, and who may join.
+    .then(() =>
+      db.batch([
+        db.prepare(`CREATE TABLE IF NOT EXISTS class_roster (class_id TEXT, email TEXT, added_at INTEGER, PRIMARY KEY (class_id, email))`),
+        db.prepare(`CREATE TABLE IF NOT EXISTS class_waiting (class_id TEXT, uid TEXT, name TEXT, email TEXT, at INTEGER, denied INTEGER, PRIMARY KEY (class_id, uid))`),
+      ]),
+    )
+    .then(() =>
+      Promise.all([`ALTER TABLE classes ADD COLUMN access TEXT`, `ALTER TABLE class_students ADD COLUMN email TEXT`].map((q) => db.prepare(q).run().catch(() => {}))),
+    )
     .then(() => undefined)
     .catch((e) => {
       ready = null;
@@ -66,7 +81,10 @@ interface ClassRow {
   teacher_id: string;
   name: string;
   created_at: number;
+  access?: string | null;
 }
+/** New and older classes default to the class list; "code" lets anyone with the code in. */
+const accessOf = (r: ClassRow): ClassAccess => (r.access === "code" ? "code" : "list");
 interface AssignmentRow {
   id: string;
   class_id: string;
@@ -225,7 +243,9 @@ classes.get("/today", async (c) => {
         if (notStarted) view.dueSoon.push({ classId: cls.id, className: cls.name, assignmentId: a.id, title: a.title, dueAt: due, notStarted, total });
       }
     }
-    if (timeRequests || reports) view.answers.push({ classId: cls.id, className: cls.name, timeRequests, reports });
+    const waitingRow = await db.prepare(`SELECT COUNT(*) AS n FROM class_waiting WHERE class_id = ? AND (denied IS NULL OR denied = 0)`).bind(cls.id).first<{ n: number }>();
+    const waiting = waitingRow?.n ?? 0;
+    if (timeRequests || reports || waiting) view.answers.push({ classId: cls.id, className: cls.name, timeRequests, reports, waiting });
   }
   view.dueSoon.sort((x, y) => x.dueAt - y.dueAt);
   return c.json(view);
@@ -234,13 +254,23 @@ classes.get("/today", async (c) => {
 classes.get("/:id", async (c) => {
   const t = await teacherClass(c);
   if (t instanceof Response) return t;
-  const { results: students } = await c.env.DB!.prepare(`SELECT uid, name, joined_at FROM class_students WHERE class_id = ? ORDER BY name`)
+  const db = c.env.DB!;
+  const { results: students } = await db.prepare(`SELECT uid, name, joined_at, email FROM class_students WHERE class_id = ? ORDER BY name`)
     .bind(t.cls.id)
-    .all<{ uid: string; name: string; joined_at: number }>();
+    .all<{ uid: string; name: string; joined_at: number; email: string | null }>();
+  const { results: roster } = await db.prepare(`SELECT email FROM class_roster WHERE class_id = ? ORDER BY email`).bind(t.cls.id).all<{ email: string }>();
+  const { results: waiting } = await db
+    .prepare(`SELECT uid, name, email, at FROM class_waiting WHERE class_id = ? AND (denied IS NULL OR denied = 0) ORDER BY at`)
+    .bind(t.cls.id)
+    .all<WaitingStudent>();
+  const joinedEmails = new Set(students.map((s) => s.email).filter(Boolean));
   const view: ClassView = {
     class: toInfo(t.cls),
-    students: students.map((s): ClassStudent => ({ uid: s.uid, name: s.name, joinedAt: s.joined_at })),
+    students: students.map((s): ClassStudent => ({ uid: s.uid, name: s.name, joinedAt: s.joined_at, ...(s.email ? { email: s.email } : {}) })),
     assignments: await loadAssignments(c, t.cls.id, true),
+    access: accessOf(t.cls),
+    roster: roster.map((r) => ({ email: r.email, joined: joinedEmails.has(r.email) })),
+    waiting,
   };
   return c.json(view);
 });
@@ -250,7 +280,11 @@ classes.delete("/:id/students/:uid", async (c) => {
   const t = await teacherClass(c);
   if (t instanceof Response) return t;
   const uid = c.req.param("uid");
-  await c.env.DB!.prepare(`DELETE FROM class_students WHERE class_id = ? AND uid = ?`).bind(t.cls.id, uid).run();
+  const gone = await c.env.DB!.prepare(`SELECT email FROM class_students WHERE class_id = ? AND uid = ?`).bind(t.cls.id, uid).first<{ email: string | null }>();
+  await c.env.DB!.batch([
+    c.env.DB!.prepare(`DELETE FROM class_students WHERE class_id = ? AND uid = ?`).bind(t.cls.id, uid),
+    c.env.DB!.prepare(`DELETE FROM class_roster WHERE class_id = ? AND email = ?`).bind(t.cls.id, gone?.email ?? ""),
+  ]);
   for (const a of await loadAssignments(c, t.cls.id, false))
     for (const g of a.groups) {
       if (!g.members.includes(uid)) continue;
@@ -278,6 +312,8 @@ classes.delete("/:id", async (c) => {
     ]),
     db.prepare(`DELETE FROM assignments WHERE class_id = ?`).bind(t.cls.id),
     db.prepare(`DELETE FROM class_students WHERE class_id = ?`).bind(t.cls.id),
+    db.prepare(`DELETE FROM class_roster WHERE class_id = ?`).bind(t.cls.id),
+    db.prepare(`DELETE FROM class_waiting WHERE class_id = ?`).bind(t.cls.id),
     db.prepare(`DELETE FROM classes WHERE id = ?`).bind(t.cls.id),
   ]);
   return c.json({ ok: true });
@@ -382,8 +418,70 @@ classes.post("/:id/assignments/:aid/move", async (c) => {
     })
     .filter((s): s is D1PreparedStatement => !!s);
   if (updates.length) await c.env.DB!.batch(updates);
+  if (body.room && !isPending(body.room) && groups.some((g) => g.roomCode === body.room))
+    await (await getServerByName(c.env.Room, body.room)).allowStudent(uid).catch(() => null);
   return c.json({ ok: true });
 });
+
+/** Who may join: "list" (only the class list; others wait for you) or "code" (anyone with the code). */
+classes.patch("/:id", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  const body = await c.req.json<{ access?: string }>().catch(() => ({}) as { access?: string });
+  const access: ClassAccess = body.access === "code" ? "code" : "list";
+  await c.env.DB!.prepare(`UPDATE classes SET access = ? WHERE id = ?`).bind(access, t.cls.id).run();
+  return c.json({ ok: true, access });
+});
+
+/** Add emails to the class list (pasted: one per line, or separated by commas or spaces). */
+classes.post("/:id/roster", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  const body = await c.req.json<{ emails?: string }>().catch(() => ({}) as { emails?: string });
+  const emails = parseEmails(body.emails ?? "");
+  if (!emails.length) return c.json({ error: "Paste at least one school email, like student@school.org." }, 400);
+  const db = c.env.DB!;
+  const count = await db.prepare(`SELECT COUNT(*) AS n FROM class_roster WHERE class_id = ?`).bind(t.cls.id).first<{ n: number }>();
+  if ((count?.n ?? 0) + emails.length > 400) return c.json({ error: "A class list can have up to 400 emails." }, 400);
+  const now = Date.now();
+  await db.batch(emails.map((e) => db.prepare(`INSERT OR IGNORE INTO class_roster (class_id, email, added_at) VALUES (?, ?, ?)`).bind(t.cls.id, e, now)));
+  // Anyone already waiting with one of these emails is let in right away.
+  const { results: waiting } = await db.prepare(`SELECT uid, name, email FROM class_waiting WHERE class_id = ?`).bind(t.cls.id).all<{ uid: string; name: string; email: string | null }>();
+  for (const w of waiting) if (w.email && emails.includes(w.email)) await admit(db, t.cls.id, w);
+  return c.json({ ok: true, added: emails.length });
+});
+
+classes.delete("/:id/roster/:email", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  await c.env.DB!.prepare(`DELETE FROM class_roster WHERE class_id = ? AND email = ?`).bind(t.cls.id, decodeURIComponent(c.req.param("email")).toLowerCase()).run();
+  return c.json({ ok: true });
+});
+
+/** Let a waiting student in (they're added to the class list too), or turn them away. */
+classes.post("/:id/waiting/:uid", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  const db = c.env.DB!;
+  const w = await db.prepare(`SELECT uid, name, email FROM class_waiting WHERE class_id = ? AND uid = ?`).bind(t.cls.id, c.req.param("uid")).first<{ uid: string; name: string; email: string | null }>();
+  if (!w) return c.json({ error: "That request is gone." }, 404);
+  const body = await c.req.json<{ admit?: boolean }>().catch(() => ({}) as { admit?: boolean });
+  if (body.admit === true) {
+    if (w.email) await db.prepare(`INSERT OR IGNORE INTO class_roster (class_id, email, added_at) VALUES (?, ?, ?)`).bind(t.cls.id, w.email, Date.now()).run();
+    await admit(db, t.cls.id, w);
+  } else await db.prepare(`UPDATE class_waiting SET denied = 1 WHERE class_id = ? AND uid = ?`).bind(t.cls.id, w.uid).run();
+  return c.json({ ok: true });
+});
+
+/** Puts someone in the class and clears their waiting request. */
+async function admit(db: D1Database, classId: string, p: { uid: string; name: string; email: string | null }) {
+  await db.batch([
+    db
+      .prepare(`INSERT INTO class_students (class_id, uid, name, joined_at, email) VALUES (?, ?, ?, ?, ?) ON CONFLICT (class_id, uid) DO UPDATE SET name = excluded.name, email = excluded.email`)
+      .bind(classId, p.uid, p.name, Date.now(), p.email),
+    db.prepare(`DELETE FROM class_waiting WHERE class_id = ? AND uid = ?`).bind(classId, p.uid),
+  ]);
+}
 
 async function gradingContext(c: C) {
   const t = await teacherClass(c);
@@ -544,9 +642,12 @@ async function classByCode(c: C) {
 classes.get("/join/:code", async (c) => {
   const cls = await classByCode(c);
   if (!cls) return c.json({ error: "That code doesn't match a class." }, 404);
-  const uid = (c.req.query("uid") ?? "").slice(0, 64);
+  const who = await studentIdentity(c, { uid: c.req.query("uid") });
+  if (who instanceof Response) return who;
+  const uid = who.uid;
   const me = uid ? await c.env.DB!.prepare(`SELECT name FROM class_students WHERE class_id = ? AND uid = ?`).bind(cls.id, uid).first<{ name: string }>() : null;
-  const view: StudentClassView = { name: cls.name, joined: !!me, assignments: [] };
+  const asked = !me && uid ? await c.env.DB!.prepare(`SELECT denied FROM class_waiting WHERE class_id = ? AND uid = ?`).bind(cls.id, uid).first<{ denied: number | null }>() : null;
+  const view: StudentClassView = { name: cls.name, joined: !!me, status: me ? "joined" : asked ? (asked.denied ? "denied" : "waiting") : "new", assignments: [] };
   if (me) {
     for (const a of await loadAssignments(c, cls.id, false)) {
       const group = a.groups.find((g) => g.members.includes(uid));
@@ -573,18 +674,52 @@ classes.post("/join/:code", async (c) => {
   const cls = await classByCode(c);
   if (!cls) return c.json({ error: "That code doesn't match a class." }, 404);
   if (!(await hit(c.env.DB!, `classjoin:${clientIp(c.req.raw)}`, 60, 3600))) return c.json({ error: "Too many tries. Wait a bit." }, 429);
-  const body = await c.req.json<{ uid?: string; name?: string; age13?: boolean }>().catch(() => ({}) as { uid?: string; name?: string; age13?: boolean });
-  const uid = String(body.uid ?? "").slice(0, 64);
-  const name = String(body.name ?? "").trim().slice(0, 32);
+  const body = await c.req
+    .json<{ uid?: string; name?: string; age13?: boolean; human?: string }>()
+    .catch(() => ({}) as { uid?: string; name?: string; age13?: boolean; human?: string });
+  const who = await studentIdentity(c, body);
+  if (who instanceof Response) return who;
+  const { uid, name, email } = who;
   if (!uid || !name) return c.json({ error: "Type your name to join." }, 400);
   if (body.age13 !== true) return c.json({ error: "Cairn is for ages 13 and up." }, 400);
-  const count = await c.env.DB!.prepare(`SELECT COUNT(*) AS n FROM class_students WHERE class_id = ?`).bind(cls.id).first<{ n: number }>();
-  if ((count?.n ?? 0) >= CLASS_LIMITS.students) return c.json({ error: "This class is full." }, 400);
-  await c.env.DB!.prepare(`INSERT INTO class_students (class_id, uid, name, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT (class_id, uid) DO UPDATE SET name = excluded.name`)
-    .bind(cls.id, uid, name, Date.now())
+  if (!(await isHuman(c.env, body.human, clientIp(c.req.raw)))) return c.json({ error: NOT_HUMAN }, 403);
+  const db = c.env.DB!;
+  const already = await db.prepare(`SELECT 1 FROM class_students WHERE class_id = ? AND uid = ?`).bind(cls.id, uid).first();
+  if (!already) {
+    const count = await db.prepare(`SELECT COUNT(*) AS n FROM class_students WHERE class_id = ?`).bind(cls.id).first<{ n: number }>();
+    if ((count?.n ?? 0) >= CLASS_LIMITS.students) return c.json({ error: "This class is full." }, 400);
+    // The class list decides: on it (or an open class) = straight in; otherwise wait for the teacher.
+    const listed = email ? await db.prepare(`SELECT 1 FROM class_roster WHERE class_id = ? AND email = ?`).bind(cls.id, email).first() : null;
+    const open = accessOf(cls) === "code" || !signInRequired(c.env);
+    if (!open && !listed) {
+      const prev = await db.prepare(`SELECT denied FROM class_waiting WHERE class_id = ? AND uid = ?`).bind(cls.id, uid).first<{ denied: number | null }>();
+      if (prev?.denied) return c.json({ denied: true });
+      const waitingCount = await db.prepare(`SELECT COUNT(*) AS n FROM class_waiting WHERE class_id = ?`).bind(cls.id).first<{ n: number }>();
+      if (!prev && (waitingCount?.n ?? 0) >= 100) return c.json({ error: "Too many people are waiting to join this class. Ask your teacher." }, 429);
+      await db
+        .prepare(`INSERT INTO class_waiting (class_id, uid, name, email, at, denied) VALUES (?, ?, ?, ?, ?, 0) ON CONFLICT (class_id, uid) DO UPDATE SET name = excluded.name`)
+        .bind(cls.id, uid, name, email, Date.now())
+        .run();
+      return c.json({ waiting: true });
+    }
+  }
+  await db
+    .prepare(`INSERT INTO class_students (class_id, uid, name, joined_at, email) VALUES (?, ?, ?, ?, ?) ON CONFLICT (class_id, uid) DO UPDATE SET name = excluded.name, email = COALESCE(excluded.email, class_students.email)`)
+    .bind(cls.id, uid, name, Date.now(), email)
     .run();
   return c.json({ ok: true });
 });
+
+/**
+ * Who a student is. With sign-in required (the normal case), it's always their account: name,
+ * school email and identity. Otherwise (a demo setup) the browser's guest identity and typed name.
+ */
+async function studentIdentity(c: C, body: { uid?: unknown; name?: unknown }): Promise<{ uid: string; name: string; email: string | null } | Response> {
+  const user = await currentUser(c.env, c.req.raw);
+  if (user) return { uid: user.uid, name: user.name.slice(0, 32), email: user.email?.toLowerCase() ?? null };
+  if (signInRequired(c.env)) return c.json({ error: "Sign in with your school Google account to join.", signIn: true }, 401);
+  return { uid: String(body.uid ?? "").slice(0, 64), name: String(body.name ?? "").trim().slice(0, 32), email: null };
+}
 
 async function assignmentByCode(c: C) {
   const cls = await classByCode(c);
@@ -611,7 +746,14 @@ classes.post("/join/:code/a/:aid/open", async (c) => {
   if (!found) return c.json({ error: "That assignment link doesn't work any more. Ask your teacher for a new one." }, 404);
   const { cls, a } = found;
   const body = await c.req.json<{ uid?: string }>().catch(() => ({}) as { uid?: string });
-  const uid = String(body.uid ?? "").slice(0, 64);
+  const who = await studentIdentity(c, body);
+  if (who instanceof Response) return who;
+  const uid = who.uid;
+  // The room lets this student in: class rooms only admit the students the class placed there.
+  const give = async (roomCode: string) => {
+    await (await getServerByName(c.env.Room, roomCode)).allowStudent(uid).catch(() => null);
+    return c.json({ roomCode });
+  };
   const student = uid ? await c.env.DB!.prepare(`SELECT name FROM class_students WHERE class_id = ? AND uid = ?`).bind(cls.id, uid).first<{ name: string }>() : null;
   if (!student) return c.json({ needsJoin: true });
   if (!(await hit(c.env.DB!, `assignopen:${clientIp(c.req.raw)}`, 300, 3600))) return c.json({ error: "Too many tries. Wait a bit." }, 429);
@@ -624,7 +766,7 @@ classes.post("/join/:code/a/:aid/open", async (c) => {
 
   if (assignment.mode === "solo") {
     const mine = await db.prepare(`SELECT room_code FROM class_groups WHERE assignment_id = ? AND members LIKE ?`).bind(a.id, memberLike).first<{ room_code: string }>();
-    if (mine) return c.json({ roomCode: mine.room_code });
+    if (mine) return give(mine.room_code);
     if (!host) return c.json({ error: "This assignment can't make rooms. Ask your teacher to create it again." }, 500);
     const code = await createRoom(c, host, `${a.title} · ${student.name}`, project, template, { classId: cls.id, assignmentId: a.id, group: student.name });
     if (!code) return c.json({ error: "Couldn't open your room. Try again." }, 500);
@@ -635,10 +777,10 @@ classes.post("/join/:code/a/:aid/open", async (c) => {
       )
       .bind(a.id, code, student.name, JSON.stringify([uid]), a.id, memberLike)
       .run();
-    if (ins.meta.changes) return c.json({ roomCode: code });
+    if (ins.meta.changes) return give(code);
     await (await getServerByName(c.env.Room, code)).destroy(host).catch(() => false);
     const winner = await db.prepare(`SELECT room_code FROM class_groups WHERE assignment_id = ? AND members LIKE ?`).bind(a.id, memberLike).first<{ room_code: string }>();
-    return winner ? c.json({ roomCode: winner.room_code }) : c.json({ error: "Couldn't open your room. Try again." }, 500);
+    return winner ? give(winner.room_code) : c.json({ error: "Couldn't open your room. Try again." }, 500);
   }
 
   // Groups: find this student's group, or place a late joiner.
@@ -661,15 +803,15 @@ classes.post("/join/:code/a/:aid/open", async (c) => {
       await db.prepare(`INSERT INTO class_groups (assignment_id, room_code, name, members) VALUES (?, ?, ?, ?)`).bind(a.id, group.roomCode, group.name, JSON.stringify(group.members)).run();
     }
   }
-  if (!isPending(group.roomCode)) return c.json({ roomCode: group.roomCode });
+  if (!isPending(group.roomCode)) return give(group.roomCode);
   if (!host) return c.json({ error: "This assignment can't make rooms. Ask your teacher to create it again." }, 500);
   const code = await createRoom(c, host, `${a.title} · ${group.name}`, project, template, { classId: cls.id, assignmentId: a.id, group: group.name });
   if (!code) return c.json({ error: "Couldn't open your group's room. Try again." }, 500);
   // The first member to open it makes the room; anyone racing them gets that same room.
   const swap = await db.prepare(`UPDATE class_groups SET room_code = ? WHERE assignment_id = ? AND room_code = ?`).bind(code, a.id, group.roomCode).run();
-  if (swap.meta.changes) return c.json({ roomCode: code });
+  if (swap.meta.changes) return give(code);
   await (await getServerByName(c.env.Room, code)).destroy(host).catch(() => false);
   groups = await loadGroups(db, a.id);
   const now = groups.find((g) => g.members.includes(uid));
-  return now && !isPending(now.roomCode) ? c.json({ roomCode: now.roomCode }) : c.json({ error: "Try again in a moment." }, 409);
+  return now && !isPending(now.roomCode) ? give(now.roomCode) : c.json({ error: "Try again in a moment." }, 409);
 });

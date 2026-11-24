@@ -28,15 +28,19 @@ export function useAccount() {
   const [user, setUser] = useState<Account | null | undefined>(undefined); // undefined = loading
   const [providers, setProviders] = useState<string[]>([]);
   const [requireSignIn, setRequireSignIn] = useState(false);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
   useEffect(() => {
     fetch("/api/auth/providers")
-      .then((r) => r.json() as Promise<{ providers: string[]; requireSignInToCreate: boolean }>)
+      .then((r) => r.json() as Promise<{ providers: string[]; requireSignIn?: boolean; requireSignInToCreate: boolean; turnstileSiteKey?: string | null }>)
       .then((d) => {
         setProviders(d.providers);
-        setRequireSignIn(d.requireSignInToCreate);
+        setRequireSignIn(!!(d.requireSignIn ?? d.requireSignInToCreate));
+        setTurnstileSiteKey(d.turnstileSiteKey ?? null);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoaded(true));
     fetch("/api/auth/me", { credentials: "same-origin" })
       .then((r) => r.json() as Promise<{ user: Account | null; isAdmin?: boolean }>)
       .then((d) => {
@@ -58,7 +62,9 @@ export function useAccount() {
     applyProfile(u);
     setUser(u);
   };
-  return { user, providers, requireSignIn, isAdmin, update };
+  /** Everything known: sign-in state and settings. Wait for this before showing gated pages. */
+  const ready = loaded && user !== undefined;
+  return { user, providers, requireSignIn, turnstileSiteKey, ready, isAdmin, update };
 }
 
 export function signInUrl(provider: string, returnTo = location.pathname) {

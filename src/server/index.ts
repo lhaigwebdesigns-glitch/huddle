@@ -1,3 +1,4 @@
+import { isHuman, NOT_HUMAN } from "./turnstile";
 import { Hono } from "hono";
 import { getServerByName, routePartykitRequest } from "partyserver";
 import type { Env } from "./env";
@@ -8,7 +9,7 @@ import { checkKeys } from "./keyhealth";
 import { bump, readStats } from "./stats";
 import { aiEnv, hasPc, pcAiEnabled, pcStatus, setPcAi, unloadPcModels } from "./ai/pc";
 import { clientIp, ensureTables, hit, usageByDay } from "./db";
-import { auth, currentUser, enabledProviders, isAdminUser, rememberRoomForUser } from "./auth";
+import { auth, currentUser, enabledProviders, isAdminUser, rememberRoomForUser, signInRequired } from "./auth";
 import { MAX_UPLOAD_BYTES, safeFileName, UPLOAD_TYPES } from "../shared/knowledge";
 import { getBlob, putBlob } from "./blobs";
 import { classes } from "./classes";
@@ -33,11 +34,12 @@ app.route("/api/classes", classes);
 
 app.post("/api/rooms", async (c) => {
   const user = await currentUser(c.env, c.req.raw);
-  if (c.env.REQUIRE_SIGNIN_TO_CREATE === "1" && enabledProviders(c.env).length && !user)
-    return c.json({ error: "Sign in to create a room (joining with a code doesn't need an account).", signIn: true }, 401);
+  if ((signInRequired(c.env) || (c.env.REQUIRE_SIGNIN_TO_CREATE === "1" && enabledProviders(c.env).length)) && !user)
+    return c.json({ error: "Sign in to start a room.", signIn: true }, 401);
   if (!(await hit(c.env.DB, `rooms:${clientIp(c.req.raw)}`, Number(c.env.ROOMS_PER_IP_HOUR || 20), 3600)))
     return c.json({ error: "You've created a lot of rooms in the last hour. Please wait a bit and try again." }, 429);
-  const body = await c.req.json<{ uid?: string; title?: string; project?: Record<string, unknown>; template?: string }>().catch(() => ({}) as any);
+  const body = await c.req.json<{ uid?: string; title?: string; project?: Record<string, unknown>; template?: string; human?: string }>().catch(() => ({}) as any);
+  if (!(await isHuman(c.env, body.human, clientIp(c.req.raw)))) return c.json({ error: NOT_HUMAN }, 403);
   // Signed-in people always host under their account's identity.
   const uid = user?.uid ?? String(body.uid ?? "").slice(0, 64);
   if (!uid) return c.json({ error: "uid required" }, 400);
@@ -255,6 +257,7 @@ app.post("/api/pilot", async (c) => {
   if (!(await hit(c.env.DB, `pilot:${clientIp(c.req.raw)}`, 10, 3600)))
     return c.json({ ok: false, error: "Too many sign-ups from this network in the last hour. Please try again later." }, 429);
   const b = await c.req.json<Record<string, unknown>>().catch(() => ({}) as Record<string, unknown>);
+  if (!(await isHuman(c.env, b.human, clientIp(c.req.raw)))) return c.json({ ok: false, error: NOT_HUMAN }, 403);
   const field = (k: string, max: number) => String(b[k] ?? "").trim().slice(0, max);
   const email = field("email", 200);
   const problem = field("problem", 2000);
@@ -377,6 +380,16 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
     if (url.pathname.startsWith("/parties/")) {
+      // Live connections (rooms and their files) are for signed-in people only, and a room
+      // always sees the account's identity, never one the browser claims.
+      if (signInRequired(env)) {
+        const user = await currentUser(env, request);
+        if (!user) return new Response("Sign in to join.", { status: 401 });
+        if (url.pathname.startsWith("/parties/room/")) {
+          url.searchParams.set("uid", user.uid);
+          request = new Request(url.toString(), request);
+        }
+      }
       return (await routePartykitRequest(request, env as any)) ?? new Response("Not found", { status: 404 });
     }
     return app.fetch(request, env, ctx);

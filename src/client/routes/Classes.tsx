@@ -650,6 +650,155 @@ function EditTimesDialog({ classId, a, onClose, onDone }: { classId: string; a: 
 type ClassTimeRequest = TimeRequest & { assignment: string; assignmentId: string; group: string; room: string };
 
 /** Students asking for more time: approve gives exactly what they asked for. */
+/** People who opened the class link but aren't on the class list: let them in or turn them away. */
+function WaitingSection({ view, onChange }: { view: ClassView; onChange: () => void }) {
+  if (!view.waiting.length) return null;
+  const answer = async (uid: string, admit: boolean) => {
+    await api(`/api/classes/${view.class.id}/waiting/${encodeURIComponent(uid)}`, { method: "POST", body: JSON.stringify({ admit }) });
+    onChange();
+  };
+  return (
+    <section className="mt-6 rounded-[20px] border border-line bg-surface p-4" data-testid="waiting-list">
+      <h2 className="text-sm font-semibold">
+        Needs your answer: {view.waiting.length} student{view.waiting.length === 1 ? "" : "s"} waiting to join
+      </h2>
+      <p className="mt-0.5 text-xs text-fg-subtle">Their email isn't on your class list. Letting someone in adds them to it.</p>
+      <ul className="mt-3 space-y-2">
+        {view.waiting.map((w) => (
+          <li key={w.uid} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line px-3.5 py-2.5 text-sm" data-testid="waiting-student">
+            <span className="min-w-0 flex-1">
+              <b>{w.name}</b> <span className="text-fg-subtle">{w.email ?? "no email"} · {timeAgo(w.at)}</span>
+            </span>
+            <Button size="sm" onClick={() => answer(w.uid, true)} data-testid="admit-student">
+              Let in
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => answer(w.uid, false)} data-testid="deny-student">
+              Turn away
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/**
+ * The class list: the school emails allowed in. Students on it get straight in; anyone else
+ * waits for the teacher. A teacher can open the class to anyone with the code instead.
+ */
+function ClassListSection({ view, onChange }: { view: ClassView; onChange: () => void }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(null);
+  const [open, setOpen] = useState(false);
+  const listOnly = view.access === "list";
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setMsg(null);
+    const d = await api<{ added?: number }>(`/api/classes/${view.class.id}/roster`, { method: "POST", body: JSON.stringify({ emails: text }) });
+    setBusy(false);
+    if (d.error) return setMsg({ text: d.error, err: true });
+    setText("");
+    setMsg({ text: `Added ${d.added} email${d.added === 1 ? "" : "s"}.` });
+    onChange();
+  };
+  const setAccess = async (access: "list" | "code") => {
+    await api(`/api/classes/${view.class.id}`, { method: "PATCH", body: JSON.stringify({ access }) });
+    onChange();
+  };
+  const joined = view.roster.filter((r) => r.joined).length;
+  return (
+    <section className="mt-10" data-testid="class-list">
+      <div className="flex flex-wrap items-end gap-2">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-subtle">Class list</h2>
+          <p className="mt-1 text-sm text-fg-muted">
+            {listOnly
+              ? view.roster.length
+                ? `${view.roster.length} student email${view.roster.length === 1 ? "" : "s"} · ${joined} joined. Anyone else who opens your link waits for you to let them in.`
+                : "Add your students' school emails. They'll get straight in; anyone else waits for you to let them in."
+              : "Anyone who signs in and has the class code or link can join."}
+          </p>
+        </div>
+        <div className="flex rounded-full border border-line p-0.5 text-xs font-semibold" role="radiogroup" aria-label="Who can join">
+          <button
+            role="radio"
+            aria-checked={listOnly}
+            onClick={() => setAccess("list")}
+            className={`press rounded-full px-3 py-1.5 ${listOnly ? "bg-surface-2 text-fg" : "text-fg-subtle hover:text-fg"}`}
+            data-testid="access-list"
+          >
+            Class list only
+          </button>
+          <button
+            role="radio"
+            aria-checked={!listOnly}
+            onClick={() => setAccess("code")}
+            className={`press rounded-full px-3 py-1.5 ${!listOnly ? "bg-surface-2 text-fg" : "text-fg-subtle hover:text-fg"}`}
+            data-testid="access-code"
+          >
+            Anyone with the code
+          </button>
+        </div>
+      </div>
+      {listOnly && (
+        <form onSubmit={add} className="mt-3 rounded-[20px] border border-line bg-surface p-3">
+          <label className="block text-sm font-medium" htmlFor="roster-emails">
+            Add students
+          </label>
+          <textarea
+            id="roster-emails"
+            rows={3}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={"Paste school emails, one per line or separated by commas\nava@school.org, ben@school.org"}
+            className="mt-1 w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-fg/40"
+            data-testid="roster-input"
+          />
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <Button type="submit" size="sm" disabled={busy || !text.trim()} data-testid="roster-add">
+              {busy ? "Adding…" : "Add to class list"}
+            </Button>
+            {msg && (
+              <span className={`text-sm ${msg.err ? "text-red-600 dark:text-red-400" : "text-fg-muted"}`} role={msg.err ? "alert" : "status"}>
+                {msg.text}
+              </span>
+            )}
+            {view.roster.length > 0 && (
+              <button type="button" onClick={() => setOpen((o) => !o)} className="ml-auto text-sm text-fg-muted underline-offset-2 hover:text-fg hover:underline" data-testid="roster-toggle">
+                {open ? "Hide the list" : `See all ${view.roster.length}`}
+              </button>
+            )}
+          </div>
+          {open && (
+            <ul className="mt-3 max-h-72 divide-y divide-line overflow-y-auto rounded-xl border border-line" data-testid="class-list-rows">
+              {view.roster.map((r) => (
+                <li key={r.email} className="flex items-center gap-2 px-3 py-2 text-sm" data-testid="roster-row">
+                  <span className="min-w-0 flex-1 truncate">{r.email}</span>
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${r.joined ? "bg-mint text-ink dark:bg-mint/15 dark:text-mint" : "bg-surface-2 text-fg-subtle"}`}>
+                    {r.joined ? "Joined" : "Not yet"}
+                  </span>
+                  <button
+                    onClick={async () => {
+                      await api(`/api/classes/${view.class.id}/roster/${encodeURIComponent(r.email)}`, { method: "DELETE" });
+                      onChange();
+                    }}
+                    className="press rounded-full p-1 text-fg-subtle hover:bg-surface-2 hover:text-fg"
+                    aria-label={`Remove ${r.email} from the class list`}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </form>
+      )}
+    </section>
+  );
+}
+
 function TimeRequestsSection({ classId, onChange }: { classId: string; onChange: () => void }) {
   const [list, setList] = useState<ClassTimeRequest[]>([]);
   const load = useCallback(() => {
@@ -793,7 +942,7 @@ export function ClassPage() {
               </button>
             </div>
             <a
-              href={classroomShareUrl(link, `Join ${view.class.name} on Cairn`, "Open the link and type your name to join the class. Your assignments will show up there.")}
+              href={classroomShareUrl(link, `Join ${view.class.name} on Cairn`, "Open the link and sign in with your school Google account. Your assignments will show up there.")}
               target="_blank"
               rel="noopener noreferrer"
               className="press mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted hover:text-fg"
@@ -805,6 +954,7 @@ export function ClassPage() {
         </div>
 
         <ReportsSection classId={view.class.id} />
+        <WaitingSection view={view} onChange={load} />
         <TimeRequestsSection classId={view.class.id} onChange={load} />
 
         <div className="mt-8 flex items-center gap-2">
@@ -831,6 +981,8 @@ export function ClassPage() {
             <AssignmentSection key={a.id} a={a} view={view} reload={load} />
           ))}
         </div>
+
+        <ClassListSection view={view} onChange={load} />
 
         <h2 className="mt-10 text-sm font-semibold uppercase tracking-wide text-fg-subtle">Students</h2>
         <ul className="mt-2 flex flex-wrap gap-1.5" data-testid="roster">
@@ -1039,6 +1191,12 @@ function TodayPanel({ today }: { today: TodayView }) {
                       <span>
                         <Flag className="mr-1 inline h-3 w-3" aria-hidden />
                         {plural(x.reports, "reported message")}
+                      </span>
+                    )}
+                    {x.waiting > 0 && (
+                      <span>
+                        <Users className="mr-1 inline h-3 w-3" aria-hidden />
+                        {plural(x.waiting, "student")} waiting to join
                       </span>
                     )}
                   </div>

@@ -367,6 +367,11 @@ export class Room extends Server<Env> {
     }
     if ((await this.bans()).some((b) => b.uid === uid)) return conn.close(4003, "The host banned you from this room.");
     const known = (await this.ctx.storage.get<string[]>("members")) ?? [];
+    // A class room is only for the students the class placed in it (via the assignment link).
+    if (link && uid !== this.settings.hostId && !known.includes(uid)) {
+      const allowed = (await this.ctx.storage.get<string[]>("allowed")) ?? [];
+      if (!allowed.includes(uid)) return conn.close(4003, "This room belongs to a class. Open it from your assignment link.");
+    }
     if (this.settings.locked && uid !== this.settings.hostId && !known.includes(uid))
       return conn.close(4003, "This room is locked");
     if (this.members().filter((m) => m.uid !== uid).length >= MAX_ROOM_SIZE)
@@ -1114,6 +1119,13 @@ export class Room extends Server<Env> {
   }
 
   /** The teacher removed this student from the class: send them out and keep them out. */
+  /** Lets a class student into this room (called when the class places them here). */
+  async allowStudent(uid: string) {
+    const allowed = (await this.ctx.storage.get<string[]>("allowed")) ?? [];
+    if (!allowed.includes(uid)) await this.ctx.storage.put("allowed", [...allowed, uid].slice(-200));
+    return { ok: true };
+  }
+
   async removeStudent(teacherUid: string, uid: string) {
     return this.moderate(teacherUid, "ban", uid);
   }
