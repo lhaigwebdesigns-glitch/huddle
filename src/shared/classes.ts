@@ -93,6 +93,21 @@ export interface Assignment {
   groupSize: number;
   /** Rooms that exist so far (solo rooms appear when a student first opens the assignment). */
   groups: GroupInfo[];
+  /** The starter files every student gets a copy of, and the answer key (teacher only). */
+  worksheet?: WorksheetInfo;
+}
+
+export interface WorksheetInfo {
+  /** The teacher-only room that holds the starter files and the answer key. */
+  room: string;
+  files?: { title: string; kind: string }[];
+  hasKey?: boolean;
+}
+
+/** What the teacher asks for when making an assignment: a blank doc or slides, and an answer key. */
+export interface WorksheetRequest {
+  starter?: "doc" | "slides" | null;
+  key?: boolean;
 }
 
 export type AssignmentMode = "solo" | "groups";
@@ -141,6 +156,8 @@ export interface GradingView {
   receipt: Receipt | null;
   /** The other groups, for "Next group". */
   order: string[];
+  /** The assignment's answer key, shown beside the work (teacher only). */
+  answerKey?: { title: string; markdown: string } | null;
 }
 
 /** A student's view of a class: just their own assignments and rooms. */

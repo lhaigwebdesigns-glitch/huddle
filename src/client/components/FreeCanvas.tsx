@@ -209,7 +209,7 @@ export function FreeCanvas({ slide, theme, width, room }: { slide: Y.Map<any>; t
                     onPointerDown={(ev) => ev.stopPropagation()}
                     onFocus={() => setSelected(e.id)}
                     className="h-full w-full resize-none bg-transparent outline-none placeholder:opacity-40"
-                    style={{ fontSize: e.size ?? 28, lineHeight: 1.3, color: t.fg, fontFamily: t.font }}
+                    style={{ fontSize: e.size ?? 28, lineHeight: 1.3, color: e.color ?? t.fg, fontWeight: e.bold ? 700 : undefined, fontFamily: t.font }}
                   />
                 )}
                 {e.type === "image" &&

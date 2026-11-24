@@ -31,6 +31,8 @@ export interface RoomState {
   providers: string[];
   openFileId?: string;
   openFileNonce: number;
+  /** The ref sent with new_file, echoed back (so an import knows its file). */
+  openFileRef?: string;
   toast?: string;
   /** Room banner (e.g. the free cloud AI is unavailable); cleared when dismissed or when Local mode is on. */
   notice?: string;
@@ -105,7 +107,7 @@ function reducer(s: RoomState, a: Action): RoomState {
     case "files":
       return { ...s, files: m.files };
     case "open_file":
-      return { ...s, openFileId: m.id, openFileNonce: s.openFileNonce + 1 };
+      return { ...s, openFileId: m.id, openFileNonce: s.openFileNonce + 1, openFileRef: m.ref };
     case "kicked":
       return {
         ...s,

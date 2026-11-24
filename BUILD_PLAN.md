@@ -15,6 +15,15 @@ Last updated Nov 22, 2026. Sizes: **S** = an evening, **M** = a weekend, **L** =
 
 **Builds 1–11 are live.** The product is now **Cairn** (renamed from Huddle in November 2026): new name, logo, colors, rock-character illustrations, landing page and app theme, in light and dark. Next: **the pilot** with your teacher's class.
 
+**After launch (November 2026):**
+- Step 1, polish: done (nav, light mode first, Cairn date pickers and dialogs).
+- Step 2, security: done (everyone signs in, class lists with a waiting list, class rooms only for their students, Turnstile ready).
+- Teacher and student accounts: done (student accounts never get teacher tools).
+- Step 3, worksheets: built. A teacher adds a worksheet to an assignment: a blank doc or slides, or their own Word or PowerPoint file. Every student or group gets their own copy when they first open the assignment. An optional answer key stays with the teacher and shows beside the work when grading. Anyone can also bring a Word or PowerPoint file into a room from New file.
+- Step 4, writing replay: not started.
+
+**Known limit of imports:** Word keeps headings, bold, italic, underline, lists, tables, pictures and links, but not text colors, exact fonts or page layout. PowerPoint keeps each slide's text boxes, pictures, shapes, background color, text size, color and bold, and speaker notes, but not themes, charts, SmartArt or animations.
+
 **Known limit of receipts:** when someone splits a paragraph in the middle (presses Enter inside it), the doc editor rewrites the text after the split, so that text is credited to the person who split it. Typing, deleting and pressing Enter at the end of a paragraph are counted correctly.
 
 ## The builds, in order

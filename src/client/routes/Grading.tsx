@@ -1,7 +1,8 @@
 import { confirmDialog } from "../components/Dialogs";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Plus, RotateCcw, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, KeyRound, Plus, RotateCcw, X } from "lucide-react";
+import { Markdown } from "../components/Markdown";
 import { useAccount } from "../lib/account";
 import { getIdentity } from "../lib/identity";
 import { FilePanel } from "../components/FilePanel";
@@ -182,6 +183,8 @@ export default function Grading() {
   const [err, setErr] = useState("");
   const [fileId, setFileId] = useState<string | null>(null);
   const [allDone, setAllDone] = useState(false);
+  /** The right side shows the work record, or the answer key next to the student's file. */
+  const [side, setSide] = useState<"receipt" | "key">("receipt");
   /** Save & next: go to the next turned-in work that isn't graded yet, or say everything is done. */
   const goNext = async () => {
     const d = await api<{ next: string | null }>(`/api/classes/${id}/assignments/${aid}/next-to-grade?after=${room}`);
@@ -297,12 +300,42 @@ export default function Grading() {
                   {roomFile && <FilePanel key={roomFile.id} room={room} file={roomFile} me={me} onClose={() => setFileId(null)} onRename={() => {}} locked />}
                 </div>
               </div>
-              <aside className="h-[70vh] min-w-0 overflow-hidden border-t border-line lg:h-auto lg:min-h-0 lg:border-t-0">
-                {view.receipt ? (
-                  <ReceiptDialog embedded receipt={view.receipt} meUid="" isHost mode="view" send={() => {}} onClose={() => {}} />
-                ) : (
-                  <p className="p-6 text-sm text-fg-subtle">No receipt was saved for this group.</p>
+              <aside className="flex h-[70vh] min-w-0 flex-col overflow-hidden border-t border-line lg:h-auto lg:min-h-0 lg:border-t-0">
+                {view.answerKey && (
+                  <div className="flex shrink-0 gap-1 border-b border-line px-3 py-2" role="tablist" aria-label="Beside the work">
+                    {(
+                      [
+                        ["receipt", "Work record"],
+                        ["key", "Answer key"],
+                      ] as const
+                    ).map(([k, label]) => (
+                      <button
+                        key={k}
+                        role="tab"
+                        aria-selected={side === k}
+                        onClick={() => setSide(k)}
+                        className={`press flex items-center gap-1.5 rounded-lg px-2.5 py-1 text-sm ${side === k ? "bg-surface-2 font-medium" : "text-fg-muted hover:bg-surface-2"}`}
+                        data-testid={k === "key" ? "answer-key-tab" : "receipt-tab"}
+                      >
+                        {k === "key" && <KeyRound className="h-3.5 w-3.5" aria-hidden />} {label}
+                      </button>
+                    ))}
+                  </div>
                 )}
+                <div className="min-h-0 flex-1 overflow-y-auto">
+                  {side === "key" && view.answerKey ? (
+                    <div className="px-5 py-4" data-testid="answer-key">
+                      <p className="text-xs text-fg-subtle">Only you see this. Edit it from the worksheet on the class page.</p>
+                      <div className="prose prose-zinc mt-2 max-w-none text-sm dark:prose-invert">
+                        <Markdown text={view.answerKey.markdown || "The answer key is empty."} />
+                      </div>
+                    </div>
+                  ) : view.receipt ? (
+                    <ReceiptDialog embedded receipt={view.receipt} meUid="" isHost mode="view" send={() => {}} onClose={() => {}} />
+                  ) : (
+                    <p className="p-6 text-sm text-fg-subtle">No receipt was saved for this group.</p>
+                  )}
+                </div>
               </aside>
             </div>
             {allDone && (
