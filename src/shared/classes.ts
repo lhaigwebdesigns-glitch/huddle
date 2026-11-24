@@ -14,6 +14,30 @@ export interface ClassStudent {
   uid: string;
   name: string;
   joinedAt: number;
+  /** The school email they signed in with, when known. */
+  email?: string;
+}
+
+/** Who may join: only people on the class list (others wait for the teacher), or anyone with the code. */
+export type ClassAccess = "list" | "code";
+
+/** Someone who opened the class link but isn't on the class list yet. */
+export interface WaitingStudent {
+  uid: string;
+  name: string;
+  email: string | null;
+  at: number;
+}
+
+/** Emails pasted by a teacher (one per line, or separated by commas or spaces), cleaned up. */
+export function parseEmails(text: string, max = 300): string[] {
+  const out = new Set<string>();
+  for (const raw of String(text).split(/[\s,;]+/)) {
+    const e = raw.trim().replace(/^<|>$/g, "").toLowerCase();
+    if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) && e.length <= 200) out.add(e);
+    if (out.size >= max) break;
+  }
+  return [...out];
 }
 
 /** A group's progress, as numbers only: never the chat. */
@@ -101,6 +125,10 @@ export interface ClassView {
   class: ClassInfo;
   students: ClassStudent[];
   assignments: Assignment[];
+  access: ClassAccess;
+  /** The class list: emails the teacher added, and whether that student has joined yet. */
+  roster: { email: string; joined: boolean }[];
+  waiting: WaitingStudent[];
 }
 
 /** What the grading screen needs for one group. */
@@ -119,6 +147,8 @@ export interface GradingView {
 export interface StudentClassView {
   name: string;
   joined: boolean;
+  /** joined; waiting = asked to join and the teacher hasn't answered; denied = the teacher said no. */
+  status?: "joined" | "waiting" | "denied" | "new";
   assignments: { id: string; title: string; dueAt?: number; mode: AssignmentMode; roomCode?: string; groupName?: string; turnedIn?: boolean }[];
 }
 
@@ -188,7 +218,7 @@ export interface TodayView {
   /** Turned-in work that isn't graded yet, per assignment. `first` is the room to open first. */
   toGrade: { classId: string; className: string; assignmentId: string; title: string; mode: AssignmentMode; count: number; first: string }[];
   /** Requests for more time and reported messages waiting, per class. */
-  answers: { classId: string; className: string; timeRequests: number; reports: number }[];
+  answers: { classId: string; className: string; timeRequests: number; reports: number; waiting: number }[];
   /** Assignments due in the next two days, with how many students (or groups) haven't started. */
   dueSoon: { classId: string; className: string; assignmentId: string; title: string; dueAt: number; notStarted: number; total: number }[];
   /** For the getting-started steps. */

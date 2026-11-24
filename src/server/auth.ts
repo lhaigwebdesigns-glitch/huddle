@@ -1,9 +1,10 @@
 import { Hono, type Context } from "hono";
 import type { Env } from "./env";
+import { turnstileOn } from "./turnstile";
 
 /**
- * Optional sign-in. Guests can always join rooms; an account adds "My rooms" across devices
- * and (with REQUIRE_SIGNIN_TO_CREATE=1) gates room creation to protect free quotas.
+ * Sign-in. Everyone signs in (Google) to use rooms and classes whenever a sign-in method is set
+ * up, unless REQUIRE_SIGNIN=0. The account is who you are everywhere: rooms, classes, rosters.
  *
  * Minimal OAuth 2.0 (GitHub, Google) with no extra dependencies. Sessions are random tokens
  * in an HttpOnly cookie; only their SHA-256 hash is stored in D1.
@@ -201,7 +202,17 @@ export async function rememberRoomForUser(env: Env, user: User, code: string, ti
 
 export const auth = new Hono<{ Bindings: Env }>();
 
-auth.get("/providers", (c) => c.json({ providers: enabledProviders(c.env), requireSignInToCreate: c.env.REQUIRE_SIGNIN_TO_CREATE === "1" }));
+/** Everyone must be signed in to join or create rooms and classes. */
+export const signInRequired = (env: Env) => env.REQUIRE_SIGNIN !== "0" && enabledProviders(env).length > 0;
+
+auth.get("/providers", (c) =>
+  c.json({
+    providers: enabledProviders(c.env),
+    requireSignIn: signInRequired(c.env),
+    requireSignInToCreate: signInRequired(c.env) || c.env.REQUIRE_SIGNIN_TO_CREATE === "1",
+    turnstileSiteKey: turnstileOn(c.env) ? c.env.TURNSTILE_SITE_KEY : null,
+  }),
+);
 
 /** Admin by account: a Google sign-in whose verified email is listed in ADMIN_EMAILS. */
 export function isAdminUser(env: Env, user: User | null): boolean {
@@ -222,9 +233,17 @@ auth.get("/login/:provider", async (c) => {
   const to = safeReturn(c.req.query("return"));
   const secure = new URL(c.req.url).protocol === "https:";
   if (name === "dev") {
-    // Local testing only (DEV_AUTH=1): sign in as any name, no password.
+    // Local testing only (DEV_AUTH=1): sign in as any name, no password. `key` keeps test
+    // accounts apart; `email` lets tests act as a student on a class list.
     const display = (c.req.query("name") ?? "Dev user").slice(0, 40);
-    const userId = await upsertUser(c.env.DB, "dev", { id: display.toLowerCase(), name: display, email: null, avatar: null }, guestUid);
+    const key = (c.req.query("key") ?? "").slice(0, 64);
+    const email = (c.req.query("email") ?? "").trim().toLowerCase().slice(0, 200);
+    const userId = await upsertUser(
+      c.env.DB,
+      "dev",
+      { id: key || display.toLowerCase(), name: display, email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null, avatar: null },
+      guestUid,
+    );
     return startSession(c, userId, to);
   }
   const p = PROVIDERS[name];

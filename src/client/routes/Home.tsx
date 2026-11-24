@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { signInUrl, useAccount } from "../lib/account";
+import { PROVIDER_LABEL, signInUrl, useAccount } from "../lib/account";
+import { GoogleMark, HumanCheck } from "../components/SignInGate";
 import { AccountMenu } from "../components/AccountMenu";
 import { formatCode, isValidCode, normalizeCode } from "../../shared/code";
 import { forgetRoom, getIdentity, recentRooms, setName } from "../lib/identity";
@@ -20,6 +21,8 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
+  const [human, setHuman] = useState("");
+  const mustSignIn = account.ready && account.requireSignIn && !account.user;
   // Guests see this device's last few rooms; signed-in people have the dashboard.
   const [recent, setRecent] = useState(() => recentRooms());
 
@@ -45,7 +48,7 @@ export default function Home() {
       const res = await fetch("/api/rooms", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ uid: me.uid, title: title.trim() || `${name.trim()}'s room` }),
+        body: JSON.stringify({ uid: me.uid, title: title.trim() || `${name.trim()}'s room`, human }),
       });
       const data = (await res.json()) as { code?: string; error?: string; signIn?: boolean };
       if (data.signIn && account.providers[0]) {
@@ -63,7 +66,7 @@ export default function Home() {
 
   const join = async () => {
     setErr("");
-    if (!ensureName()) return;
+    if (!mustSignIn && !ensureName()) return;
     const c = normalizeCode(code);
     if (!isValidCode(c)) return setErr("Codes are 6 letters or numbers, like K7Q-29F.");
     setBusy(true);
@@ -72,7 +75,7 @@ export default function Home() {
     if (!res.ok) {
       // Not a room: it may be a class code.
       const cls = await fetch(`/api/classes/join/${c}`);
-      if (cls.ok) return nav(`/c/${c}`);
+      if (cls.ok || cls.status === 401) return nav(`/c/${c}`);
       return setErr("That code doesn't match a room or a class. Check the letters and try again.");
     }
     nav(`/r/${c}`);
@@ -83,7 +86,8 @@ export default function Home() {
     const clean = normalizeCode(c);
     if (!isValidCode(clean)) return "Class codes are 6 letters and numbers, like ABC-123.";
     const cls = await fetch(`/api/classes/join/${clean}`);
-    if (cls.ok) {
+    // 401 = the class exists but wants you signed in first; its page asks you to.
+    if (cls.ok || cls.status === 401) {
       nav(`/c/${clean}`);
       return null;
     }
@@ -146,6 +150,21 @@ export default function Home() {
           <div className="wrap">
             <h2>Have a code? Jump in.</h2>
             <p className="lead">Join your class or your group's room with the code your teacher or a friend shared, or start a room of your own for a study group or club.</p>
+            {mustSignIn ? (
+              <div className="start-box" data-testid="start-signin">
+                <p style={{ padding: "8px 12px 4px", color: "var(--fg-muted)" }}>Sign in with your school Google account to start a room or join one. Students: open your teacher's link, or type your class code above.</p>
+                {account.providers.map((p) => (
+                  <a key={p} className="btn btn-go" href={signInUrl(p, "/#start")} style={{ width: "100%", marginTop: 8 }}>
+                    {p === "google" && (
+                      <span style={{ display: "inline-grid", placeItems: "center", width: 28, height: 28, borderRadius: 999, background: "#fff" }}>
+                        <GoogleMark className="h-4 w-4" />
+                      </span>
+                    )}
+                    Continue with {PROVIDER_LABEL[p] ?? p}
+                  </a>
+                ))}
+              </div>
+            ) : (
             <div className="start-box">
               <div className="fields">
                 <label>
@@ -171,10 +190,12 @@ export default function Home() {
                   />
                 </label>
               </div>
+              <HumanCheck siteKey={account.turnstileSiteKey} onToken={setHuman} />
               <button className="btn btn-go" onClick={create} disabled={busy}>
                 {busy ? "Starting…" : "Start a room"}
               </button>
             </div>
+            )}
             <div className="code-row">
               <span>Have a room or class code?</span>
               <div className="code-join">
@@ -1130,6 +1151,8 @@ function Founder() {
 
 /** Teachers sign up for the pilot. The free-text question is required: it's how we know who has the problem. */
 function Pilot() {
+  const account = useAccount();
+  const [human, setHuman] = useState("");
   const [form, setForm] = useState({ name: "", email: "", school: "", grade: "", subject: "", classSize: "", classroom: "", problem: "" });
   const [state, setState] = useState<"idle" | "sending" | "done">("idle");
   const [err, setErr] = useState("");
@@ -1138,7 +1161,7 @@ function Pilot() {
     e.preventDefault();
     setErr("");
     setState("sending");
-    const r = await fetch("/api/pilot", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(form) });
+    const r = await fetch("/api/pilot", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...form, human }) });
     const d = (await r.json().catch(() => ({}))) as { ok?: boolean; error?: string };
     if (!d.ok) {
       setState("idle");
@@ -1236,6 +1259,9 @@ function Pilot() {
                 data-testid="pilot-problem"
               />
             </label>
+            <div className="full">
+              <HumanCheck siteKey={account.turnstileSiteKey} onToken={setHuman} />
+            </div>
             {err && (
               <p className="pilot-msg full" role="alert">
                 {err}

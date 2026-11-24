@@ -9,10 +9,22 @@ const shots = process.env.SHOTS_DIR;
 const browser = await chromium.launch();
 // Test browsers have already confirmed "13 or older" (one check below tests the prompt itself).
 const newContextRaw = browser.newContext.bind(browser);
+// Everyone signs in now: each test browser gets its own account (dev login) unless it asks to
+// stay signed out. `as` is the account name, `email` the school email (for class lists).
+let testers = 0;
 browser.newContext = async (opts = {}) => {
-  const { askAge, ...rest } = opts;
+  const { askAge, as, email, signedOut, ...rest } = opts;
   const ctx = await newContextRaw(rest);
   if (!askAge) await ctx.addInitScript(() => localStorage.setItem("huddle.age13", "1"));
+  if (!signedOut) {
+    const uid = crypto.randomUUID();
+    await ctx.addInitScript((u) => {
+      if (!localStorage.getItem("huddle.uid")) localStorage.setItem("huddle.uid", u);
+    }, uid);
+    const q = new URLSearchParams({ name: as ?? `Tester ${++testers}`, key: `e2e-${uid}`, uid, return: "/" });
+    if (email) q.set("email", email);
+    await ctx.request.get(`${BASE}/api/auth/login/dev?${q}`, { maxRedirects: 0 });
+  }
   return ctx;
 };
 const ok = (cond, msg) => {
@@ -29,8 +41,8 @@ const seePointer = (page, name) =>
   );
 
 try {
-  const alice = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
-  const bob = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+  const alice = await (await browser.newContext({ viewport: { width: 1400, height: 900 }, as: "Alice" })).newPage();
+  const bob = await (await browser.newContext({ viewport: { width: 1400, height: 900 }, as: "Bob" })).newPage();
 
   // Alice creates a room
   await alice.goto(BASE);
@@ -51,9 +63,16 @@ try {
   ok(true, "Alice sees Bob join (presence)");
 
   // Age check: someone new must confirm they're 13 or older before entering a room.
-  const newbie = await (await browser.newContext({ askAge: true })).newPage();
+  // Signed out, a room link asks you to sign in first, and the live connection itself is refused.
+  const stranger = await (await browser.newContext({ signedOut: true })).newPage();
+  await stranger.goto(`${BASE}/r/${code}`);
+  await stranger.getByTestId("sign-in-gate").waitFor();
+  ok((await stranger.getByTestId("composer").count()) === 0, "signed out, a room link asks you to sign in first");
+  const wsStatus = await stranger.evaluate(async (c) => (await fetch(`/parties/room/${c}?uid=fake`)).status, code);
+  ok(wsStatus === 401, "the server refuses room connections from people who aren't signed in");
+  await stranger.close();
+  const newbie = await (await browser.newContext({ askAge: true, as: "Newbie" })).newPage();
   await newbie.goto(`${BASE}/r/${code}`);
-  await newbie.getByPlaceholder("Your name").fill("Newbie");
   await newbie.getByRole("button", { name: /Join room/ }).click();
   await newbie.waitForTimeout(500);
   ok((await newbie.getByTestId("composer").count()) === 0, "you can't enter a room without confirming you're 13 or older");
@@ -158,7 +177,7 @@ try {
   ok(true, "copy invite link shows a toast");
 
   // Empty room shows clickable suggestions
-  const carol = await (await browser.newContext()).newPage();
+  const carol = await (await browser.newContext({ as: "Carol" })).newPage();
   await carol.goto(BASE);
   await carol.getByPlaceholder("e.g. Sam").fill("Carol");
   await carol.locator("#start").getByRole("button", { name: /Start a room/ }).click();
@@ -284,7 +303,7 @@ try {
   await alice.getByTestId("form-editor").waitFor({ timeout: 15000 });
   ok((await alice.getByTestId("form-question").count()) === 3, "AI form has 3 questions");
   const formLink = await alice.getByTestId("form-share").getAttribute("data-link");
-  const dave = await (await browser.newContext()).newPage();
+  const dave = await (await browser.newContext({ as: "Dave" })).newPage();
   await dave.goto(formLink);
   await dave.getByTestId("public-form-title").getByText("Mock signup").waitFor();
   await dave.getByTestId("form-submit").click(); // name is required → blocked
@@ -410,7 +429,7 @@ try {
   ok(true, "sign-in lands on the dashboard, which lists the room with a Host badge");
 
   // Moderation: Frank joins Erin's room; kick lets him rejoin, ban blocks him, unban lets him back.
-  const frank = await (await browser.newContext()).newPage();
+  const frank = await (await browser.newContext({ as: "Frank" })).newPage();
   await frank.goto(BASE);
   await frank.evaluate(() => localStorage.setItem("huddle.name", "Frank"));
   const frankJoin = () => frank.goto(`${BASE}/r/${erinCode}`);
@@ -449,7 +468,7 @@ try {
   ok(gone === 404, "deleting a room sends everyone out and erases it");
 
   // Guests keep only their last 3 rooms on the landing page.
-  const gina = await (await browser.newContext()).newPage();
+  const gina = await (await browser.newContext({ signedOut: true })).newPage();
   await gina.goto(BASE);
   await gina.evaluate(() => {
     const now = Date.now();
@@ -458,7 +477,8 @@ try {
   });
   await gina.reload();
   await gina.getByTestId("recent-rooms").waitFor();
-  ok((await gina.getByTestId("recent-rooms").locator("li").count()) === 3, "guests see at most 3 recent rooms");
+  ok((await gina.getByTestId("recent-rooms").locator("li").count()) === 3, "this device shows at most 3 recent rooms");
+  ok((await gina.getByTestId("start-signin").count()) === 1, "signed out, the landing page asks you to sign in to start a room");
 
   // Profile: Erin renames herself and uploads a picture; both show up when she joins a room.
   await erin.goto(`${BASE}/profile`);
@@ -497,7 +517,7 @@ try {
   ok(true, "file menu actions work");
 
   // ---------- Projects: AI rules, tutor mode, paste block, turn in ----------
-  const teach = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+  const teach = await (await browser.newContext({ viewport: { width: 1400, height: 900 }, as: "Ms. Lee" })).newPage();
   await teach.goto(BASE);
   const projCode = await teach.evaluate(async () => {
     localStorage.setItem("huddle.name", "Ms. Lee");
@@ -515,10 +535,8 @@ try {
   });
   await teach.goto(`${BASE}/r/${projCode}`);
   await teach.getByTestId("project-bar").waitFor();
-  const sam = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+  const sam = await (await browser.newContext({ viewport: { width: 1400, height: 900 }, as: "Sam" })).newPage();
   await sam.goto(`${BASE}/r/${projCode}`);
-  await sam.getByPlaceholder("Your name").fill("Sam");
-  await sam.getByRole("button", { name: /Join room/ }).click();
   await sam.getByTestId("ai-chip").getByText("AI off").waitFor();
   ok(true, "a student sees the project bar with the AI setting");
   await sam.getByTestId("project-details-toggle").click();
@@ -695,15 +713,29 @@ try {
   ok(/\/c\/[A-Z0-9]{6}$/.test(classLink), "a teacher creates a class and gets a class link");
   const share = new URL(await park.getByTestId("share-class-to-classroom").getAttribute("href"));
   ok(share.origin === "https://classroom.google.com" && share.searchParams.get("url") === classLink, "Share to Google Classroom posts the class link");
+  const RUN = Date.now() % 1000000;
+  const emailOf = (n) => `${n.toLowerCase()}.${RUN}@school.test`;
+  await park.getByTestId("roster-input").fill(`${emailOf("Ava")}, ${emailOf("Ben")}\n${emailOf("Cam")}`);
+  await park.getByTestId("roster-add").click();
+  await park.getByTestId("class-list").getByText("Added 3 emails.").waitFor();
+  ok(true, "a teacher pastes school emails into the class list");
   const kids = [];
   for (const name of ["Ava", "Ben", "Cam", "Dee"]) {
-    const p = await (await browser.newContext({ viewport: { width: 1200, height: 900 } })).newPage();
+    const p = await (await browser.newContext({ viewport: { width: 1200, height: 900 }, as: name, email: emailOf(name) })).newPage();
     await p.goto(classLink);
-    await p.getByLabel("Your name").fill(name);
+    await p.getByTestId("joining-as").getByText(name, { exact: true }).waitFor();
     await p.getByTestId("join-class").click();
-    await p.getByText("You're in this class").waitFor();
+    if (name === "Dee") {
+      await p.getByTestId("waiting-for-teacher").waitFor();
+      ok(true, "a student who isn't on the class list waits for the teacher");
+      await park.reload();
+      await park.getByTestId("waiting-student").filter({ hasText: "Dee" }).getByTestId("admit-student").click();
+      await p.getByText("You're in this class").waitFor({ timeout: 20000 });
+      ok(true, "the teacher lets them in, and their page opens by itself");
+    } else await p.getByText("You're in this class").waitFor();
     kids.push(p);
   }
+  ok(true, "students on the class list get straight in after signing in");
   await park.reload();
   await park.getByTestId("roster").getByText("Dee").waitFor();
   ok(true, "students join with the class link, and the teacher sees the roster");
@@ -812,13 +844,22 @@ try {
   await kids[0].waitForURL(/\/r\/[A-Z0-9]{6}$/, { timeout: 20000 });
   ok(kids[0].url().endsWith(soloRooms[0]), "opening the link again goes back to the same room");
   // A student who wasn't in the class yet joins from the assignment link and still gets a room.
-  const eve = await (await browser.newContext({ viewport: { width: 1200, height: 900 } })).newPage();
+  await park.goto(classUrl);
+  await park.getByTestId("access-code").click();
+  await park.getByTestId("class-list").getByText(/Anyone who signs in/).waitFor();
+  const eve = await (await browser.newContext({ viewport: { width: 1200, height: 900 }, as: "Eve", email: emailOf("Eve") })).newPage();
   await eve.goto(soloLink);
   await eve.getByText("Reading response").first().waitFor();
-  await eve.getByLabel("Your name").fill("Eve");
   await eve.getByTestId("join-class").click();
   await eve.waitForURL(/\/r\/[A-Z0-9]{6}$/, { timeout: 20000 });
-  ok(!soloRooms.includes(eve.url().split("/r/")[1]), "a student who joins late gets their own room from the same link");
+  ok(!soloRooms.includes(eve.url().split("/r/")[1]), "with the class open to anyone with the code, a late joiner gets their own room from the same link");
+  await park.getByTestId("access-list").click();
+  // Someone outside the class can't get into a student's room, even with its code.
+  const outsider = await (await browser.newContext({ as: "Outsider" })).newPage();
+  await outsider.goto(eve.url());
+  await outsider.getByText(/This room belongs to a class/).waitFor({ timeout: 15000 });
+  ok(true, "people outside the class can't open its rooms, even with the room code");
+  await outsider.close();
 
   // Work timeline: a large paste shows openly on the student's receipt.
   const ben = kids[1];
@@ -963,7 +1004,7 @@ try {
 
 
   // ---------- Docs and slides basics ----------
-  const ed1 = await (await browser.newContext({ viewport: { width: 1400, height: 900 }, acceptDownloads: true })).newPage();
+  const ed1 = await (await browser.newContext({ viewport: { width: 1400, height: 900 }, acceptDownloads: true, as: "Ivy" })).newPage();
   await ed1.goto(BASE);
   const edCode = await ed1.evaluate(async () => {
     localStorage.setItem("huddle.name", "Ivy");
@@ -972,10 +1013,8 @@ try {
     return (await r.json()).code;
   });
   await ed1.goto(`${BASE}/r/${edCode}`);
-  const ed2 = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
+  const ed2 = await (await browser.newContext({ viewport: { width: 1400, height: 900 }, as: "Jo" })).newPage();
   await ed2.goto(`${BASE}/r/${edCode}`);
-  await ed2.getByPlaceholder("Your name").fill("Jo");
-  await ed2.getByRole("button", { name: /Join room/ }).click();
   await ed2.getByTestId("composer").waitFor();
 
   // Docs: table, checklist, image upload, and the school-paper Word export.
@@ -1043,7 +1082,7 @@ try {
 
 
   // ---------- Landing page: the two paths and the teacher pilot form ----------
-  const visitor = await (await browser.newContext({ viewport: { width: 1300, height: 900 }, colorScheme: "dark" })).newPage();
+  const visitor = await (await browser.newContext({ viewport: { width: 1300, height: 900 }, colorScheme: "dark", signedOut: true })).newPage();
   await visitor.goto(BASE);
   ok(!(await visitor.evaluate(() => document.documentElement.classList.contains("dark"))), "the site starts in light mode even when the device is set to dark");
   ok((await visitor.getByTestId("nav-admin").count()) === 0 && (await visitor.locator(".nav-links a").count()) === 3, "the landing nav is down to three links");
@@ -1058,7 +1097,8 @@ try {
   await visitor.getByTestId("hero-code").fill(heroClass);
   await visitor.getByTestId("hero-code").press("Enter");
   await visitor.waitForURL(/\/c\/[A-Z0-9]{6}$/);
-  ok(true, "a class code typed on the landing page goes straight to the class");
+  await visitor.getByTestId("sign-in-gate").waitFor();
+  ok(true, "a class code typed on the landing page goes to the class, which asks a signed-out visitor to sign in");
   await visitor.goto(BASE);
   await visitor.getByTestId("path-teacher").click();
   await visitor.getByTestId("pilot-form").waitFor();

@@ -15,6 +15,14 @@ export interface Env {
   GOOGLE_CLIENT_SECRET?: string;
   /** "1" = only signed-in people can create rooms (needs a provider configured). */
   REQUIRE_SIGNIN_TO_CREATE?: string;
+  /**
+   * Everyone signs in to use rooms and classes (the default whenever a sign-in method is set
+   * up). "0" turns it off, e.g. for a demo.
+   */
+  REQUIRE_SIGNIN?: string;
+  /** Cloudflare Turnstile keys. The bot check is off until both are set. */
+  TURNSTILE_SITE_KEY?: string;
+  TURNSTILE_SECRET?: string;
   /** "1" = a passwordless "dev" sign-in for local testing. Never set this in production. */
   DEV_AUTH?: string;
   /** Cloudflare Workers AI binding (free daily allowance). Optional. */

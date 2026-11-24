@@ -16,6 +16,8 @@ import { ReceiptDialog } from "../components/ReceiptDialog";
 import { usePasteGuard } from "../lib/pasteGuard";
 import { ArrowLeft, ArrowRight, Check, Cloud, Copy, Cpu, DoorOpen, Link2, Menu, MessageSquare, Settings, Trash2, X } from "lucide-react";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
+import { SignInGate } from "../components/SignInGate";
+import { useAccount } from "../lib/account";
 
 /** "I'm 13 or older" checkbox, with the reason when it's left unchecked. */
 export function AgeCheck({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -60,6 +62,21 @@ function NamePrompt({ onDone, needName }: { onDone: (n: string) => void; needNam
 
 export default function RoomPage() {
   const code = normalizeCode(useParams().code ?? "");
+  const account = useAccount();
+  if (!account.ready) return <div className="p-8 text-sm text-fg-subtle">Loading…</div>;
+  if (account.requireSignIn && !account.user)
+    return (
+      <SignInGate
+        title="Sign in to join this room"
+        message="Everyone in a Cairn room signs in, so your group always knows who's who."
+        providers={account.providers}
+      />
+    );
+  return <RoomEntry code={code} />;
+}
+
+/** After sign-in: a name if we still need one, the 13+ check, then the room. */
+function RoomEntry({ code }: { code: string }) {
   const [me, setMe] = useState<Identity>(() => getIdentity());
   const [ageOk, setAgeOk] = useState(ageConfirmed);
   if (!me.name || !ageOk)
