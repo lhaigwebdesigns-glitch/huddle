@@ -132,6 +132,7 @@ export default function Home() {
       <main>
         <Hero onJoin={heroJoin} />
         <Research />
+        <Thesis />
         <Turn />
         <Students />
         <Teachers />
@@ -549,6 +550,29 @@ function Research() {
           </article>
         </div>
         <p className="proof-note">Research last checked November 2026. We'll keep this page updated as new studies come out, and add results from our own pilot classes when we have them.</p>
+      </div>
+    </section>
+  );
+}
+
+/* ---------------------------------------------------------------------------------------- */
+
+/** The page's thesis, said once and big: what the research adds up to. */
+function Thesis() {
+  return (
+    <section className="thesis" aria-label="Why the work matters">
+      <div className="wrap">
+        <p className="thesis-line" data-testid="thesis">
+          When AI can write the essay, the finished work no longer proves learning. <mark className="thesis-hl">The work behind it does.</mark>
+        </p>
+        <div className="thesis-rock" aria-hidden="true">
+          <svg viewBox="0 0 70 46" className="thesis-arrow">
+            <use href="#arrow-curve" />
+          </svg>
+          <svg viewBox="0 0 100 100" className="thesis-person">
+            <RockPerson body={PERI} pose="wave" />
+          </svg>
+        </div>
       </div>
     </section>
   );

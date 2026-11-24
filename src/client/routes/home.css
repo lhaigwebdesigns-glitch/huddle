@@ -141,6 +141,16 @@
   & .chart { width: 100%; height: auto; display: block; }
   & .proof-note { margin-top: 26px; color: #93a59a; font-size: 0.92rem; max-width: 80ch; }
 
+  /* ---------- thesis: the line the research adds up to ---------- */
+  & .thesis { padding-block: clamp(80px, 11vw, 140px) clamp(40px, 6vw, 72px); }
+  & .thesis .wrap { position: relative; }
+  & .thesis-line { font: 800 clamp(2rem, 5.2vw, 3.9rem)/1.08 var(--font-display); letter-spacing: -0.035em; max-width: 19ch; text-wrap: balance; color: var(--fg); }
+  & .thesis-hl { color: inherit; background: linear-gradient(transparent 58%, var(--mint) 58%, var(--mint) 94%, transparent 94%); padding: 0 4px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+  & .thesis-rock { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); bottom: -10px; display: flex; align-items: flex-end; gap: 2px; pointer-events: none; }
+  & .thesis-person { width: clamp(96px, 12vw, 150px); height: clamp(96px, 12vw, 150px); overflow: visible; }
+  & .thesis-arrow { width: 70px; height: 46px; color: var(--fg); transform: scaleX(-1) rotate(8deg); margin-bottom: 70px; }
+  @media (max-width: 900px) { & .thesis-rock { position: static; justify-content: flex-end; margin-top: 12px; } & .thesis-arrow { width: 52px; height: 34px; margin-bottom: 48px; } & .thesis-person { width: 96px; height: 96px; } }
+
   /* ---------- the turn ---------- */
   & .turn .wrap { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(32px, 6vw, 80px); align-items: center; }
   @media (max-width: 900px) { & .turn .wrap { grid-template-columns: 1fr; } }
@@ -319,6 +329,7 @@
 }
 
 .dark .cairn-home {
+  & .thesis-hl { background: linear-gradient(transparent 58%, rgba(169, 253, 172, 0.32) 58%, rgba(169, 253, 172, 0.32) 94%, transparent 94%); }
   & .mock .sample { background: rgba(238, 245, 240, 0.14); }
   --proof-bg: var(--bg);
   & .letter .hl { background: linear-gradient(transparent 52%, rgba(169, 253, 172, 0.32) 52%, rgba(169, 253, 172, 0.32) 92%, transparent 92%); }

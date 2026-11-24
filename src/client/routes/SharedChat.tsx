@@ -28,7 +28,7 @@ export default function SharedChat() {
     <div className="min-h-full">
       <header className="sticky top-0 z-10 border-b border-zinc-200 bg-white/90 px-4 py-3 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/90">
         <div className="mx-auto flex max-w-3xl items-center gap-3">
-          <img src="/favicon.svg" alt="" className="h-6 w-6" />
+          <img src="/cairn-icon.svg" alt="" className="h-6 w-6" />
           <div className="min-w-0 flex-1">
             <h1 className="truncate font-semibold" data-testid="shared-title">{data?.title ?? "Shared chat"}</h1>
             {data && <p className="text-xs text-zinc-500">Read-only snapshot · {new Date(data.createdAt).toLocaleString()}</p>}
