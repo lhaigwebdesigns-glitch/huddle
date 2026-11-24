@@ -117,6 +117,20 @@ app.post("/api/rooms/:code/files/:id/versions", async (c) => {
   return c.json(res, res.ok ? 200 : 404);
 });
 
+// ---- Writing replay: a doc played back as it was written (for people in the room, and its teacher) ----
+
+app.get("/api/rooms/:code/files/:id/replay", async (c) => {
+  const code = normalizeCode(c.req.param("code"));
+  const fileId = c.req.param("id");
+  if (!isValidCode(code) || !/^[\w-]{1,40}$/.test(fileId)) return c.json({ error: "not found" }, 404);
+  const user = await currentUser(c.env, c.req.raw);
+  if (!user) return c.json({ error: "Sign in first." }, 401);
+  const room = await getServerByName(c.env.Room, code);
+  if (!(await room.canOpenFile(user.uid, fileId))) return c.json({ error: "This file isn't yours to open." }, 403);
+  const log = await room.fileReplay(fileId);
+  return log ? c.json(log) : c.json({ error: "Replay works for docs." }, 404);
+});
+
 // ---- Uploads (R2). Text from PDFs/CSV/text is extracted in the browser and indexed for the AI. ----
 
 app.post("/api/rooms/:code/upload", async (c) => {

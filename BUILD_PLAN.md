@@ -20,7 +20,8 @@ Last updated Nov 22, 2026. Sizes: **S** = an evening, **M** = a weekend, **L** =
 - Step 2, security: done (everyone signs in, class lists with a waiting list, class rooms only for their students, Turnstile ready).
 - Teacher and student accounts: done (student accounts never get teacher tools).
 - Step 3, worksheets: built. A teacher adds a worksheet to an assignment: a blank doc or slides, or their own Word or PowerPoint file. Every student or group gets their own copy when they first open the assignment. An optional answer key stays with the teacher and shows beside the work when grading. Anyone can also bring a Word or PowerPoint file into a room from New file.
-- Step 4, writing replay: not started.
+- Step 4, writing replay: built. Every doc records its changes from now on. "Replay" on a doc plays it back like a sped-up video: typing at its pace, long breaks squeezed, large pastes marked as dots, work sessions split at long breaks. Students see it for their own docs; the teacher sees it from the grading screen. It shows what happened and never scores or guesses. Docs only for now (not slides or sheets), and docs made before this update replay from the day it shipped.
+- Sign-in: Google only (GitHub removed). Class lists also take a CSV or text file of emails.
 
 **Known limit of imports:** Word keeps headings, bold, italic, underline, lists, tables, pictures and links, but not text colors, exact fonts or page layout. PowerPoint keeps each slide's text boxes, pictures, shapes, background color, text size, color and bold, and speaker notes, but not themes, charts, SmartArt or animations.
 

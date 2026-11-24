@@ -1196,6 +1196,13 @@ export class Room extends Server<Env> {
     return { ok: true, files: n };
   }
 
+  /** A doc's writing replay (null for other kinds of files). */
+  async fileReplay(fileId: string) {
+    const f = this.files().find((x) => x.id === fileId);
+    if (!f || f.kind !== "doc") return null;
+    return (await getServerByName(this.env.Doc, `${this.name}--${f.id}`)).replayLog();
+  }
+
   /** May this person open this file live? Only people in the room (and never someone banned). */
   async canOpenFile(uid: string, fileId: string) {
     if (!this.settings || !this.files().some((f) => f.id === fileId)) return false;
