@@ -113,23 +113,14 @@ export default function Home() {
             <a href="#research">The research</a>
             <a href="#students">For students</a>
             <a href="#teachers">For teachers</a>
-            <a href="#story">Our story</a>
           </nav>
           <span className="spacer" />
-          {account.isAdmin && (
-            <Link to="/admin" className="quiet-link" data-testid="nav-admin">
-              Admin
-            </Link>
+          <AccountMenu user={account.user} providers={account.providers} isAdmin={account.isAdmin} />
+          {account.user === null && (
+            <a className="btn btn-quiet" href="#start" data-testid="path-student">
+              Have a class code?
+            </a>
           )}
-          {account.user && (
-            <Link to="/dashboard" className="quiet-link" data-testid="nav-dashboard">
-              Dashboard
-            </Link>
-          )}
-          <AccountMenu user={account.user} providers={account.providers} />
-          <a className="btn btn-quiet" href="#start" data-testid="path-student">
-            Have a class code?
-          </a>
           <a className="btn btn-go" href="#pilot" data-testid="nav-pilot">
             <span>
               Try it<span className="long"> with your class</span>
@@ -692,7 +683,8 @@ const STONES = (() => {
 })();
 
 function Week() {
-  const [v, setV] = useState(4);
+  // Starts on Monday with one stone; dragging right builds the week.
+  const [v, setV] = useState(0);
   const day = Math.max(0, Math.min(4, Math.round(v)));
   const sum = WEEK.slice(0, day + 1).reduce((a, x) => a + x.words, 0);
   const worked = WEEK.slice(0, day + 1).filter((x) => x.words).length;

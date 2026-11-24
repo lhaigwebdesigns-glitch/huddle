@@ -7,6 +7,7 @@ import "@fontsource/caveat-brush/latin-400.css";
 import "katex/dist/katex.min.css";
 import { initTheme } from "./lib/theme";
 import { RockDefs } from "./components/Rocks";
+import { DialogHost } from "./components/Dialogs";
 import "./styles.css";
 import "./editors";
 import Home from "./routes/Home";
@@ -34,6 +35,7 @@ initTheme();
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <RockDefs />
+    <DialogHost />
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />

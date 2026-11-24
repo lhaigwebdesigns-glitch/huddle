@@ -1,3 +1,4 @@
+import { confirmDialog } from "./Dialogs";
 import { lazy, memo, Suspense, useEffect, useState, type ComponentType } from "react";
 import type { FileVersion, RoomFile } from "../../shared/protocol";
 import { FILE_INFO, type FileKind } from "../../shared/files";
@@ -68,7 +69,10 @@ function History({ room, file, onClose }: { room: string; file: RoomFile; onClos
             <span className="text-xs text-fg-subtle tabular">{Math.max(1, Math.round(v.size / 1024))} KB</span>
             <button
               disabled={busy}
-              onClick={() => confirm("Restore this version for everyone? The current version is saved first, so you can undo this.") && post({ restore: v.at })}
+              onClick={async () =>
+                (await confirmDialog({ title: "Restore this version?", message: "It's restored for everyone. The current version is saved first, so you can undo this.", confirmLabel: "Restore" })) &&
+                post({ restore: v.at })
+              }
               className="press rounded-full border border-line-strong px-2.5 py-0.5 text-xs hover:bg-bg disabled:opacity-40"
             >
               Restore

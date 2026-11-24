@@ -1,3 +1,4 @@
+import { alertDialog } from "./Dialogs";
 import { useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
 import { Circle, Image as ImageIcon, Minus, Plus, Square, Trash2, Type } from "lucide-react";
@@ -163,7 +164,7 @@ export function FreeCanvas({ slide, theme, width, room }: { slide: Y.Map<any>; t
             const a = await uploadFile(room, f);
             add({ type: "image", x: 480, y: 90, w: 400, h: 300, src: a.url });
           } catch (err) {
-            alert(String((err as Error).message));
+            void alertDialog({ title: "That image didn't upload", message: String((err as Error).message) });
           }
         }}
       />

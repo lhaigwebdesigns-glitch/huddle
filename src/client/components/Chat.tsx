@@ -1,3 +1,4 @@
+import { promptDialog } from "./Dialogs";
 import { GREEN, PERI, RockArt, TEAL } from "./Rocks";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { REACTIONS, type ChatMessage, type ClientMsg, type Member, type Poll, type RoomSettings } from "../../shared/protocol";
@@ -414,8 +415,14 @@ function MessageView({
         {!m.meta?.streaming && <Reactions m={m} me={me} members={members} send={send} />}
         {canReport && !m.meta?.streaming && m.authorId !== me.uid && (
           <button
-            onClick={() => {
-              const reason = prompt("Report this message to your teacher? Only this message is sent. Say what's wrong (optional):");
+            onClick={async () => {
+              const reason = await promptDialog({
+                title: "Report this message?",
+                message: "Only this message goes to your teacher, not the rest of the chat.",
+                label: "What's wrong? (optional)",
+                placeholder: "e.g. It's mean to me",
+                confirmLabel: "Report",
+              });
               if (reason !== null) send({ t: "report", id: m.id, reason });
             }}
             className="press mt-1 flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs text-fg-subtle opacity-0 hover:bg-surface-2 hover:text-fg focus:opacity-100 group-hover:opacity-100"

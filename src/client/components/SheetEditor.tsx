@@ -1,3 +1,4 @@
+import { alertDialog, confirmDialog } from "./Dialogs";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EditorProps } from "./FilePanel";
 import { useYObserve, usePeers } from "../lib/useYDoc";
@@ -244,9 +245,9 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
     input.onchange = async () => {
       const f = input.files?.[0];
       if (!f) return;
-      if (f.size > 2_000_000) return alert("That file is too big (2 MB max).");
+      if (f.size > 2_000_000) return void alertDialog({ title: "That file is too big", message: "CSV files can be up to 2 MB." });
       const rows2 = parseCsv(await f.text());
-      if (cells.size && !confirm("Importing replaces the current cells. Continue?")) return;
+      if (cells.size && !(await confirmDialog({ title: "Replace the current cells?", message: "Importing replaces everything in this sheet.", confirmLabel: "Import" }))) return;
       transact(() => {
         cells.clear();
         setRange(ydoc, "A1", rows2);
@@ -257,7 +258,8 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
 
   const addChart = (type: Chart["type"]) => {
     const n = norm(sel);
-    if (n.r0 === n.r1 && n.c0 === n.c1) return alert("Select the data first (labels in the first column, numbers next to them), then add a chart.");
+    if (n.r0 === n.r1 && n.c0 === n.c1)
+      return void alertDialog({ title: "Select the data first", message: "Select the labels in the first column and the numbers next to them, then add a chart." });
     meta.set("charts", [...charts, { id: Math.random().toString(36).slice(2, 10), type, range: selRange(sel) }].slice(-10));
   };
 

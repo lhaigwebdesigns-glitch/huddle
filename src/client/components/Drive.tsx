@@ -1,3 +1,4 @@
+import { confirmDialog } from "./Dialogs";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MoreHorizontal, Plus, Search } from "lucide-react";
@@ -122,9 +123,10 @@ function FileRow({
             <button
               role="menuitem"
               className={`${ITEM} text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/40`}
-              onClick={() => {
+              onClick={async () => {
                 setMenu(false);
-                if (confirm(`Delete “${f.title}” for everyone? This can't be undone.`)) send({ t: "delete_file", id: f.id });
+                if (await confirmDialog({ title: `Delete “${f.title}”?`, message: "It's deleted for everyone in the room. This can't be undone.", confirmLabel: "Delete", danger: true }))
+                  send({ t: "delete_file", id: f.id });
               }}
             >
               Delete

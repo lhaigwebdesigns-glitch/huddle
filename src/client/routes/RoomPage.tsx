@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/Dialogs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { formatCode, normalizeCode } from "../../shared/code";
@@ -226,7 +227,14 @@ function Room({ code, me }: { code: string; me: Identity }) {
         {isHost && (
           <button
             onClick={async () => {
-              if (!confirm("Create a public read-only link to this chat? Anyone with the link can read the messages up to now (not the files).")) return;
+              if (
+                !(await confirmDialog({
+                  title: "Make a read-only link?",
+                  message: "Anyone with the link can read the messages up to now (not the files).",
+                  confirmLabel: "Make link",
+                }))
+              )
+                return;
               const r = await fetch(`/api/rooms/${code}/share`, {
                 method: "POST",
                 headers: { "content-type": "application/json" },

@@ -1,3 +1,4 @@
+import { confirmDialog } from "./Dialogs";
 import type { Ban, ClientMsg, Member, RoomSettings, SkillInfo } from "../../shared/protocol";
 import { PartyLists } from "./PartyLists";
 import { hasWebGPU, LOCAL_MODELS } from "../lib/local-llm";
@@ -31,9 +32,10 @@ function ProjectSection({ settings, members, send }: { settings: RoomSettings; m
           checked={!!saved}
           data-testid="project-toggle"
           aria-label="Make this a project"
-          onChange={(e) => {
-            if (e.target.checked) save(draft);
-            else if (confirm("Stop treating this room as a project? Its instructions and AI rules will be removed.")) send({ t: "settings", patch: { project: null } });
+          onChange={async (e) => {
+            if (e.target.checked) return save(draft);
+            if (await confirmDialog({ title: "Stop treating this as a project?", message: "Its instructions and AI rules will be removed.", confirmLabel: "Stop", danger: true }))
+              send({ t: "settings", patch: { project: null } });
           }}
         />
       </label>

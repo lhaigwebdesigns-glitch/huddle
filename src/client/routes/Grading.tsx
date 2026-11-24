@@ -1,3 +1,4 @@
+import { confirmDialog } from "../components/Dialogs";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Plus, RotateCcw, X } from "lucide-react";
@@ -237,7 +238,14 @@ export default function Grading() {
           {turnedIn && (
             <button
               onClick={async () => {
-                if (!confirm("Send this project back to the group? Their files unlock so they can make changes, and they'll turn it in again.")) return;
+                if (
+                  !(await confirmDialog({
+                    title: "Send it back?",
+                    message: "Their files unlock so they can make changes, and they'll turn it in again.",
+                    confirmLabel: "Send back",
+                  }))
+                )
+                  return;
                 await api(`/api/classes/${id}/assignments/${aid}/groups/${room}/reopen`, { method: "POST" });
                 load();
               }}

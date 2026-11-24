@@ -1,3 +1,4 @@
+import { DateField } from "./DateTimePicker";
 import { useState } from "react";
 import { Plus, X } from "lucide-react";
 import { TASK_LIMITS, type ClientMsg, type TaskBoard } from "../../shared/protocol";
@@ -112,13 +113,13 @@ export function TaskPanel({ board, meUid, locked, send }: { board: TaskBoard; me
                   {t.title}
                 </span>
                 {ownerSelect(t.ownerUid ?? "", (v) => send({ t: "task_update", id: t.id, ownerUid: v || null }), `Owner of ${t.title}`)}
-                <input
-                  type="date"
-                  aria-label={`Due date for ${t.title}`}
+                <DateField
+                  compact
+                  label={`Due date for ${t.title}`}
                   value={dateInput(t.dueAt)}
                   disabled={locked}
-                  onChange={(e) => send({ t: "task_update", id: t.id, dueAt: fromDateInput(e.target.value) })}
-                  className={`rounded-lg border border-line-strong bg-transparent px-1.5 py-0.5 text-xs ${overdue ? "text-red-600 dark:text-red-400" : ""}`}
+                  danger={overdue}
+                  onChange={(v) => send({ t: "task_update", id: t.id, dueAt: fromDateInput(v) })}
                 />
                 {!locked && (
                   <button

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import type { PublicForm as Form, Question } from "../../shared/forms-model";
+import { DateField } from "../components/DateTimePicker";
 
 type Answers = Record<string, string | string[] | number>;
 
@@ -11,7 +12,11 @@ function Field({ q, value, onChange }: { q: Question; value: Answers[string] | u
     case "long":
       return <textarea id={id} rows={4} className={base} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} required={q.required} />;
     case "date":
-      return <input id={id} type="date" className={base} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} required={q.required} />;
+      return (
+        <div className="mt-2">
+          <DateField label={q.title} value={String(value ?? "")} onChange={(v) => onChange(v)} />
+        </div>
+      );
     case "choice":
       return (
         <div className="mt-2 space-y-1" role="radiogroup" aria-labelledby={`${id}-label`}>
@@ -72,6 +77,9 @@ export default function PublicForm() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // The date picker isn't a native input, so check required dates here.
+    const missing = form?.questions.find((q) => q.type === "date" && q.required && !answers[q.id]);
+    if (missing) return setErr(`Pick a date for “${missing.title}”.`);
     setBusy(true);
     setErr("");
     const r = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ answers }) });
