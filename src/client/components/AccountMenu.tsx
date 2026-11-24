@@ -67,9 +67,11 @@ export function AccountMenu({ user, providers, isAdmin = false }: { user: Accoun
             <a role="menuitem" href="/dashboard" className={ITEM} data-testid="nav-dashboard">
               <LayoutGrid className="h-4 w-4 text-fg-muted" /> Your rooms
             </a>
-            <a role="menuitem" href="/classes" className={ITEM} data-testid="menu-classes">
-              <GraduationCap className="h-4 w-4 text-fg-muted" /> Your classes
-            </a>
+            {user.role !== "student" && (
+              <a role="menuitem" href="/classes" className={ITEM} data-testid="menu-classes">
+                <GraduationCap className="h-4 w-4 text-fg-muted" /> Your classes
+              </a>
+            )}
             {isAdmin && (
               <a role="menuitem" href="/admin" className={ITEM} data-testid="nav-admin">
                 <Shield className="h-4 w-4 text-fg-muted" /> Admin

@@ -31,7 +31,7 @@ import {
   type WaitingStudent,
   parseEmails,
 } from "../shared/classes";
-import { signInRequired } from "./auth";
+import { claimRole, signInRequired } from "./auth";
 import { isHuman, NOT_HUMAN } from "./turnstile";
 
 type C = Context<{ Bindings: Env }>;
@@ -99,9 +99,13 @@ interface AssignmentRow {
 const toInfo = (r: ClassRow): ClassInfo => ({ id: r.id, code: r.code, name: r.name, createdAt: r.created_at });
 
 /** The signed-in teacher who owns this class, or an error response. */
+/** Teacher tools are for teacher accounts: a student account gets a clear "no". */
+const STUDENT_NO = { error: "Teacher tools are for teacher accounts. This is a student account.", student: true };
+
 async function teacherClass(c: C): Promise<{ user: User; cls: ClassRow } | Response> {
   const user = await currentUser(c.env, c.req.raw);
   if (!user) return c.json({ error: "Sign in to manage classes." }, 401);
+  if (user.role === "student") return c.json(STUDENT_NO, 403);
   await ensureClassTables(c.env.DB!);
   const cls = await c.env.DB!.prepare(`SELECT * FROM classes WHERE id = ?`).bind(c.req.param("id")).first<ClassRow>();
   if (!cls || cls.teacher_id !== user.id) return c.json({ error: "Class not found." }, 404);
@@ -172,6 +176,7 @@ classes.use("*", async (c, next) => (c.env.DB ? next() : c.json({ error: "Classe
 classes.get("/", async (c) => {
   const user = await currentUser(c.env, c.req.raw);
   if (!user) return c.json({ error: "Sign in to manage classes." }, 401);
+  if (user.role === "student") return c.json(STUDENT_NO, 403);
   await ensureClassTables(c.env.DB!);
   const { results } = await c.env.DB!.prepare(
     `SELECT c.*, (SELECT COUNT(*) FROM class_students s WHERE s.class_id = c.id) AS students,
@@ -186,6 +191,8 @@ classes.get("/", async (c) => {
 classes.post("/", async (c) => {
   const user = await currentUser(c.env, c.req.raw);
   if (!user) return c.json({ error: "Sign in to create a class." }, 401);
+  // Making a class makes this a teacher account (unless it's already a student one).
+  if ((await claimRole(c.env, user, "teacher")) === "student") return c.json(STUDENT_NO, 403);
   await ensureClassTables(c.env.DB!);
   if (!(await hit(c.env.DB!, `classes:${user.id}`, 30, 3600))) return c.json({ error: "That's a lot of classes in an hour. Try again later." }, 429);
   const body = await c.req.json<{ name?: string }>().catch(() => ({}) as { name?: string });
@@ -209,6 +216,7 @@ classes.post("/", async (c) => {
 classes.get("/today", async (c) => {
   const user = await currentUser(c.env, c.req.raw);
   if (!user) return c.json({ error: "Sign in to see your classes." }, 401);
+  if (user.role === "student") return c.json(STUDENT_NO, 403);
   await ensureClassTables(c.env.DB!);
   const db = c.env.DB!;
   const { results: list } = await db.prepare(`SELECT * FROM classes WHERE teacher_id = ? ORDER BY created_at DESC`).bind(user.id).all<ClassRow>();
@@ -682,6 +690,8 @@ classes.post("/join/:code", async (c) => {
   const { uid, name, email } = who;
   if (!uid || !name) return c.json({ error: "Type your name to join." }, 400);
   if (body.age13 !== true) return c.json({ error: "Cairn is for ages 13 and up." }, 400);
+  // A teacher can't join their own class as a student.
+  if (who.user && cls.teacher_id === who.user.id) return c.json({ error: "This is your class. You manage it from your Today page." }, 400);
   if (!(await isHuman(c.env, body.human, clientIp(c.req.raw)))) return c.json({ error: NOT_HUMAN }, 403);
   const db = c.env.DB!;
   const already = await db.prepare(`SELECT 1 FROM class_students WHERE class_id = ? AND uid = ?`).bind(cls.id, uid).first();
@@ -700,6 +710,7 @@ classes.post("/join/:code", async (c) => {
         .prepare(`INSERT INTO class_waiting (class_id, uid, name, email, at, denied) VALUES (?, ?, ?, ?, ?, 0) ON CONFLICT (class_id, uid) DO UPDATE SET name = excluded.name`)
         .bind(cls.id, uid, name, email, Date.now())
         .run();
+      if (who.user) await claimRole(c.env, who.user, "student");
       return c.json({ waiting: true });
     }
   }
@@ -707,6 +718,7 @@ classes.post("/join/:code", async (c) => {
     .prepare(`INSERT INTO class_students (class_id, uid, name, joined_at, email) VALUES (?, ?, ?, ?, ?) ON CONFLICT (class_id, uid) DO UPDATE SET name = excluded.name, email = COALESCE(excluded.email, class_students.email)`)
     .bind(cls.id, uid, name, Date.now(), email)
     .run();
+  if (who.user) await claimRole(c.env, who.user, "student");
   return c.json({ ok: true });
 });
 
@@ -714,9 +726,9 @@ classes.post("/join/:code", async (c) => {
  * Who a student is. With sign-in required (the normal case), it's always their account: name,
  * school email and identity. Otherwise (a demo setup) the browser's guest identity and typed name.
  */
-async function studentIdentity(c: C, body: { uid?: unknown; name?: unknown }): Promise<{ uid: string; name: string; email: string | null } | Response> {
+async function studentIdentity(c: C, body: { uid?: unknown; name?: unknown }): Promise<{ uid: string; name: string; email: string | null; user?: User } | Response> {
   const user = await currentUser(c.env, c.req.raw);
-  if (user) return { uid: user.uid, name: user.name.slice(0, 32), email: user.email?.toLowerCase() ?? null };
+  if (user) return { uid: user.uid, name: user.name.slice(0, 32), email: user.email?.toLowerCase() ?? null, user };
   if (signInRequired(c.env)) return c.json({ error: "Sign in with your school Google account to join.", signIn: true }, 401);
   return { uid: String(body.uid ?? "").slice(0, 64), name: String(body.name ?? "").trim().slice(0, 32), email: null };
 }

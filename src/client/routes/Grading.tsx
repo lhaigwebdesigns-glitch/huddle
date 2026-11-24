@@ -12,7 +12,7 @@ import { lateBy } from "../../shared/schedule";
 import { gradeTotal, parseRubric, rubricMax, type GradeData, type GradingView, type RubricRow } from "../../shared/classes";
 import type { FileKind } from "../../shared/files";
 import type { RoomFile } from "../../shared/protocol";
-import { SignInFirst, TeacherShell, api } from "./Classes";
+import { SignInFirst, TeacherShell, api, StudentOnly } from "./Classes";
 
 const STEPS = [1, 0.75, 0.5, 0.25, 0];
 
@@ -205,6 +205,7 @@ export default function Grading() {
   const me = useMemo(() => getIdentity(), []);
   const back = { to: `/classes/${id}`, label: "Class" };
   if (!account.user) return <TeacherShell back={back}><SignInFirst /></TeacherShell>;
+  if (account.user.role === "student") return <TeacherShell back={back}><StudentOnly /></TeacherShell>;
   if (err) return <TeacherShell back={back}><p className="p-8 text-sm text-fg-muted">{err}</p></TeacherShell>;
   if (!view) return <TeacherShell back={back}><p className="p-8 text-sm text-fg-subtle">Loading…</p></TeacherShell>;
   const idx = view.order.indexOf(room);

@@ -4,14 +4,16 @@ import { useTheme, type ThemeChoice } from "../lib/theme";
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
-/** Cairn's mark: three stacked stones. */
+/** Cairn's mark: one green pebble with a face, the same as the tab icon. */
 export function Logo({ className = "h-7 w-7" }: { className?: string }) {
   return (
     <svg viewBox="0 0 40 40" className={className} aria-hidden="true">
-      <ellipse cx="20" cy="32.5" rx="15" ry="6" className="fill-fg" />
-      <ellipse cx="18.5" cy="22.5" rx="11" ry="5.2" fill="#5eb1bf" />
-      <ellipse cx="21.5" cy="13.5" rx="7.4" ry="4.4" fill="#44cf6c" />
-      <path d="M34 1.5c.4 3 1.3 4.4 5.5 5.5-4.2 1.1-5.1 2.5-5.5 5.5-.4-3-1.3-4.4-5.5-5.5 4.2-1.1 5.1-2.5 5.5-5.5z" fill="#8fa6cb" />
+      <g transform="translate(0 -1.5)">
+        <path d="M3.5 27.5c-2.2-9 3.8-18.6 16-19.6 12.3-1 19.4 5.4 19.2 13.6-.2 8.8-6.6 13.1-16.6 13.1-9.4 0-16.6-2.1-18.6-7.1z" fill="#44cf6c" />
+        <circle cx="15" cy="21.6" r="2.5" fill="#0a100d" />
+        <circle cx="25.4" cy="20.8" r="2.5" fill="#0a100d" />
+        <path d="M16.8 27c2.8 2.3 6.3 2.3 8.9 0" fill="none" stroke="#0a100d" strokeWidth="2.2" strokeLinecap="round" />
+      </g>
     </svg>
   );
 }
