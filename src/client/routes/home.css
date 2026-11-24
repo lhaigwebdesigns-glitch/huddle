@@ -179,9 +179,21 @@
   & .scrub input[type="range"]::-moz-range-track { height: 10px; border-radius: 99px; background: rgba(10, 16, 13, 0.18); }
   & .scrub input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 34px; height: 34px; margin-top: -12px; border-radius: 50%; background: var(--ink); border: 5px solid var(--mint); box-shadow: 0 6px 14px -4px rgba(10, 16, 13, 0.5); }
   & .scrub input[type="range"]::-moz-range-thumb { width: 24px; height: 24px; border-radius: 50%; background: var(--ink); border: 5px solid var(--mint); }
-  & .days { display: grid; grid-template-columns: repeat(5, 1fr); font: 700 0.85rem/1 var(--font-sans); text-align: center; }
-  & .days span:first-child { text-align: left; }
-  & .days span:last-child { text-align: right; }
+  /* Day labels sit exactly under each stop of the slider (the thumb is 34px wide). */
+  & .days { position: relative; height: 1.1em; font: 700 0.85rem/1 var(--font-sans); }
+  & .days span { position: absolute; top: 0; transform: translateX(-50%); opacity: 0.6; transition: opacity 200ms ease; }
+  & .days span.on { opacity: 1; }
+  & .scrub-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  & .play { display: inline-flex; align-items: center; gap: 6px; border: 0; border-radius: 999px; padding: 6px 12px 6px 10px; background: rgba(10, 16, 13, 0.12); color: var(--ink); font: 700 0.85rem/1 var(--font-sans); cursor: pointer; }
+  & .play:hover { background: rgba(10, 16, 13, 0.2); }
+  & .play:active { transform: scale(0.96); }
+  & .play svg { width: 14px; height: 14px; }
+  /* Stones drop onto the pile with a little bounce (a physical drop), and lift away when the week starts over. */
+  & .week-stone { transform-box: fill-box; transform-origin: 50% 100%; opacity: 0; transform: translateY(-70px) scale(0.92); transition: transform 620ms cubic-bezier(0.2, 0.9, 0.25, 1.2), opacity 240ms ease; }
+  & .week-stone.on { opacity: 1; transform: none; }
+  & .next-day { height: 4px; border-radius: 99px; background: var(--line); overflow: hidden; margin-top: 2px; }
+  & .next-day i { display: block; height: 100%; width: 100%; background: var(--green); transform-origin: left; animation: next-day linear forwards; }
+  @media (prefers-reduced-motion: reduce) { & .week-stone { transition: opacity 200ms ease; transform: none; } & .next-day { display: none; } }
   & .day-card { background: var(--bg); border-radius: 28px; padding: 28px; display: grid; gap: 14px; align-content: start; align-self: start; min-width: 0; box-shadow: var(--shadow); }
   & .day-card .day { font: 800 1.6rem/1.1 var(--font-display); letter-spacing: -0.02em; }
   & .day-card ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
@@ -339,5 +351,6 @@
   & .code-note.err, & .err { color: #ff8a7a; }
 }
 
+@keyframes next-day { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes cairn-drop { 0% { opacity: 0; transform: translateY(-140px); } 30% { opacity: 1; } 100% { opacity: 1; transform: none; } }
 @keyframes cairn-pop { from { opacity: 0; transform: scale(0.4) rotate(-14deg); } to { opacity: 1; transform: none; } }

@@ -59,6 +59,49 @@ function TeacherShell({ children, back }: { children: React.ReactNode; back?: { 
   );
 }
 
+/** A student account on a teacher page: a plain "this isn't for you", and where to go instead. */
+function StudentOnly() {
+  return (
+    <div className="mx-auto mt-[12vh] max-w-sm px-6 text-center" data-testid="student-account">
+      <RockArt className="mx-auto h-20 w-20" body={PERI} pose="hold" prop="book" />
+      <h1 className="mt-3 text-2xl font-extrabold tracking-tight">This is a student account</h1>
+      <p className="mt-2 text-sm text-fg-muted">Teacher tools, like making classes and grading, are only for teacher accounts. Open your teacher's link to get to your work.</p>
+      <Link to="/dashboard" className="press mt-5 inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-fg hover:bg-primary-hover">
+        Go to your rooms
+      </Link>
+    </div>
+  );
+}
+
+/** First visit to the teacher pages: say you're a teacher (students are sent to their class link instead). */
+function TeacherOrStudent({ onTeacher }: { onTeacher: () => void }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div className="mx-auto mt-[10vh] max-w-md px-6 text-center" data-testid="pick-role">
+      <RockArt className="mx-auto h-20 w-20" body={TEAL} pose="wave" />
+      <h1 className="mt-3 text-2xl font-extrabold tracking-tight">Are you a teacher?</h1>
+      <p className="mt-2 text-sm text-fg-muted">Teacher accounts make classes, post assignments and grade. You pick this once.</p>
+      <div className="mt-5 grid gap-2">
+        <Button
+          size="lg"
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            await api("/api/auth/role", { method: "POST", body: JSON.stringify({ role: "teacher" }) });
+            onTeacher();
+          }}
+          data-testid="im-teacher"
+        >
+          Yes, I'm a teacher
+        </Button>
+        <Link to="/#start" className="press rounded-xl border border-line-strong px-4 py-2.5 text-sm font-medium hover:bg-surface-2">
+          I'm a student: join with my class code
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function SignInFirst() {
   const account = useAccount();
   if (account.user === undefined) return <div className="p-8 text-sm text-fg-subtle">Loading…</div>;
@@ -97,6 +140,8 @@ export function ClassesPage() {
     api<TodayView>("/api/classes/today").then((d) => !d.error && setToday(d));
   }, [account.user]);
   if (!account.user) return <TeacherShell><SignInFirst /></TeacherShell>;
+  if (account.user.role === "student") return <TeacherShell><StudentOnly /></TeacherShell>;
+  if (!account.user.role) return <TeacherShell><TeacherOrStudent onTeacher={() => location.reload()} /></TeacherShell>;
   const create = async (e: React.FormEvent) => {
     e.preventDefault();
     setErr("");
@@ -913,6 +958,7 @@ export function ClassPage() {
   }, [account.user, load]);
   const link = useMemo(() => (view ? `${location.origin}/c/${view.class.code}` : ""), [view]);
   if (!account.user) return <TeacherShell><SignInFirst /></TeacherShell>;
+  if (account.user.role === "student") return <TeacherShell><StudentOnly /></TeacherShell>;
   if (err) return <TeacherShell back={{ to: "/classes", label: "Today" }}><p className="p-8 text-sm text-fg-muted">{err}</p></TeacherShell>;
   if (!view) return <TeacherShell back={{ to: "/classes", label: "Today" }}><p className="p-8 text-sm text-fg-subtle">Loading…</p></TeacherShell>;
   return (
@@ -1234,4 +1280,4 @@ function TodayPanel({ today }: { today: TodayView }) {
   );
 }
 
-export { TeacherShell, SignInFirst, api };
+export { TeacherShell, SignInFirst, StudentOnly, api };

@@ -20,6 +20,23 @@ export interface User {
   provider: string;
   /** Your room color (cursor, avatar ring); null = this device picks one. */
   color?: string | null;
+  /**
+   * Teacher or student, set once. Joining a class as a student makes it a student account;
+   * choosing "I'm a teacher" (or making a class) makes it a teacher account. Students never
+   * get teacher tools. null = not chosen yet.
+   */
+  role?: "teacher" | "student" | null;
+}
+
+export type Role = "teacher" | "student";
+
+/** Sets the account type, only if it isn't set yet. Returns the account's type afterwards. */
+export async function claimRole(env: Env, user: User, role: Role): Promise<Role> {
+  if (user.role) return user.role;
+  await env.DB!.prepare(`UPDATE users SET role = ?1 WHERE id = ?2 AND role IS NULL`).bind(role, user.id).run();
+  const row = await env.DB!.prepare(`SELECT role FROM users WHERE id = ?1`).bind(user.id).first<{ role: Role | null }>();
+  user.role = row?.role ?? role;
+  return user.role;
 }
 
 const SESSION_COOKIE = "huddle_session";
@@ -123,7 +140,13 @@ export function ensureAuthTables(db: D1Database) {
     // Added later: profile edits. custom_* = 1 once you change it, so signing in again keeps it.
     .then(() =>
       Promise.all(
-        [`ALTER TABLE users ADD COLUMN color TEXT`, `ALTER TABLE users ADD COLUMN custom_name INTEGER`, `ALTER TABLE users ADD COLUMN custom_avatar INTEGER`].map((q) =>
+        [
+          `ALTER TABLE users ADD COLUMN color TEXT`,
+          `ALTER TABLE users ADD COLUMN custom_name INTEGER`,
+          `ALTER TABLE users ADD COLUMN custom_avatar INTEGER`,
+          // Added in Build 14: teacher or student.
+          `ALTER TABLE users ADD COLUMN role TEXT`,
+        ].map((q) =>
           db.prepare(q).run().catch(() => {}),
         ),
       ),
@@ -141,7 +164,7 @@ export async function currentUser(env: Env, req: Request): Promise<User | null> 
   if (!token || !env.DB) return null;
   await ensureAuthTables(env.DB);
   const row = await env.DB.prepare(
-    `SELECT u.id, u.uid, u.name, u.email, u.avatar, u.provider, u.color FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?1 AND s.expires_at > ?2`,
+    `SELECT u.id, u.uid, u.name, u.email, u.avatar, u.provider, u.color, u.role FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?1 AND s.expires_at > ?2`,
   )
     .bind(await sha256(token), Date.now())
     .first<User>();
@@ -220,6 +243,17 @@ export function isAdminUser(env: Env, user: User | null): boolean {
   const list = (env.ADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
   return list.includes(user.email.toLowerCase());
 }
+
+/** Choose teacher or student, once. A student account can't become a teacher account. */
+auth.post("/role", async (c) => {
+  const user = await currentUser(c.env, c.req.raw);
+  if (!user) return c.json({ error: "Sign in first." }, 401);
+  const body = await c.req.json<{ role?: string }>().catch(() => ({}) as { role?: string });
+  if (body.role !== "teacher" && body.role !== "student") return c.json({ error: "Pick teacher or student." }, 400);
+  const role = await claimRole(c.env, user, body.role);
+  if (role !== body.role) return c.json({ error: role === "student" ? "This is a student account, so it can't use teacher tools." : "This is already a teacher account.", role }, 409);
+  return c.json({ ok: true, role });
+});
 
 auth.get("/me", async (c) => {
   const user = await currentUser(c.env, c.req.raw);

@@ -727,27 +727,45 @@ const STONES = (() => {
   });
 })();
 
+/** How long each day stays up before the week moves on by itself. */
+const DAY_MS = 12_000;
+
 function Week() {
-  // Starts on Monday with one stone; dragging right builds the week.
-  const [v, setV] = useState(0);
-  const day = Math.max(0, Math.min(4, Math.round(v)));
+  // Starts on Monday with one stone. It steps a day at a time, by itself every 12 seconds
+  // (while it's on screen), or by dragging, where it snaps from day to day.
+  const [day, setDay] = useState(0);
+  const [paused, setPaused] = useState(false); // the person pressed pause
+  const [idle, setIdle] = useState(false); // the person is dragging; resumes after a while
+  const [visible, setVisible] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+  const resume = useRef<ReturnType<typeof setTimeout>>();
+  const playing = visible && !paused && !idle;
+
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const io = new IntersectionObserver((es) => setVisible(es.some((e) => e.isIntersecting)), { threshold: 0.35 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  useEffect(() => {
+    if (!playing) return;
+    const t = setTimeout(() => setDay((d) => (d + 1) % WEEK.length), DAY_MS);
+    return () => clearTimeout(t);
+  }, [playing, day]);
+  useEffect(() => () => clearTimeout(resume.current), []);
+
+  /** The person took over: stop the autoplay, and pick it back up after 30 quiet seconds. */
+  const takeOver = () => {
+    setIdle(true);
+    clearTimeout(resume.current);
+    resume.current = setTimeout(() => setIdle(false), 30_000);
+  };
+
   const sum = WEEK.slice(0, day + 1).reduce((a, x) => a + x.words, 0);
   const worked = WEEK.slice(0, day + 1).filter((x) => x.words).length;
-  // On release, settle on the nearest day.
-  const settle = () => {
-    const from = v;
-    const to = Math.round(from);
-    if (from === to || matchMedia("(prefers-reduced-motion: reduce)").matches) return setV(to);
-    const start = performance.now();
-    const step = (now: number) => {
-      const k = Math.min(1, (now - start) / 220);
-      setV(from + (to - from) * (1 - Math.pow(1 - k, 3)));
-      if (k < 1) requestAnimationFrame(step);
-    };
-    requestAnimationFrame(step);
-  };
   return (
-    <div className="week">
+    <div className="week" ref={box}>
       <div className="week-stage">
         <div className="who">
           <b>Maya's essay week</b>
@@ -755,48 +773,74 @@ function Week() {
         </div>
         <svg className="pile" viewBox="0 0 520 250" aria-hidden="true">
           <ellipse cx="260" cy="236" rx="220" ry="10" fill="rgba(10,16,13,.14)" />
-          {STONES.map((s, i) => {
-            // A stone fades and drops in as the thumb passes its day.
-            const t = Math.max(0, Math.min(1, (v - i + 0.5) / 0.5));
-            return (
-              <g key={i} style={{ opacity: t, transform: `translateY(${(1 - t) * -36}px) scale(${0.9 + t * 0.1})`, transformBox: "fill-box", transformOrigin: "50% 100%" }}>
-                <g filter="url(#grain)">
-                  <path d={s.d} fill={s.fill} {...(s.outline ? { stroke: INK, strokeWidth: 3 } : {})} />
-                </g>
-                <circle cx={s.cx - 9} cy={s.top + s.h * 0.45} r="2.8" fill={s.face} />
-                <circle cx={s.cx + 9} cy={s.top + s.h * 0.42} r="2.8" fill={s.face} />
-                <path d={`M${s.cx - 5} ${s.top + s.h * 0.62}c3 2.4 7 2.4 10 0`} fill="none" stroke={s.face} strokeWidth="2.2" strokeLinecap="round" />
+          {STONES.map((s, i) => (
+            // Each day's stone drops onto the pile when its day comes.
+            <g key={i} className={`week-stone${i <= day ? " on" : ""}`} style={{ transitionDelay: i <= day ? "0ms" : `${(4 - i) * 40}ms` }}>
+              <g filter="url(#grain)">
+                <path d={s.d} fill={s.fill} {...(s.outline ? { stroke: INK, strokeWidth: 3 } : {})} />
               </g>
-            );
-          })}
+              <circle cx={s.cx - 9} cy={s.top + s.h * 0.45} r="2.8" fill={s.face} />
+              <circle cx={s.cx + 9} cy={s.top + s.h * 0.42} r="2.8" fill={s.face} />
+              <path d={`M${s.cx - 5} ${s.top + s.h * 0.62}c3 2.4 7 2.4 10 0`} fill="none" stroke={s.face} strokeWidth="2.2" strokeLinecap="round" />
+            </g>
+          ))}
         </svg>
         <div className="scrub">
-          <label htmlFor="week-scrub" className="hand">
-            Drag through the week
-          </label>
+          <div className="scrub-head">
+            <label htmlFor="week-scrub" className="hand">
+              Drag through the week
+            </label>
+            <button
+              type="button"
+              className="play"
+              onClick={() => {
+                setPaused((p) => !p);
+                setIdle(false);
+              }}
+              aria-pressed={!paused}
+              aria-label={paused ? "Play the week" : "Pause the week"}
+              data-testid="week-play"
+            >
+              {paused ? (
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M5 3.5v9l7.5-4.5z" fill="currentColor" />
+                </svg>
+              ) : (
+                <svg viewBox="0 0 16 16" aria-hidden="true">
+                  <path d="M5 3.5v9M11 3.5v9" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+                </svg>
+              )}
+              {paused ? "Play" : "Pause"}
+            </button>
+          </div>
           <input
             id="week-scrub"
             type="range"
             min={0}
             max={4}
-            step={0.01}
-            value={v}
+            step={1}
+            value={day}
             aria-valuetext={WEEK[day].name}
-            onChange={(e) => setV(Number(e.target.value))}
-            onPointerUp={settle}
-            onKeyUp={settle}
+            onChange={(e) => {
+              takeOver();
+              setDay(Number(e.target.value));
+            }}
+            onPointerDown={takeOver}
+            data-testid="week-scrub"
           />
           <div className="days" aria-hidden="true">
-            <span>Mon</span>
-            <span>Tue</span>
-            <span>Wed</span>
-            <span>Thu</span>
-            <span>Fri</span>
+            {WEEK.map((d, i) => (
+              <span key={d.name} className={i === day ? "on" : ""} style={{ left: `calc(17px + (100% - 34px) * ${i / 4})` }}>
+                {d.name.slice(0, 3)}
+              </span>
+            ))}
           </div>
         </div>
       </div>
       <div className="day-card" aria-live="polite">
-        <div className="day">{WEEK[day].name}</div>
+        <div className="day" data-testid="week-day">
+          {WEEK[day].name}
+        </div>
         <ul>
           {WEEK[day].items.map(([bg, icon, text]) => (
             <li key={text}>
@@ -809,6 +853,10 @@ function Week() {
         </ul>
         <div className="total">
           Her record so far: about {sum} words written in Cairn, across {worked} working day{worked === 1 ? "" : "s"}.
+        </div>
+        {/* How long until the next day, so a skimmer knows it will move on. */}
+        <div className="next-day" aria-hidden="true">
+          <i key={day} style={{ animationDuration: `${DAY_MS}ms`, animationPlayState: playing ? "running" : "paused" }} />
         </div>
       </div>
     </div>

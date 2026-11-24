@@ -703,6 +703,9 @@ try {
   const park = await (await browser.newContext({ viewport: { width: 1400, height: 900 } })).newPage();
   await park.goto(`${BASE}/api/auth/login/dev?name=Ms.%20Park%20${Date.now() % 100000}&return=/classes`);
   await park.waitForURL(/\/classes$/);
+  await park.getByTestId("pick-role").waitFor();
+  ok(true, "a new account picks teacher before using teacher tools");
+  await park.getByTestId("im-teacher").click();
   await park.getByTestId("getting-started").waitFor();
   ok((await park.getByTestId("setup-step").first().getAttribute("data-done")) === "0", "a new teacher sees the getting-started steps, starting with making a class");
   await park.getByLabel("Class name").fill("Period 3 History");
@@ -736,6 +739,14 @@ try {
     kids.push(p);
   }
   ok(true, "students on the class list get straight in after signing in");
+  // Joining as a student makes it a student account: no teacher tools.
+  await kids[0].goto(`${BASE}/classes`);
+  await kids[0].getByTestId("student-account").waitFor();
+  const studentMakesClass = await kids[0].evaluate(async () => (await fetch("/api/classes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Sneaky class" }) })).status);
+  const studentPicksTeacher = await kids[0].evaluate(async () => (await fetch("/api/auth/role", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ role: "teacher" }) })).status);
+  ok(studentMakesClass === 403 && studentPicksTeacher === 409, "a student account can't make classes or switch itself to a teacher account");
+  await kids[0].goto(classLink);
+  await kids[0].getByText("You're in this class").waitFor();
   await park.reload();
   await park.getByTestId("roster").getByText("Dee").waitFor();
   ok(true, "students join with the class link, and the teacher sees the roster");
@@ -1087,6 +1098,11 @@ try {
   ok(!(await visitor.evaluate(() => document.documentElement.classList.contains("dark"))), "the site starts in light mode even when the device is set to dark");
   ok((await visitor.getByTestId("nav-admin").count()) === 0 && (await visitor.locator(".nav-links a").count()) === 3, "the landing nav is down to three links");
   await visitor.getByRole("heading", { level: 1 }).getByText(/Show your/).waitFor();
+  // The week starts on Monday and steps a day at a time.
+  await visitor.getByTestId("week-day").scrollIntoViewIfNeeded();
+  ok((await visitor.getByTestId("week-day").innerText()) === "Monday", "the stone week starts on Monday");
+  await visitor.getByTestId("week-scrub").fill("2");
+  ok((await visitor.getByTestId("week-day").innerText()) === "Wednesday", "dragging the week snaps from day to day");
   ok((await visitor.getByText("Your AI, your rules.").count()) === 0, "the landing page leads with Cairn's promise, not AI providers");
   ok((await visitor.locator("#research a[href^=\"https://\"]").count()) >= 5, "every research figure on the landing page links to its source");
   await visitor.getByRole("radio", { name: "Dark" }).first().click();

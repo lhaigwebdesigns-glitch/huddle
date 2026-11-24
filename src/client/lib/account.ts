@@ -9,6 +9,8 @@ export interface Account {
   avatar: string | null;
   provider: string;
   color?: string | null;
+  /** Teacher or student, set once; null = not chosen yet. */
+  role?: "teacher" | "student" | null;
 }
 
 /** Copy the account's profile onto this device's room identity (name, color, picture). */
