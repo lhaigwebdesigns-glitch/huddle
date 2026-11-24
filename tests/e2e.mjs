@@ -169,9 +169,18 @@ try {
 
   // Drive: duplicate copies content, history restores, delete removes for everyone.
   const docRow = alice.getByTestId("drive-file").filter({ hasText: "Mock plan" }).first();
-  await docRow.hover();
-  await docRow.getByRole("button", { name: /More actions/ }).click();
-  await alice.getByRole("menuitem", { name: "Duplicate" }).click();
+  // The file list can re-render while it settles (live presence), so open the menu again if it detaches.
+  for (let tries = 0; ; tries++) {
+    try {
+      await docRow.hover();
+      await docRow.getByRole("button", { name: /More actions/ }).click({ timeout: 5000 });
+      await alice.getByRole("menuitem", { name: "Duplicate" }).click({ timeout: 5000 });
+      break;
+    } catch (e) {
+      if (tries >= 3) throw e;
+      await alice.keyboard.press("Escape");
+    }
+  }
   await alice.waitForFunction(
     () => document.querySelector('[data-testid=file-panel] input[aria-label="File name"]')?.value === "Copy of Mock plan",
   );
@@ -188,16 +197,16 @@ try {
   await alice.keyboard.press("End");
   await alice.keyboard.type(" EDIT-TO-UNDO");
   await alice.getByTestId("doc-editor").getByText(/EDIT-TO-UNDO/).waitFor();
-  alice.once("dialog", (d) => d.accept());
   await alice.getByTestId("history").getByRole("button", { name: "Restore" }).last().click();
+  await alice.getByTestId("dialog-confirm").click();
   await alice.getByTestId("doc-editor").getByText(/EDIT-TO-UNDO/).waitFor({ state: "detached", timeout: 10000 });
   ok(true, "restoring a version rolls the doc back live");
 
   const copyRow = alice.getByTestId("drive-file").filter({ hasText: "Copy of Mock plan" });
   await copyRow.hover();
   await copyRow.getByRole("button", { name: /More actions/ }).click();
-  alice.once("dialog", (d) => d.accept());
   await alice.getByRole("menuitem", { name: "Delete" }).click();
+  await alice.getByTestId("dialog-confirm").click();
   await bob.getByTestId("drive-file").filter({ hasText: "Copy of Mock plan" }).waitFor({ state: "detached" });
   ok(true, "deleting a file removes it for everyone");
 
@@ -380,8 +389,8 @@ try {
   ok(true, "custom assistant name and share code work");
 
   // Share link: the host publishes a read-only snapshot.
-  alice.once("dialog", (d) => d.accept());
-  const [shared] = await Promise.all([alice.context().waitForEvent("page"), alice.getByTestId("share-chat").click()]);
+  await alice.getByTestId("share-chat").click();
+  const [shared] = await Promise.all([alice.context().waitForEvent("page"), alice.getByTestId("dialog-confirm").click()]);
   await shared.getByTestId("shared-title").getByText("Science project").waitFor();
   ok((await shared.getByTestId("shared-message").count()) > 5, "read-only share link shows the chat");
   await shared.close();
@@ -652,8 +661,8 @@ try {
   ok(!(await teach.getByTestId("doc-editor").innerText()).includes("SNEAKY EDIT"), "the server rejects edits to a turned-in file");
   await sam.reload();
   await sam.getByTestId("turned-in").waitFor();
-  teach.once("dialog", (d) => d.accept());
   await teach.getByTestId("reopen").click();
+  await teach.getByTestId("dialog-confirm").click();
   await sam.getByTestId("turn-in").waitFor();
   if (!(await sam.getByTestId("doc-editor").count())) await sam.getByTestId("drive-file").first().click();
   await sam.waitForFunction(() => document.querySelector('[data-testid="doc-editor"]')?.getAttribute("contenteditable") === "true");
@@ -776,6 +785,11 @@ try {
   await park.getByTestId("wizard-next").click();
   await park.getByTestId("mode-solo").click();
   await park.getByTestId("ai-full").click();
+  // The due date uses Cairn's own picker, not the browser's.
+  await park.getByTestId("due-date").click();
+  await park.getByRole("button", { name: "Tomorrow" }).click();
+  await park.getByTestId("picker").getByRole("button", { name: "Done" }).click();
+  ok(/Due/.test(await park.getByTestId("due-date").innerText()) || /·/.test(await park.getByTestId("due-date").innerText()), "the due date is picked with Cairn's date picker");
   await park.getByTestId("create-assignment").click();
   await park.getByTestId("wizard-done").click();
   const soloSection = park.getByTestId("assignment").filter({ hasText: "Reading response" });
@@ -906,8 +920,9 @@ try {
   const theirMsg = partner.getByTestId("user-message").filter({ hasText: "this is a mean message" });
   await theirMsg.waitFor();
   await theirMsg.hover();
-  partner.once("dialog", (d) => d.accept("Not nice to me"));
   await theirMsg.getByTestId("report-message").click();
+  await partner.getByTestId("dialog-input").fill("Not nice to me");
+  await partner.getByTestId("dialog-confirm").click();
   await partner.getByTestId("toast").getByText(/Reported to your teacher/).waitFor();
   await park.goto(classUrl);
   const report = park.getByTestId("report").first();
@@ -915,8 +930,8 @@ try {
   ok(/Not nice to me/.test(await report.innerText()), "a student can report one message, and the teacher sees only that message and why");
 
   // Removing a student: off the roster and out of the group rooms.
-  park.once("dialog", (d) => d.accept());
   await park.getByLabel("Remove Dee").click();
+  await park.getByTestId("dialog-confirm").click();
   await park.getByTestId("roster").getByText("Dee").waitFor({ state: "detached" });
   ok(true, "the teacher can remove a student from the class");
   const dee = kids[3];
@@ -937,8 +952,10 @@ try {
   ok(noAge === 400, "joining a class without confirming 13+ is refused");
 
   // Erasing a class deletes its rooms and records.
-  park.once("dialog", (d) => d.accept("Period 3 History"));
   await park.getByTestId("erase-class").click();
+  ok(await park.getByTestId("dialog-confirm").isDisabled(), "erasing a class needs its name typed first");
+  await park.getByTestId("dialog-input").fill("Period 3 History");
+  await park.getByTestId("dialog-confirm").click();
   await park.waitForURL(/\/classes$/);
   const erased = await park.evaluate(async (code) => (await fetch(`/api/rooms/${code}`)).status, rooms[0]);
   ok(erased === 404 && (await park.getByTestId("class-row").filter({ hasText: "Period 3 History" }).count()) === 0, "erasing a class deletes its group rooms and the class");
@@ -981,8 +998,9 @@ try {
   await ed2.getByTestId("doc-editor").locator("table").waitFor();
   await ed2.getByTestId("doc-editor").locator('img[src^="/api/rooms/"]').waitFor();
   ok(true, "tables and images sync to everyone in the doc");
-  ed1.once("dialog", (d) => d.accept("Ivy, Jo"));
-  const [wordFile] = await Promise.all([ed1.waitForEvent("download"), ed1.getByTestId("doc-word").click()]);
+  await ed1.getByTestId("doc-word").click();
+  await ed1.getByTestId("dialog-input").fill("Ivy, Jo");
+  const [wordFile] = await Promise.all([ed1.waitForEvent("download"), ed1.getByTestId("dialog-confirm").click()]);
   const wordHtml = await (await import("node:fs/promises")).readFile(await wordFile.path(), "utf8");
   ok(wordFile.suggestedFilename() === "Mock plan.doc" && /<p>Ivy<\/p><p>Jo<\/p>/.test(wordHtml) && /class="title">Mock plan</.test(wordHtml), "Word export uses school-paper format with names, date and title");
 
@@ -1025,8 +1043,10 @@ try {
 
 
   // ---------- Landing page: the two paths and the teacher pilot form ----------
-  const visitor = await (await browser.newContext({ viewport: { width: 1300, height: 900 } })).newPage();
+  const visitor = await (await browser.newContext({ viewport: { width: 1300, height: 900 }, colorScheme: "dark" })).newPage();
   await visitor.goto(BASE);
+  ok(!(await visitor.evaluate(() => document.documentElement.classList.contains("dark"))), "the site starts in light mode even when the device is set to dark");
+  ok((await visitor.getByTestId("nav-admin").count()) === 0 && (await visitor.locator(".nav-links a").count()) === 3, "the landing nav is down to three links");
   await visitor.getByRole("heading", { level: 1 }).getByText(/Show your/).waitFor();
   ok((await visitor.getByText("Your AI, your rules.").count()) === 0, "the landing page leads with Cairn's promise, not AI providers");
   ok((await visitor.locator("#research a[href^=\"https://\"]").count()) >= 5, "every research figure on the landing page links to its source");

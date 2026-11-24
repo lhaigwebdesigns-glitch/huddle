@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { PROJECT_LIMITS, type AiSetting, type Member, type ProjectSettings } from "../../shared/protocol";
 import { DAY_NAMES, type Schedule } from "../../shared/schedule";
+import { DateTimeField, TimeField } from "./DateTimePicker";
 
 export const AI_CHOICES: { value: AiSetting; label: string; hint: string }[] = [
   { value: "off", label: "AI off", hint: "No AI in this project. Students work on their own." },
@@ -77,14 +78,14 @@ export function ScheduleEditor({ value, onChange }: { value?: Schedule; onChange
             })}
           </div>
           <div className="flex flex-wrap items-center gap-2 text-sm">
-            <label className="flex items-center gap-1.5">
+            <span className="flex items-center gap-1.5">
               From
-              <input type="time" aria-label="Start time" value={w.start} onChange={(e) => update({ start: e.target.value })} className="rounded-lg border border-line-strong bg-transparent px-2 py-1" />
-            </label>
-            <label className="flex items-center gap-1.5">
+              <TimeField label="Start time" value={w.start} onChange={(start) => update({ start })} />
+            </span>
+            <span className="flex items-center gap-1.5">
               to
-              <input type="time" aria-label="End time" value={w.end} onChange={(e) => update({ end: e.target.value })} className="rounded-lg border border-line-strong bg-transparent px-2 py-1" />
-            </label>
+              <TimeField label="End time" value={w.end} onChange={(end) => update({ end })} />
+            </span>
           </div>
           <p className="text-xs text-fg-subtle">Outside these times the files are read-only. Students can ask you for more time.</p>
         </div>
@@ -164,18 +165,12 @@ export function ProjectEditor({
       )}
       {part !== "what" && (
       <>
-      <label className="block">
+      <div className="block">
         <span className="text-sm font-medium">
           Due <span className="font-normal text-fg-subtle">(optional)</span>
         </span>
-        <input
-          type="datetime-local"
-          aria-label="Due date"
-          value={toLocalInput(value.dueAt)}
-          onChange={(e) => set({ dueAt: fromLocalInput(e.target.value) ?? undefined })}
-          className={FIELD}
-        />
-      </label>
+        <DateTimeField className="mt-1" label="Due date" value={value.dueAt} onChange={(dueAt) => set({ dueAt })} testId="due-date" />
+      </div>
       {part === "all" && <ScheduleEditor value={value.schedule} onChange={(schedule) => set({ schedule })} />}
       <fieldset>
         <legend className="text-sm font-medium">AI in this project</legend>

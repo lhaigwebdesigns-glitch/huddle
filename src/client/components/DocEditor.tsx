@@ -1,3 +1,4 @@
+import { alertDialog, promptDialog } from "./Dialogs";
 import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -68,12 +69,12 @@ function Toolbar({ editor, onImage }: { editor: Editor; onImage: () => void }) {
   const [colors, setColors] = useState(false);
   const sep = <span className="mx-1 my-1.5 w-px bg-line" aria-hidden />;
   const inTable = editor.isActive("table");
-  const setLink = () => {
+  const setLink = async () => {
     const prev = (editor.getAttributes("link").href as string | undefined) ?? "";
-    const url = prompt("Link to (leave empty to remove the link):", prev || "https://");
+    const url = await promptDialog({ title: prev ? "Edit link" : "Add a link", label: "Link to (leave empty to remove the link)", defaultValue: prev || "https://", confirmLabel: "Save" });
     if (url === null) return;
     if (!url.trim() || url.trim() === "https://") return c().extendMarkRange("link").unsetLink().run();
-    if (!/^(https?:|mailto:)/i.test(url.trim())) return alert("Links must start with https://, http:// or mailto:");
+    if (!/^(https?:|mailto:)/i.test(url.trim())) return void alertDialog({ title: "That link won't work", message: "Links must start with https://, http:// or mailto:" });
     c().extendMarkRange("link").setLink({ href: url.trim() }).run();
   };
   const keep = (e: React.MouseEvent) => e.preventDefault();
@@ -250,13 +251,19 @@ export function DocEditor({
 
   if (!editor) return null;
   const name = safeName(file.title, "document");
-  const exportPaper = (kind: "word" | "pdf") => {
-    const names = prompt("Names for the top of the page (separate with commas):", me.name);
+  const exportPaper = async (kind: "word" | "pdf") => {
+    const names = await promptDialog({
+      title: kind === "word" ? "Save as Word" : "Save as PDF",
+      message: "These go at the top of the page, with the date and title.",
+      label: "Names (separate with commas)",
+      defaultValue: me.name,
+      confirmLabel: "Save",
+    });
     if (names === null) return;
     const html = schoolPaper(file.title, names, editor.getHTML(), kind === "pdf");
     if (kind === "word") return download(`${name}.doc`, "application/msword", html);
     const w = window.open("", "_blank", "width=850,height=1000");
-    if (!w) return alert("Allow pop-ups for Cairn to save a PDF.");
+    if (!w) return void alertDialog({ title: "Pop-ups are blocked", message: "Allow pop-ups for Cairn in your browser, then try Save as PDF again." });
     w.document.write(html);
     w.document.close();
   };

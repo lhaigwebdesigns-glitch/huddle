@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { LayoutGrid, LogOut, UserRound } from "lucide-react";
+import { GraduationCap, LayoutGrid, LogOut, Shield, UserRound } from "lucide-react";
 import { PersonAvatar } from "./PersonAvatar";
 import { getIdentity } from "../lib/identity";
 
@@ -42,7 +42,7 @@ function useDismiss(open: boolean, close: () => void) {
 const MENU = "pop absolute right-0 z-40 mt-2 rounded-2xl border border-line bg-surface p-1.5 text-sm shadow-[0_16px_40px_-12px_rgba(0,0,0,0.25)]";
 const ITEM = "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-fg transition-colors hover:bg-surface-2";
 
-export function AccountMenu({ user, providers }: { user: Account | null | undefined; providers: string[] }) {
+export function AccountMenu({ user, providers, isAdmin = false }: { user: Account | null | undefined; providers: string[]; isAdmin?: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useDismiss(open, () => setOpen(false));
   if (user === undefined) return null;
@@ -64,9 +64,17 @@ export function AccountMenu({ user, providers }: { user: Account | null | undefi
             <a role="menuitem" href="/profile" className={ITEM} data-testid="menu-profile">
               <UserRound className="h-4 w-4 text-fg-muted" /> Edit profile
             </a>
-            <a role="menuitem" href="/dashboard" className={ITEM}>
+            <a role="menuitem" href="/dashboard" className={ITEM} data-testid="nav-dashboard">
               <LayoutGrid className="h-4 w-4 text-fg-muted" /> Your rooms
             </a>
+            <a role="menuitem" href="/classes" className={ITEM} data-testid="menu-classes">
+              <GraduationCap className="h-4 w-4 text-fg-muted" /> Your classes
+            </a>
+            {isAdmin && (
+              <a role="menuitem" href="/admin" className={ITEM} data-testid="nav-admin">
+                <Shield className="h-4 w-4 text-fg-muted" /> Admin
+              </a>
+            )}
             <button role="menuitem" onClick={signOut} className={ITEM}>
               <LogOut className="h-4 w-4 text-fg-muted" /> Sign out
             </button>

@@ -1,3 +1,4 @@
+import { confirmDialog } from "./Dialogs";
 import { useState } from "react";
 import { BookOpen, CalendarClock, ChevronDown, Clock, ListChecks, Lock, ReceiptText, RotateCcw, Send, Sparkles } from "lucide-react";
 import { dueFor } from "../../shared/schedule";
@@ -133,7 +134,9 @@ export function ProjectBar({
             </span>
             {isHost && (
               <button
-                onClick={() => confirm("Reopen this project? The group will be able to edit its files again.") && send({ t: "reopen" })}
+                onClick={async () =>
+                  (await confirmDialog({ title: "Reopen this project?", message: "The group will be able to edit its files again.", confirmLabel: "Reopen" })) && send({ t: "reopen" })
+                }
                 className="press flex items-center gap-1 rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2"
                 data-testid="reopen"
               >

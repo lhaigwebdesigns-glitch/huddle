@@ -1,3 +1,4 @@
+import { confirmDialog, promptDialog } from "../components/Dialogs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowLeft, ArrowRight, CalendarClock, Check, CircleCheck, Clock, Copy, Download, Flag, GraduationCap, Plus, Users, X } from "lucide-react";
@@ -11,6 +12,7 @@ import { describeSchedule, type Schedule, type TimeRequest } from "../../shared/
 import { PROJECT_TEMPLATES } from "../../shared/templates";
 import { FILE_INFO } from "../../shared/files";
 import { MINT, PERI, RockArt, TEAL } from "../components/Rocks";
+import { DateTimeField } from "../components/DateTimePicker";
 import { assignmentPath, classroomShareUrl, gradeTotal, isPending, rubricMax, type Assignment, type ClassInfo, type ClassView, type GroupInfo, type TodayView } from "../../shared/classes";
 
 async function api<T>(url: string, init?: RequestInit): Promise<T & { error?: string }> {
@@ -625,10 +627,10 @@ function EditTimesDialog({ classId, a, onClose, onDone }: { classId: string; a: 
       <div role="dialog" aria-modal="true" aria-label="Edit times" onClick={(e) => e.stopPropagation()} className="pop w-full max-w-md rounded-[24px] border border-line bg-surface p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.4)]" data-testid="edit-times-dialog">
         <h2 className="text-xl font-semibold tracking-tight">Times for {a.title}</h2>
         <p className="mt-1 text-sm text-fg-muted">Changes apply to everyone right away. Students you gave extra time keep it.</p>
-        <label className="mt-4 block text-sm font-medium">
+        <div className="mt-4 block text-sm font-medium">
           Due
-          <input type="datetime-local" aria-label="Due date for everyone" value={toLocalInput(dueAt)} onChange={(e) => setDueAt(fromLocalInput(e.target.value) ?? undefined)} className="mt-1 w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 text-sm" />
-        </label>
+          <DateTimeField className="mt-1" label="Due date for everyone" value={dueAt} onChange={setDueAt} />
+        </div>
         <div className="mt-4">
           <ScheduleEditor value={schedule} onChange={setSchedule} />
         </div>
@@ -837,7 +839,15 @@ export function ClassPage() {
               {s.name}
               <button
                 onClick={async () => {
-                  if (!confirm(`Remove ${s.name} from this class? They'll be taken out of their groups and won't be able to open this class's work.`)) return;
+                  if (
+                    !(await confirmDialog({
+                      title: `Remove ${s.name}?`,
+                      message: "They'll be taken out of their groups and won't be able to open this class's work.",
+                      confirmLabel: "Remove",
+                      danger: true,
+                    }))
+                  )
+                    return;
                   await api(`/api/classes/${view.class.id}/students/${encodeURIComponent(s.uid)}`, { method: "DELETE" });
                   load();
                 }}
@@ -857,7 +867,15 @@ export function ClassPage() {
           <p className="mt-0.5 text-xs text-fg-subtle">Deletes all your students' work (chats, files and uploads), the student list and all grades. This can't be undone. Download grades first.</p>
           <button
             onClick={async () => {
-              const typed = prompt(`This permanently erases "${view.class.name}" and all of its students' work. Type the class name to confirm:`);
+              const typed = await promptDialog({
+                title: `Erase ${view.class.name}?`,
+                message: "This permanently erases the class and all of its students' work. It can't be undone.",
+                label: "Type the class name to confirm",
+                placeholder: view.class.name,
+                mustMatch: view.class.name,
+                confirmLabel: "Erase class",
+                danger: true,
+              });
               if (typed?.trim() !== view.class.name) return;
               const d = await api(`/api/classes/${view.class.id}`, { method: "DELETE" });
               if (!d.error) location.href = "/classes";

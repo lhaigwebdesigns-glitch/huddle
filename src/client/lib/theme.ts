@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 
-/** Light / dark / follow the system. Stored per browser; the .dark class on <html> drives the tokens. */
+/**
+ * Light / dark / follow the system. Stored per browser; the .dark class on <html> drives the tokens.
+ * Cairn starts in light mode until someone picks otherwise.
+ */
 export type ThemeChoice = "system" | "light" | "dark";
 const KEY = "huddle:theme";
 const mq = typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
@@ -9,9 +12,9 @@ const listeners = new Set<() => void>();
 export function getTheme(): ThemeChoice {
   try {
     const v = localStorage.getItem(KEY);
-    return v === "light" || v === "dark" ? v : "system";
+    return v === "dark" || v === "system" ? v : "light";
   } catch {
-    return "system";
+    return "light";
   }
 }
 
@@ -19,6 +22,7 @@ function apply() {
   const t = getTheme();
   const dark = t === "dark" || (t === "system" && !!mq?.matches);
   document.documentElement.classList.toggle("dark", dark);
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#0d1511" : "#ffffff");
   listeners.forEach((l) => l());
 }
 
@@ -30,7 +34,7 @@ export function setTheme(t: ThemeChoice) {
     setTimeout(() => root.classList.remove("theme-fade"), 300);
   }
   try {
-    if (t === "system") localStorage.removeItem(KEY);
+    if (t === "light") localStorage.removeItem(KEY);
     else localStorage.setItem(KEY, t);
   } catch {
     /* private mode: still applies for this page */
