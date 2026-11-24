@@ -132,7 +132,7 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
   if (!account.user) {
     return (
       <div className="flex h-full items-center justify-center bg-bg text-sm text-fg-muted">
-        {account.user === undefined ? "Loading…" : <a href={signInUrl(account.providers[0] ?? "github", "/dashboard")}>Sign in</a>}
+        {account.user === undefined ? "Loading…" : <a href={signInUrl(account.providers[0] ?? "google", "/dashboard")}>Sign in</a>}
       </div>
     );
   }

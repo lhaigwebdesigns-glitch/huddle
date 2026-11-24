@@ -20,7 +20,7 @@ export function applyProfile(u: Account) {
   setAvatar(u.avatar);
 }
 
-export const PROVIDER_LABEL: Record<string, string> = { github: "GitHub", google: "Google", dev: "Dev login (local only)" };
+export const PROVIDER_LABEL: Record<string, string> = { google: "Google", dev: "Dev login (local only)" };
 
 /**
  * The signed-in account, if any. After sign-in this device adopts the account's room identity,

@@ -15,7 +15,7 @@ import { PROJECT_TEMPLATES } from "../../shared/templates";
 import { FILE_INFO } from "../../shared/files";
 import { MINT, PERI, RockArt, TEAL } from "../components/Rocks";
 import { DateTimeField } from "../components/DateTimePicker";
-import { assignmentPath, classroomShareUrl, gradeTotal, isPending, rubricMax, type Assignment, type ClassInfo, type ClassView, type GroupInfo, type TodayView } from "../../shared/classes";
+import { assignmentPath, classroomShareUrl, gradeTotal, isPending, parseEmails, rubricMax, type Assignment, type ClassInfo, type ClassView, type GroupInfo, type TodayView } from "../../shared/classes";
 
 async function api<T>(url: string, init?: RequestInit): Promise<T & { error?: string }> {
   const r = await fetch(url, init?.body ? { ...init, headers: { "content-type": "application/json", ...init.headers } } : init);
@@ -956,6 +956,26 @@ function ClassListSection({ view, onChange }: { view: ClassView; onChange: () =>
             <Button type="submit" size="sm" disabled={busy || !text.trim()} data-testid="roster-add">
               {busy ? "Adding…" : "Add to class list"}
             </Button>
+            {/* A spreadsheet of the class (saved as CSV) or any text file: the emails are picked out of it. */}
+            <label className="press inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2">
+              <Upload className="h-3.5 w-3.5" /> Upload a file
+              <input
+                type="file"
+                accept=".csv,.txt,text/csv,text/plain"
+                className="sr-only"
+                data-testid="roster-file"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!file) return;
+                  if (file.size > 2_000_000) return setMsg({ text: "That file is too big. Save just the email column as CSV.", err: true });
+                  const found = parseEmails(await file.text());
+                  if (!found.length) return setMsg({ text: `No emails found in ${file.name}.`, err: true });
+                  setText((t) => [t.trim(), ...found].filter(Boolean).join("\n"));
+                  setMsg({ text: `Found ${found.length} email${found.length === 1 ? "" : "s"} in ${file.name}. Check them, then add them.` });
+                }}
+              />
+            </label>
             {msg && (
               <span className={`text-sm ${msg.err ? "text-red-600 dark:text-red-400" : "text-fg-muted"}`} role={msg.err ? "alert" : "status"}>
                 {msg.text}
