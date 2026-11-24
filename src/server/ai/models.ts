@@ -131,7 +131,7 @@ export function getProviders(env: Env): ProviderConfig[] {
       // Free open models with tool support (Nov 2026): nemotron-3-ultra, gemma-4-31b-it.
       model: env.OPENROUTER_MODEL || "nvidia/nemotron-3-ultra-550b-a55b:free",
       supportsTools: true,
-      extraHeaders: { "X-Title": "Huddle" },
+      extraHeaders: { "X-Title": "Cairn" },
     });
   }
   return list;

@@ -99,7 +99,7 @@ function AssistantEditor({ settings, patch }: { settings: RoomSettings; patch: (
         </button>
         {settings.assistant && (
           <button type="button" onClick={() => (patch({ assistant: null as unknown as undefined }), setName(""), setInstructions(""))} className="text-xs text-red-600 hover:underline">
-            Reset to Huddle AI
+            Reset to Cairn AI
           </button>
         )}
       </div>

@@ -1,9 +1,12 @@
 import React, { lazy, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Navigate, Route, Routes, useParams } from "react-router-dom";
-import "@fontsource-variable/inter/opsz.css";
+import "@fontsource-variable/figtree/wght.css";
+import "@fontsource-variable/lexend/wght.css";
+import "@fontsource/caveat-brush/latin-400.css";
 import "katex/dist/katex.min.css";
 import { initTheme } from "./lib/theme";
+import { RockDefs } from "./components/Rocks";
 import "./styles.css";
 import "./editors";
 import Home from "./routes/Home";
@@ -30,6 +33,7 @@ initTheme();
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
+    <RockDefs />
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />

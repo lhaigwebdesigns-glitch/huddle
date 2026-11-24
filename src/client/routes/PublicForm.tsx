@@ -67,7 +67,7 @@ export default function PublicForm() {
   }, [url]);
 
   useEffect(() => {
-    if (form) document.title = `${form.title} · Huddle Forms`;
+    if (form) document.title = `${form.title} · Cairn Forms`;
   }, [form]);
 
   const submit = async (e: React.FormEvent) => {
@@ -131,7 +131,7 @@ export default function PublicForm() {
                 </button>
               </form>
             )}
-            <p className="mt-6 text-center text-xs text-zinc-400">Made with Huddle · Never submit passwords through forms.</p>
+            <p className="mt-6 text-center text-xs text-zinc-400">Made with Cairn · Never submit passwords through forms.</p>
           </>
         )}
       </main>

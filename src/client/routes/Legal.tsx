@@ -7,7 +7,7 @@ function Page({ title, children }: { title: string; children: React.ReactNode })
     <div className="min-h-screen bg-white text-zinc-800 dark:bg-zinc-950 dark:text-zinc-200">
       <div className="mx-auto max-w-2xl px-4 py-10 sm:py-14">
         <Link to="/" className="text-sm text-fg hover:underline ">
-          ← Huddle
+          ← Cairn
         </Link>
         <h1 className="mt-4 text-3xl font-bold text-zinc-900 dark:text-white">{title}</h1>
         <p className="mt-1 text-sm text-zinc-500">Last updated {UPDATED}</p>
@@ -26,7 +26,7 @@ function Page({ title, children }: { title: string; children: React.ReactNode })
 function DraftNote() {
   return (
     <p className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200" data-testid="legal-draft">
-      <b>Draft.</b> This page is being reviewed by a professional before Huddle is used with schools. It describes how Huddle works today.
+      <b>Draft.</b> This page is being reviewed by a professional before Cairn is used with schools. It describes how Cairn works today.
     </p>
   );
 }
@@ -35,7 +35,7 @@ export function Privacy() {
   return (
     <Page title="Privacy Policy">
       <DraftNote />
-      <p>Huddle is a shared AI workspace for groups, including school group projects. This page explains what it stores, why, and who can see it. Huddle is for people aged 13 and up.</p>
+      <p>Cairn is a shared AI workspace for groups, including school group projects. This page explains what it stores, why, and who can see it. Cairn is for people aged 13 and up.</p>
       <section>
         <h2>What we store</h2>
         <ul>
@@ -61,23 +61,23 @@ export function Privacy() {
         <ul>
           <li>When someone asks the AI something, the recent conversation and the files it needs are sent to an AI provider to write the reply.</li>
           <li>In school projects, each student message is checked by a safety model before the AI answers, so the AI stays appropriate for school. The check only decides whether a message is safe; it isn't stored.</li>
-          <li>Huddle doesn't use your content to train AI models. Some of the free AI providers Huddle uses may keep requests under their own terms; before Huddle is used with schools, we'll limit school projects to providers that don't.</li>
+          <li>Cairn doesn't use your content to train AI models. Some of the free AI providers Cairn uses may keep requests under their own terms; before Cairn is used with schools, we'll limit school projects to providers that don't.</li>
         </ul>
       </section>
       <section>
         <h2>Who processes it</h2>
         <ul>
-          <li><b>Cloudflare</b> hosts Huddle and stores the data above.</li>
+          <li><b>Cloudflare</b> hosts Cairn and stores the data above.</li>
           <li><b>AI providers</b> (such as Groq, NVIDIA, OpenRouter and Cloudflare Workers AI) receive the conversation and file contents needed to write a reply.</li>
           <li><b>Search providers</b> (such as Tavily) receive the search terms when the AI searches the web.</li>
           <li><b>Google or GitHub</b>, only if you choose to sign in with them.</li>
-          <li><b>Google Classroom</b>, only when a teacher uses "Share to Classroom", which opens Classroom with a link. Huddle doesn't read Classroom data today.</li>
+          <li><b>Google Classroom</b>, only when a teacher uses "Share to Classroom", which opens Classroom with a link. Cairn doesn't read Classroom data today.</li>
         </ul>
-        <p className="mt-2">We don't sell your data, show ads, or use it for anything other than running Huddle.</p>
+        <p className="mt-2">We don't sell your data, show ads, or use it for anything other than running Cairn.</p>
       </section>
       <section>
         <h2>Ages</h2>
-        <p>Huddle is for people aged 13 and up. Everyone confirms this before joining a room or class. If you believe someone under 13 has used Huddle, tell us with <b>Send feedback</b> and we'll delete their data.</p>
+        <p>Cairn is for people aged 13 and up. Everyone confirms this before joining a room or class. If you believe someone under 13 has used Cairn, tell us with <b>Send feedback</b> and we'll delete their data.</p>
       </section>
       <section>
         <h2>Who can see a room</h2>
@@ -85,7 +85,7 @@ export function Privacy() {
       </section>
       <section>
         <h2>Cookies</h2>
-        <p>If you sign in, one cookie keeps you signed in. Huddle also remembers your name and settings in your browser. There are no tracking or advertising cookies.</p>
+        <p>If you sign in, one cookie keeps you signed in. Cairn also remembers your name and settings in your browser. There are no tracking or advertising cookies.</p>
       </section>
       <section>
         <h2>Deleting your data</h2>
@@ -107,11 +107,11 @@ export function Terms() {
   return (
     <Page title="Terms of Use">
       <DraftNote />
-      <p>By using Huddle you agree to these terms. Huddle is for people aged 13 and up.</p>
+      <p>By using Cairn you agree to these terms. Cairn is for people aged 13 and up.</p>
       <section>
-        <h2>Using Huddle</h2>
+        <h2>Using Cairn</h2>
         <ul>
-          <li>Don't use Huddle for anything illegal, to harass or bully people, or to share content you don't have the right to share.</li>
+          <li>Don't use Cairn for anything illegal, to harass or bully people, or to share content you don't have the right to share.</li>
           <li>Don't try to break, overload or get around the limits of the service, including the AI and paste rules a teacher sets for a project.</li>
           <li>You're responsible for what you post in a room and for who you give its code to.</li>
         </ul>
@@ -130,11 +130,11 @@ export function Terms() {
       </section>
       <section>
         <h2>Your content</h2>
-        <p>You keep ownership of what you create. You let Huddle store and process it so the service works for you and the people in your rooms.</p>
+        <p>You keep ownership of what you create. You let Cairn store and process it so the service works for you and the people in your rooms.</p>
       </section>
       <section>
         <h2>No guarantees</h2>
-        <p>Huddle is a free service provided "as is". It may change, have downtime, or lose data, so keep your own copies of anything important (every file can be downloaded). Free AI allowances are shared and may run out for the day.</p>
+        <p>Cairn is a free service provided "as is". It may change, have downtime, or lose data, so keep your own copies of anything important (every file can be downloaded). Free AI allowances are shared and may run out for the day.</p>
       </section>
       <section>
         <h2>Ending access</h2>

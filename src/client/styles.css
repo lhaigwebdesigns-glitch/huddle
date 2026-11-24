@@ -3,26 +3,35 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
- * Huddle design tokens. Black and white, ChatGPT-like neutrals (no blue cast), Apple-style type.
- * The zinc scale is re-pointed at true neutrals so every existing zinc-* class follows the palette.
- * Semantic tokens (bg, surface, fg, primary…) flip under .dark.
+ * Cairn design tokens. Five brand colors: ink #0A100D, mint #A9FDAC, green #44CF6C,
+ * periwinkle #8FA6CB, teal #5EB1BF. Green is the action color (with ink text), mint marks
+ * good news and highlights, periwinkle is students, teal is teachers. Neutrals lean slightly
+ * green so they belong to the ink. The zinc scale is re-pointed at those neutrals so every
+ * existing zinc-* class follows the palette. Semantic tokens flip under .dark.
  */
 @theme {
-  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-  --font-display: "Inter Variable", -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "Figtree Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-display: "Lexend Variable", "Figtree Variable", "Segoe UI", system-ui, sans-serif;
+  --font-hand: "Caveat Brush", "Comic Sans MS", cursive;
+
+  --color-ink: #0a100d;
+  --color-mint: #a9fdac;
+  --color-green: #44cf6c;
+  --color-peri: #8fa6cb;
+  --color-teal: #5eb1bf;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
 
-  --color-zinc-50: #f9f9f9;
-  --color-zinc-100: #f2f2f2;
-  --color-zinc-200: #e6e6e6;
-  --color-zinc-300: #d4d4d4;
-  --color-zinc-400: #9b9b9b;
-  --color-zinc-500: #6e6e6e;
-  --color-zinc-600: #5c5c5c;
-  --color-zinc-700: #3d3d3d;
-  --color-zinc-800: #2a2a2a;
-  --color-zinc-900: #1f1f1f;
-  --color-zinc-950: #141414;
+  --color-zinc-50: #f6faf7;
+  --color-zinc-100: #eef4f0;
+  --color-zinc-200: #dfe7e2;
+  --color-zinc-300: #c7d3cc;
+  --color-zinc-400: #93a59a;
+  --color-zinc-500: #66766d;
+  --color-zinc-600: #4f5d55;
+  --color-zinc-700: #34463b;
+  --color-zinc-800: #24322a;
+  --color-zinc-900: #18231d;
+  --color-zinc-950: #0d1511;
 
   --color-bg: var(--bg);
   --color-surface: var(--surface);
@@ -47,18 +56,20 @@
   color-scheme: light;
   --bg: #ffffff;
   --surface: #ffffff;
-  --surface-2: #f4f4f4;
-  --sidebar: #f9f9f9;
-  --line: #e8e8e8;
-  --line-strong: #d4d4d4;
-  --fg: #0d0d0d;
-  --fg-muted: #5d5d5d;
-  --fg-subtle: #6b6b6b;
-  --primary: #0d0d0d;
-  --primary-hover: #2f2f2f;
-  --primary-fg: #ffffff;
-  --accent-soft: #f0f0f0;
-  --ring: #0d0d0d;
+  --surface-2: #eef4f0;
+  --sidebar: #f6faf7;
+  --line: #dfe7e2;
+  --line-strong: #c7d3cc;
+  --fg: #0a100d;
+  --fg-muted: #3b4640;
+  --fg-subtle: #5a6760;
+  --primary: #44cf6c;
+  --primary-hover: #3bbf61;
+  --primary-fg: #0a100d;
+  --accent-soft: #e6fbe8;
+  --ring: #2a9a4b;
+  --ink-tile: #0a100d;
+  --rock-edge: transparent;
   --chart-1: oklch(0.585 0.233 277.117);
   --chart-2: oklch(0.852 0.199 91.936);
   --chart-3: oklch(0.459 0.156 302.679);
@@ -95,28 +106,30 @@
   --chart-segment-background: oklch(0.756 0 0 / 0.06);
   --chart-segment-line: oklch(0.5 0 0 / 0.25);
   /* Bklit charts, on brand: ink lines, neutral grays, our surfaces for tooltips. */
-  --chart-1: #0d0d0d; --chart-2: #9b9b9b; --chart-3: #5c5c5c; --chart-4: #d4d4d4; --chart-5: #3d3d3d;
-  --chart-crosshair: #6b6b6b; --chart-grid: #ececec; --chart-label: #6b6b6b; --chart-foreground: #0d0d0d; --chart-foreground-muted: #6b6b6b;
+  --chart-1: #44cf6c; --chart-2: #8fa6cb; --chart-3: #5eb1bf; --chart-4: #a9fdac; --chart-5: #0a100d;
+  --chart-crosshair: #5a6760; --chart-grid: #e6ede8; --chart-label: #5a6760; --chart-foreground: #0a100d; --chart-foreground-muted: #5a6760;
   --chart-scale-mix: #ffffff;
   --background: var(--bg); --foreground: var(--fg); --border: var(--line);
   --popover: var(--surface); --popover-foreground: var(--fg); --muted-foreground: var(--fg-muted);
 }
 .dark {
   color-scheme: dark;
-  --bg: #212121;
-  --surface: #2a2a2a;
-  --surface-2: #303030;
-  --sidebar: #181818;
-  --line: #343434;
-  --line-strong: #474747;
-  --fg: #ececec;
-  --fg-muted: #b4b4b4;
-  --fg-subtle: #9d9d9d;
-  --primary: #f5f5f5;
-  --primary-hover: #d9d9d9;
-  --primary-fg: #0d0d0d;
-  --accent-soft: #2f2f2f;
-  --ring: #f5f5f5;
+  --bg: #0d1511;
+  --surface: #141f19;
+  --surface-2: #1b2822;
+  --sidebar: #0a110d;
+  --line: #24322a;
+  --line-strong: #34463b;
+  --fg: #eef5f0;
+  --fg-muted: #b4c2ba;
+  --fg-subtle: #93a59a;
+  --primary: #44cf6c;
+  --primary-hover: #57d97c;
+  --primary-fg: #0a100d;
+  --accent-soft: #1b2a21;
+  --ring: #a9fdac;
+  --ink-tile: #23332b;
+  --rock-edge: #6f8a7b;
   --chart-1: oklch(0.585 0.233 277.117);
   --chart-2: oklch(0.852 0.199 91.936);
   --chart-3: oklch(0.459 0.156 302.679);
@@ -147,9 +160,9 @@
   --chart-marker-badge-foreground: oklch(0.15 0 0);
   --chart-segment-background: oklch(0.41 0.0127 248.14 / 0.25);
   --chart-segment-line: oklch(1 0 0 / 0.25);
-  --chart-1: #f5f5f5; --chart-2: #8a8a8a; --chart-3: #b4b4b4; --chart-4: #474747; --chart-5: #d9d9d9;
-  --chart-crosshair: #9d9d9d; --chart-grid: #2e2e2e; --chart-label: #9d9d9d; --chart-foreground: #ececec; --chart-foreground-muted: #9d9d9d;
-  --chart-background: var(--bg); --chart-scale-mix: #212121;
+  --chart-1: #44cf6c; --chart-2: #8fa6cb; --chart-3: #5eb1bf; --chart-4: #a9fdac; --chart-5: #eef5f0;
+  --chart-crosshair: #93a59a; --chart-grid: #24322a; --chart-label: #93a59a; --chart-foreground: #eef5f0; --chart-foreground-muted: #93a59a;
+  --chart-background: var(--bg); --chart-scale-mix: #0d1511;
 }
 
 html, body, #root { height: 100%; }
@@ -158,12 +171,13 @@ body {
   @apply bg-bg text-fg antialiased;
   font-family: var(--font-sans);
   font-optical-sizing: auto;
-  font-feature-settings: "cv11", "ss01";
   transition: background-color 200ms ease, color 200ms ease;
 }
 h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; }
 p, li, dd { text-wrap: pretty; }
-::selection { background: color-mix(in oklab, var(--fg) 18%, transparent); }
+::selection { background: var(--color-mint); color: var(--color-ink); }
+h1, h2 { letter-spacing: -0.03em; }
+.font-hand { font-family: var(--font-hand); }
 input, textarea { caret-color: var(--fg); }
 ::placeholder { color: var(--fg-subtle); opacity: 1; }
 .tabular { font-variant-numeric: tabular-nums; }

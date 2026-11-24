@@ -1,3 +1,4 @@
+import { GREEN, PERI, RockArt, TEAL } from "./Rocks";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { REACTIONS, type ChatMessage, type ClientMsg, type Member, type Poll, type RoomSettings } from "../../shared/protocol";
 import { Markdown } from "./Markdown";
@@ -575,8 +576,13 @@ export function Chat({
         }}
       >
         {messages.length === 0 && (
-          <div className="rise mx-auto mt-[12vh] max-w-xl px-6 text-center">
-            <h2 className="text-[28px] font-semibold tracking-[-0.025em]">{settings.project ? "Let's get this project started" : "What are we working on?"}</h2>
+          <div className="rise mx-auto mt-[10vh] max-w-xl px-6 text-center">
+            <div className="mb-3 flex items-end justify-center gap-1" aria-hidden="true">
+              <RockArt className="h-14 w-14" body={PERI} pose="hold" prop="book" />
+              <RockArt className="h-20 w-20" body={GREEN} pose="cheer" />
+              <RockArt className="h-14 w-14" body={TEAL} pose="hold" prop="laptop" />
+            </div>
+            <h2 className="text-[28px] font-extrabold tracking-[-0.025em]">{settings.project ? "Let's get this project started" : "What are we working on?"}</h2>
             <p className="mx-auto mt-2 max-w-md text-[15px] text-fg-muted">
               {settings.project
                 ? aiOff

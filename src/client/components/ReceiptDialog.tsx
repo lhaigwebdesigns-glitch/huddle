@@ -39,7 +39,7 @@ function printReceipt(r: Receipt) {
   const files = r.files
     .map((f) => {
       const rows = Object.entries(f.shares)
-        .map(([uid, s]) => `<li>${esc(uid === "ai" ? "Huddle AI" : (r.people.find((p) => p.uid === uid)?.name ?? "Someone"))}: ${esc(workLine({ words: s.words, units: s.units ? { [f.kind]: s.units } : {} }))}</li>`)
+        .map(([uid, s]) => `<li>${esc(uid === "ai" ? "Cairn AI" : (r.people.find((p) => p.uid === uid)?.name ?? "Someone"))}: ${esc(workLine({ words: s.words, units: s.units ? { [f.kind]: s.units } : {} }))}</li>`)
         .join("");
       return `<h4>${esc(f.title)} <span class="muted">(${esc(FILE_INFO[f.kind].label)})</span></h4><ul>${rows || "<li>Empty</li>"}</ul>`;
     })
@@ -57,14 +57,14 @@ function printReceipt(r: Receipt) {
   <h1>Contribution receipt: ${esc(r.title)}</h1>
   <p class="muted">${r.final && r.turnedInAt ? `Turned in ${esc(new Date(r.turnedInAt).toLocaleString())}` : `Live receipt, ${esc(new Date(r.generatedAt).toLocaleString())}`}. Counts what's in the project's files now and who wrote it. Chat messages are counted, never shown.</p>
   <h2>People</h2>${people || "<p>No work yet.</p>"}
-  ${r.aiWords || r.aiUnits ? `<p class="muted">Huddle AI wrote ${esc(plural(r.aiWords, "word", "words"))}${r.aiUnits ? ` and ${r.aiUnits} other items` : ""} that are still in the files.</p>` : ""}
+  ${r.aiWords || r.aiUnits ? `<p class="muted">Cairn AI wrote ${esc(plural(r.aiWords, "word", "words"))}${r.aiUnits ? ` and ${r.aiUnits} other items` : ""} that are still in the files.</p>` : ""}
   <h2>Files</h2>${files || "<p>No files.</p>"}
   <h2>Timeline</h2><ul>${days || "<li>No activity yet.</li>"}</ul>
   <script>window.onload=()=>window.print()</script></body></html>`);
   w.document.close();
 }
 
-/** Stacked bar of who has what in one file (people plus Huddle AI). */
+/** Stacked bar of who has what in one file (people plus Cairn AI). */
 function FileBar({ shares, colorOf, kind }: { shares: Record<string, { words: number; units: number }>; colorOf: (uid: string) => string; kind: FileKind }) {
   // Slides, sheets, forms and boards are measured in their units; docs in words.
   const measure = (s: { words: number; units: number }) => (UNIT_LABEL[kind] ? s.units || s.words / 50 : s.words);
@@ -122,7 +122,7 @@ export function ReceiptDialog({
     const map = new Map(r?.people.map((p, i) => [p.uid, PALETTE[i % PALETTE.length]]) ?? []);
     return (uid: string) => (uid === "ai" ? AI_COLOR : (map.get(uid) ?? "#6b7280"));
   }, [r]);
-  const nameOf = (uid: string) => (uid === "ai" ? "Huddle AI" : (r?.people.find((p) => p.uid === uid)?.name ?? "Someone"));
+  const nameOf = (uid: string) => (uid === "ai" ? "Cairn AI" : (r?.people.find((p) => p.uid === uid)?.name ?? "Someone"));
   const editable = !!r && !r.final && !isHost && !preview;
   const saveNote = () => {
     send({ t: "receipt_note", text: note });
@@ -263,7 +263,7 @@ export function ReceiptDialog({
                 {(r.aiWords > 0 || r.aiUnits > 0) && (
                   <p className="mt-2 flex items-center gap-2 text-xs text-fg-subtle">
                     <span className="h-2.5 w-2.5 rounded-full" style={{ background: AI_COLOR }} aria-hidden />
-                    Huddle AI wrote {plural(r.aiWords, "word", "words")}
+                    Cairn AI wrote {plural(r.aiWords, "word", "words")}
                     {r.aiUnits > 0 && <> and {r.aiUnits} other items</>} that are still in the files, credited above to whoever asked.
                   </p>
                 )}

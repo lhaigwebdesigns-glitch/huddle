@@ -297,7 +297,7 @@ export default function Grading() {
               </aside>
             </div>
             {allDone && (
-              <div className="border-t border-line bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200 sm:px-6" role="status" data-testid="all-graded">
+              <div className="border-t border-line bg-mint px-4 py-3 text-sm text-ink dark:bg-mint/15 dark:text-mint sm:px-6" role="status" data-testid="all-graded">
                 All turned-in work is graded.{" "}
                 <Link to={`/classes/${id}`} className="font-medium underline underline-offset-2">
                   Back to the class

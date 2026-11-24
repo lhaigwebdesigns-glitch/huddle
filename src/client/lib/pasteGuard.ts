@@ -7,7 +7,7 @@ const REMEMBER = 20;
 const norm = (s: string) => s.replace(/\s+/g, " ").trim();
 
 /**
- * Remembers text copied inside Huddle, and decides whether a paste came from outside.
+ * Remembers text copied inside Cairn, and decides whether a paste came from outside.
  * Kept separate from the DOM so it can be tested.
  */
 export class PasteGuard {
@@ -29,7 +29,7 @@ export class PasteGuard {
 }
 
 /**
- * While on, blocks pasting (and dropping) text that wasn't copied inside Huddle, across the
+ * While on, blocks pasting (and dropping) text that wasn't copied inside Cairn, across the
  * whole room: the chat box and every file editor. The person always sees why.
  */
 export function usePasteGuard(on: boolean, onBlocked: () => void) {

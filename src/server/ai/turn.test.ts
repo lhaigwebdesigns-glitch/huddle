@@ -10,7 +10,7 @@ describe("AI turn helpers", () => {
       { role: "user", content: "Alice: name for a cat?" },
     ]);
     expect(out).toHaveLength(3);
-    expect(out[2].content).toMatch(/^Alice: name for a cat\?\n\n\[Huddle note: reply only to the message\(s\) from Alice/);
+    expect(out[2].content).toMatch(/^Alice: name for a cat\?\n\n\[Cairn note: reply only to the message\(s\) from Alice/);
     expect(out[0].content).toBe("Bob: what's 17 times 23?");
   });
 

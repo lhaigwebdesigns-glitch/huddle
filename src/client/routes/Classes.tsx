@@ -10,6 +10,7 @@ import { EMPTY_PROJECT, fromLocalInput, ProjectEditor, ScheduleEditor, toLocalIn
 import { describeSchedule, type Schedule, type TimeRequest } from "../../shared/schedule";
 import { PROJECT_TEMPLATES } from "../../shared/templates";
 import { FILE_INFO } from "../../shared/files";
+import { MINT, PERI, RockArt, TEAL } from "../components/Rocks";
 import { assignmentPath, classroomShareUrl, gradeTotal, isPending, rubricMax, type Assignment, type ClassInfo, type ClassView, type GroupInfo, type TodayView } from "../../shared/classes";
 
 async function api<T>(url: string, init?: RequestInit): Promise<T & { error?: string }> {
@@ -35,7 +36,7 @@ function TeacherShell({ children, back }: { children: React.ReactNode; back?: { 
     <div className="flex h-full flex-col bg-bg">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-4">
         <Link to="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
-          <Logo className="h-6 w-6" /> Huddle
+          <Logo className="h-7 w-7" /> <span className="font-display text-[17px] font-extrabold tracking-tight">Cairn</span>
         </Link>
         {back && (
           <Link to={back.to} className="press ml-2 flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-fg-muted hover:bg-surface-2 hover:text-fg">
@@ -43,7 +44,7 @@ function TeacherShell({ children, back }: { children: React.ReactNode; back?: { 
           </Link>
         )}
         <span className="flex-1" />
-        <Link to="/classes" className="text-sm font-medium text-fg-muted hover:text-fg" data-testid="nav-today">
+        <Link to="/classes" className="hidden text-sm font-medium text-fg-muted hover:text-fg sm:inline" data-testid="nav-today">
           Today
         </Link>
         <Link to="/dashboard" className="hidden text-sm text-fg-muted hover:text-fg sm:inline">
@@ -62,7 +63,7 @@ function SignInFirst() {
   return (
     <div className="mx-auto mt-[15vh] max-w-sm px-6 text-center">
       <GraduationCap className="mx-auto h-8 w-8 text-fg-muted" />
-      <h1 className="mt-3 text-2xl font-semibold tracking-tight">Sign in to set up classes</h1>
+      <h1 className="mt-3 text-2xl font-extrabold tracking-tight">Sign in to set up classes</h1>
       <p className="mt-2 text-sm text-fg-muted">Use your school Google account. Students join with a class code, no account needed.</p>
       <div className="mt-5 flex flex-col gap-2">
         {account.providers.map((p, i) => (
@@ -104,7 +105,7 @@ export function ClassesPage() {
   return (
     <TeacherShell>
       <div className="mx-auto max-w-3xl px-4 pb-16 pt-8 sm:px-8">
-        <h1 className="rise text-3xl font-semibold tracking-tight">Today</h1>
+        <h1 className="rise text-3xl font-extrabold tracking-tight">Today</h1>
         <p className="rise rise-1 mt-1 text-fg-muted">What needs you, across all your classes.</p>
         {today && <GettingStarted setup={today.setup} />}
         {today && <TodayPanel today={today} />}
@@ -140,9 +141,9 @@ export function ClassesPage() {
 }
 
 const STATUS: Record<string, { label: string; cls: string }> = {
-  graded: { label: "Graded", cls: "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200" },
+  graded: { label: "Graded", cls: "bg-mint text-ink dark:bg-mint/15 dark:text-mint" },
   turned: { label: "Turned in", cls: "bg-primary text-primary-fg" },
-  working: { label: "Working", cls: "bg-surface-2 text-fg" },
+  working: { label: "Working", cls: "bg-peri/35 text-ink dark:bg-peri/20 dark:text-fg" },
   idle: { label: "Not started", cls: "bg-surface-2 text-fg-subtle" },
 };
 const statusOf = (g: GroupInfo) =>
@@ -223,7 +224,7 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
       </div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <a
-          href={classroomShareUrl(link, a.title, `${solo ? "Open the link to start your own copy on Huddle." : "Open the link to join your group's room on Huddle."}${due ? ` Due ${due}.` : ""}`)}
+          href={classroomShareUrl(link, a.title, `${solo ? "Open the link to start your own copy on Cairn." : "Open the link to join your group's room on Cairn."}${due ? ` Due ${due}.` : ""}`)}
           target="_blank"
           rel="noopener noreferrer"
           className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2"
@@ -512,14 +513,14 @@ function NewAssignmentDialog({ classId, classCode, students, onDone, onClose }: 
         {step === 2 && (
           <div className="mt-5" data-testid="wizard-ready">
             <p className="text-sm text-fg-muted">
-              Post this link in Google Classroom. When a student opens it, Huddle gives them {mode === "solo" ? "their own copy" : "their group's room"}, and their work shows up on this class page for grading.
+              Post this link in Google Classroom. When a student opens it, Cairn gives them {mode === "solo" ? "their own copy" : "their group's room"}, and their work shows up on this class page for grading.
             </p>
             <div className="mt-4 break-all rounded-xl border border-line bg-bg px-3 py-2 font-mono text-xs text-fg-muted" data-testid="wizard-link">
               {link}
             </div>
             <div className="mt-4 flex flex-col gap-2">
               <a
-                href={classroomShareUrl(link, title.trim(), `${mode === "solo" ? "Open the link to start your own copy on Huddle." : "Open the link to join your group's room on Huddle."}${due ? ` Due ${due}.` : ""}`)}
+                href={classroomShareUrl(link, title.trim(), `${mode === "solo" ? "Open the link to start your own copy on Cairn." : "Open the link to join your group's room on Cairn."}${due ? ` Due ${due}.` : ""}`)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="press flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover"
@@ -722,7 +723,7 @@ function ReportsSection({ classId }: { classId: string }) {
               {r.assignment} · {r.group} · reported by {r.byName}, {timeAgo(r.at)}
             </div>
             <blockquote className="mt-1.5 border-l-2 border-line-strong pl-3">
-              <span className="font-medium">{r.message.authorName}{r.message.fromAi ? " (Huddle AI)" : ""}:</span> {r.message.content}
+              <span className="font-medium">{r.message.authorName}{r.message.fromAi ? " (Cairn AI)" : ""}:</span> {r.message.content}
             </blockquote>
             {r.reason && <p className="mt-1.5 text-xs text-fg-muted">Why: {r.reason}</p>}
             <button
@@ -768,7 +769,7 @@ export function ClassPage() {
       <div className="mx-auto max-w-4xl px-4 pb-16 pt-8 sm:px-8">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1">
-            <h1 className="text-3xl font-semibold tracking-tight" data-testid="class-name">{view.class.name}</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight" data-testid="class-name">{view.class.name}</h1>
             <p className="mt-1 text-sm text-fg-muted">{view.students.length} student{view.students.length === 1 ? "" : "s"} joined</p>
           </div>
           <div className="rounded-2xl border border-line px-4 py-2.5">
@@ -790,7 +791,7 @@ export function ClassPage() {
               </button>
             </div>
             <a
-              href={classroomShareUrl(link, `Join ${view.class.name} on Huddle`, "Open the link and type your name to join the class. Your assignments will show up there.")}
+              href={classroomShareUrl(link, `Join ${view.class.name} on Cairn`, "Open the link and type your name to join the class. Your assignments will show up there.")}
               target="_blank"
               rel="noopener noreferrer"
               className="press mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted hover:text-fg"
@@ -815,7 +816,8 @@ export function ClassPage() {
         </div>
         {!view.assignments.length && (
           <div className="mt-3 rounded-[20px] border border-dashed border-line-strong px-5 py-8 text-center" data-testid="no-assignments">
-            <p className="font-medium">No assignments yet</p>
+            <RockArt className="mx-auto mb-3 h-20 w-20" body={TEAL} pose="carry" prop="pencil" />
+            <p className="font-display text-lg font-bold">No assignments yet</p>
             <p className="mx-auto mt-1 max-w-sm text-sm text-fg-muted">Make one, post its link in Google Classroom, and students join the class just by opening it.</p>
             <Button className="mt-4" onClick={() => setNewA(true)} data-testid="new-assignment-btn">
               <Plus className="h-4 w-4" /> Make your first assignment
@@ -908,6 +910,7 @@ function GettingStarted({ setup }: { setup: TodayView["setup"] }) {
   return (
     <section className="rise rise-2 mt-6 rounded-[20px] border border-line bg-surface p-5" data-testid="getting-started">
       <div className="flex items-center gap-2">
+        <RockArt className="h-9 w-9 -my-2" body={PERI} pose="cheer" />
         <h2 className="font-semibold">Getting started</h2>
         <span className="text-xs text-fg-subtle">
           Step {current + 1} of {steps.length}
@@ -930,7 +933,7 @@ function GettingStarted({ setup }: { setup: TodayView["setup"] }) {
         {steps.map((x, i) => (
           <li key={x.label} className={`flex flex-wrap items-start gap-x-3 gap-y-2 rounded-xl px-3 py-2.5 ${i === current ? "bg-surface-2" : ""}`} data-testid="setup-step" data-done={x.done ? "1" : "0"}>
             {x.done ? (
-              <CircleCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-label="Done" />
+              <CircleCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#1d7a3b] dark:text-mint" aria-label="Done" />
             ) : (
               <span className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold ${i === current ? "border-fg" : "border-line-strong text-fg-subtle"}`}>{i + 1}</span>
             )}
@@ -967,7 +970,7 @@ function TodayPanel({ today }: { today: TodayView }) {
     if (!setup.hasGraded) return null;
     return (
       <div className="rise rise-2 mt-6 flex items-center gap-3 rounded-[20px] border border-line bg-surface px-5 py-4" data-testid="all-caught-up">
-        <CircleCheck className="h-6 w-6 text-emerald-600 dark:text-emerald-400" aria-hidden />
+        <RockArt className="h-14 w-14 shrink-0" body={MINT} pose="cheer" />
         <div>
           <div className="font-medium">You're all caught up</div>
           <div className="text-sm text-fg-muted">Nothing to grade or answer right now.</div>

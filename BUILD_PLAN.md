@@ -1,4 +1,4 @@
-# Huddle Projects: build plan
+# Cairn: build plan
 
 Last updated Nov 22, 2026. Sizes: **S** = an evening, **M** = a weekend, **L** = a few weekends.
 
@@ -13,7 +13,7 @@ Last updated Nov 22, 2026. Sizes: **S** = an evening, **M** = a weekend, **L** =
 - paste block
 - turn in with locked files
 
-**Builds 1–10 are live. Build 11 (the teacher's path) is built**, waiting to merge and deploy. Next: **the pilot** with your teacher's class.
+**Builds 1–11 are live.** The product is now **Cairn** (renamed from Huddle in November 2026): new name, logo, colors, rock-character illustrations, landing page and app theme, in light and dark. Next: **the pilot** with your teacher's class.
 
 **Known limit of receipts:** when someone splits a paragraph in the middle (presses Enter inside it), the doc editor rewrites the text after the split, so that text is credited to the person who split it. Typing, deleting and pressing Enter at the end of a paragraph are counted correctly.
 

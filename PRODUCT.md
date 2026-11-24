@@ -7,40 +7,46 @@
 web
 
 ## Users
-Small groups (friends, classmates, small teams, clubs) who want to think and make things with an AI together in real time. One person starts a room and shares a 6-character party code. Others join from a phone or laptop, often with no account. The job is to get an answer, a plan or a document out of a conversation that several people are having at once.
+- **Teachers** (middle school to college) who assign work through Google Classroom and want to see how students got to their answers, not just the final product. Many are not tech-savvy, so every teacher screen is a simple, step-by-step path.
+- **Students** 13 and up who open an assignment link, work alone or in a group, and want credit for what they actually did.
+- Secondary: anyone starting a room for a study group or club with a code.
 
 ## Product Purpose
-Huddle is a multiplayer AI workspace. Everyone in a room chats with the same AI live. The AI searches the web with sources and builds real files (docs, sheets with formulas and charts, slides, whiteboards, forms, mini-apps), which everyone then edits live. Success means a group can go from "let's figure this out" to a shared, finished artifact in one sitting, without anyone needing a paid AI subscription.
+Cairn is where students do their assignments with AI that helps them think instead of thinking for them. Teachers post one link per assignment in Google Classroom; each student gets their own room (or their group's), the teacher sets how much AI help is allowed, and the work record shows how the work grew. Success means students remember and can prove what they did, and teachers grade from one screen.
 
 ## Positioning
-Most AI chat is one person and one assistant. Huddle is one AI for the whole room: a shared conversation plus shared live files, free, with open models and no sign-up to join.
+When AI can write the essay, the finished work no longer proves learning; the work behind it does. Cairn keeps AI in school but makes it a tutor, and shows the process openly to the student and the teacher. Not a blocker, not a spy app, not an AI detector.
 
 ## Operating Context
-- Rooms are reached by party code or invite link.
-- Sessions are live and multiplayer, so presence, typing and edits show for everyone.
-- Use spans desktop browsers and phones.
-- Optional GitHub or Google sign-in keeps a list of "My rooms".
-- The host can switch the AI to Local mode, which runs in their own browser.
+- Students reach work by an assignment link or class code, usually from Google Classroom, on Chromebooks, laptops and phones.
+- Teachers work from the Today screen at school, in daylight, between classes.
+- Rooms are live and multiplayer for group work.
 
 ## Capabilities and Constraints
-- **Capabilities:** room chat with the AI (streaming), web search with cited sources, docs, sheets (formulas, charts, CSV/XLSX), slides (PPTX export), whiteboards, forms with public links, AI-built mini-apps, uploads (images, PDF, CSV) searchable by the AI, AI image generation, room memory, polls and reactions, custom assistants, read-only share links, and 20 expert skills.
-- **Constraints:** runs on Cloudflare's free tier with shared daily AI quotas. AI replies can be wrong.
-- **Primary conversion:** start a room. Joining with a code and signing in are secondary.
+- **Capabilities:** classes and per-assignment links, solo or group assignments, AI settings (off, tutor only, full help), paste blocking, work records with words per day and openly shown pastes, reflection at turn-in, timed work windows and extension requests, Today screen, step-by-step assignment wizard, rubric grading with Save and next, grade export, docs, slides, sheets, and the room chat with the AI.
+- **Constraints:** runs on Cloudflare's free tier with shared daily AI quotas. AI replies can be wrong. Ages 13+.
+- **Primary conversion:** a teacher tries it with their class (pilot sign-up, then make a class). Students joining with a class code is the second path.
 
 ## Brand Commitments
-- **Name:** Huddle.
-- **Confirmed by the owner:** a black-and-white look like ChatGPT, light by default and following the system dark mode, with a toggle. An Apple-inspired landing page. The app inside a room follows the structure and calm of the Claude Code desktop app. Icons are shadcn's (lucide-react).
+- **Name:** Cairn (renamed from Huddle in November 2026). Tagline: "Show your work."
+- **Colors, chosen by the owner:** ink #0A100D, mint #A9FDAC, green #44CF6C, periwinkle #8FA6CB, teal #5EB1BF.
+- **Style, chosen by the owner:** playful and lively, like the owner's reference shots: geometric shape tiles, sparkles, squiggles, hand-drawn arrows, and flat grainy illustrated characters. The characters are rocks with faces, arms and legs (the stones of a cairn).
+- **Layout:** the familiar education-site layout, at Duolingo and Khan Academy craft (chosen on the design decision page).
+- Light and dark mode, following the device, with a switch.
+- Icons are lucide-react.
 
 ## Evidence on Hand
-- The live product and real features above.
-- No customers, testimonials, user counts, press or logos yet. Do not fabricate any social proof.
-- Pricing: free; there is no paid plan.
+- The live product and the real features above.
+- Real published research on AI and learning (Pew, MIT Media Lab, Bastani et al. in PNAS, Gerlich in Societies), each linked to its source and described with its limits.
+- No customers, testimonials, user counts, press or logos yet. Do not fabricate any. Pilot results will replace this later.
+- The founder is a 16-year-old student, Logan (first name only on the site).
+- Pricing: free during the pilot.
 
 ## Product Principles
-1. Together first: every surface should make it obvious that others are here and see the same thing.
-2. Zero friction to start: one action starts a room; accounts are optional.
-3. Show the work: the AI's output becomes real files people can edit, not just text.
-4. Honest about AI: sources are cited, limits are explained, and nothing is overstated.
+1. Shown, not watched: a student sees everything their teacher sees about them.
+2. Better AI, not less AI: the tutor coaches instead of answering.
+3. Simple for teachers: one main button per screen, sensible defaults, plain words.
+4. Honest: research is cited with its limits, examples are labeled as examples, nothing is overstated.
 
 ## Accessibility & Inclusion
-Keyboard and screen-reader usable. WCAG AA contrast in both themes. Respect reduced motion.
+Keyboard and screen-reader usable. WCAG AA contrast in both themes. Respect reduced motion. Works on phones and Chromebooks.

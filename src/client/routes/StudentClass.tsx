@@ -5,6 +5,7 @@ import { ageConfirmed, confirmAge, getIdentity, setName } from "../lib/identity"
 import { AgeCheck } from "./RoomPage";
 import { signInUrl, useAccount } from "../lib/account";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
+import { PERI, RockArt } from "../components/Rocks";
 import { normalizeCode } from "../../shared/code";
 import { assignmentPath, type AssignmentMode, type StudentClassView } from "../../shared/classes";
 
@@ -71,7 +72,7 @@ export default function StudentClass() {
   const join = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
-    if (!age) return setErr("Huddle is for ages 13 and up. Please check the box to confirm.");
+    if (!age) return setErr("Cairn is for ages 13 and up. Please check the box to confirm.");
     setName(name.trim());
     confirmAge();
     const r = await fetch(`/api/classes/join/${code}`, {
@@ -91,9 +92,9 @@ export default function StudentClass() {
     if (!view.joined)
       return (
         <form onSubmit={join}>
-          <div className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{info ? view.name : "Join a class"}</div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">{info ? info.title : view.name}</h1>
-          {info && <p className="mt-1 text-sm text-fg-subtle">{(info.mode === "solo" ? "Your own work" : "Group project") + dueText(info.dueAt)}</p>}
+          <RockArt className="mb-2 h-16 w-16" body={PERI} pose="wave" />
+          <h1 className="text-2xl font-extrabold tracking-tight">{info ? info.title : `Join ${view.name}`}</h1>
+          {info && <p className="mt-1 text-sm text-fg-subtle">{view.name + " · " + (info.mode === "solo" ? "Your own work" : "Group project") + dueText(info.dueAt)}</p>}
           <p className="mt-3 text-[15px] text-fg-muted">Type your name the way your teacher will recognize it.</p>
           <Input autoFocus maxLength={32} value={name} onChange={(e) => setNameInput(e.target.value)} placeholder="Your name" aria-label="Your name" className="mt-4 h-11" />
           <AgeCheck checked={age} onChange={setAge} />
@@ -110,8 +111,8 @@ export default function StudentClass() {
     if (aid)
       return (
         <div role="status" data-testid="opening-assignment">
-          <div className="text-xs font-medium uppercase tracking-wide text-fg-subtle">{view.name}</div>
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">{info?.title}</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight">{info?.title}</h1>
+          <p className="mt-1 text-sm text-fg-subtle">{view.name}</p>
           <p className="mt-3 text-[15px] text-fg-muted">{opening ? "Opening your room…" : err || "Getting things ready…"}</p>
           {err && !opening && (
             <Button className="mt-4 w-full" onClick={() => void openAssignment()}>
@@ -125,10 +126,10 @@ export default function StudentClass() {
       );
     return (
       <div>
-        <div className="flex items-center gap-1.5 text-xs font-medium text-fg-subtle">
+        <h1 className="text-2xl font-extrabold tracking-tight">{view.name}</h1>
+        <div className="mt-1 flex items-center gap-1.5 text-sm text-fg-subtle">
           <Check className="h-3.5 w-3.5" /> You're in this class
         </div>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">{view.name}</h1>
         {account.user === null && account.providers.includes("google") && (
           <p className="mt-2 text-xs text-fg-subtle">
             Using more than one device?{" "}
@@ -170,7 +171,7 @@ export default function StudentClass() {
     <div className="flex min-h-full flex-col bg-sidebar">
       <header className="flex h-14 items-center gap-2 px-4">
         <Link to="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
-          <Logo className="h-6 w-6" /> Huddle
+          <Logo className="h-7 w-7" /> <span className="font-display text-[17px] font-extrabold tracking-tight">Cairn</span>
         </Link>
         <span className="flex-1" />
         <ThemeToggle />

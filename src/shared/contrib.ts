@@ -5,12 +5,12 @@ import { slidesOf } from "./slides-model";
 import { questionsOf } from "./forms-model";
 import { elementsOf } from "./whiteboard-model";
 
-/** Who wrote part of a file. uid "ai" is Huddle AI. */
+/** Who wrote part of a file. uid "ai" is Cairn AI. */
 export interface Author {
   uid: string;
   name: string;
 }
-export const AI_AUTHOR: Author = { uid: "ai", name: "Huddle AI" };
+export const AI_AUTHOR: Author = { uid: "ai", name: "Cairn AI" };
 
 /** What one person has in a file right now: words still in it, plus slides / cells / questions / shapes. */
 export interface Share {

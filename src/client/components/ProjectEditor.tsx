@@ -207,7 +207,7 @@ export function ProjectEditor({
               onChange={(e) => set({ pasteGuard: e.target.checked })}
             />
             <span>
-              <span className="font-medium">Block pasting from outside Huddle</span>
+              <span className="font-medium">Block pasting from outside Cairn</span>
               <span className="block text-xs text-fg-subtle">
                 Students can still copy and paste inside the project. They'll see a note when a paste is blocked, so nothing is hidden.
               </span>

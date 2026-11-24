@@ -79,7 +79,7 @@ function Kpi({
       <div className="mt-2 flex items-baseline gap-2">
         <span className="tabular text-[28px] font-semibold leading-none tracking-tight">{value}</span>
         {change !== null && (
-          <span className={`inline-flex items-center text-xs font-medium ${up ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+          <span className={`inline-flex items-center text-xs font-medium ${up ? "text-[#1d7a3b] dark:text-mint" : "text-red-600 dark:text-red-400"}`}>
             {up ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
             {Math.abs(change)}%
           </span>
@@ -104,7 +104,7 @@ const HEAT_LEVELS = [
 
 const PROVIDER_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)"];
 
-/** The admin's usage dashboard: who's using Huddle, how much, and how the AI is holding up. */
+/** The admin's usage dashboard: who's using Cairn, how much, and how the AI is holding up. */
 export function AdminAnalytics({ token }: { token: string }) {
   const [range, setRange] = useState<Range>(() => {
     try {

@@ -48,7 +48,7 @@ export class Doc extends YServer<Env> {
 
   // ---------- who wrote what (contribution receipts) ----------
 
-  /** Yjs client id → the person (or Huddle AI) whose edits carry it. */
+  /** Yjs client id → the person (or Cairn AI) whose edits carry it. */
   private authors = new Map<number, Author>();
   /** day → uid (or "c:<client>" until we learn who that is) → edits that day. */
   private activity: Record<string, Record<string, number>> = {};

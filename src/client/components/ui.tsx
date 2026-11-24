@@ -4,14 +4,14 @@ import { useTheme, type ThemeChoice } from "../lib/theme";
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");
 
-/** Huddle's mark: two people, drawn in the current text color. */
+/** Cairn's mark: three stacked stones. */
 export function Logo({ className = "h-7 w-7" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 32 32" className={className} aria-hidden="true">
-      <rect width="32" height="32" rx="9" className="fill-fg" />
-      <circle cx="11.5" cy="12.5" r="3.5" className="fill-bg" />
-      <circle cx="20.5" cy="12.5" r="3.5" className="fill-bg" opacity=".55" />
-      <path d="M6.5 25c.9-3.6 3-5.5 5-5.5s4.1 1.9 5 5.5M15.5 25c.9-3.6 3-5.5 5-5.5s4.1 1.9 5 5.5" fill="none" strokeWidth="2" strokeLinecap="round" className="stroke-bg" />
+    <svg viewBox="0 0 40 40" className={className} aria-hidden="true">
+      <ellipse cx="20" cy="32.5" rx="15" ry="6" className="fill-fg" />
+      <ellipse cx="18.5" cy="22.5" rx="11" ry="5.2" fill="#5eb1bf" />
+      <ellipse cx="21.5" cy="13.5" rx="7.4" ry="4.4" fill="#44cf6c" />
+      <path d="M34 1.5c.4 3 1.3 4.4 5.5 5.5-4.2 1.1-5.1 2.5-5.5 5.5-.4-3-1.3-4.4-5.5-5.5 4.2-1.1 5.1-2.5 5.5-5.5z" fill="#8fa6cb" />
     </svg>
   );
 }

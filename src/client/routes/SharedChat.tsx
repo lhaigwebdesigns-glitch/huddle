@@ -22,7 +22,7 @@ export default function SharedChat() {
       .catch(() => setErr("Couldn't load this page."));
   }, [id]);
   useEffect(() => {
-    if (data) document.title = `${data.title} · shared from Huddle`;
+    if (data) document.title = `${data.title} · shared from Cairn`;
   }, [data]);
   return (
     <div className="min-h-full">
@@ -33,7 +33,7 @@ export default function SharedChat() {
             <h1 className="truncate font-semibold" data-testid="shared-title">{data?.title ?? "Shared chat"}</h1>
             {data && <p className="text-xs text-zinc-500">Read-only snapshot · {new Date(data.createdAt).toLocaleString()}</p>}
           </div>
-          <Link to="/" className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg">Start your own Huddle</Link>
+          <Link to="/" className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-primary-fg">Start your own room on Cairn</Link>
         </div>
       </header>
       <main className="mx-auto max-w-3xl px-4 py-4">

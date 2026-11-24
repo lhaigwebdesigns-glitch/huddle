@@ -6,7 +6,7 @@ import { download, safeName } from "../lib/download";
 
 /**
  * Renders an AI-made page in a sandboxed iframe: scripts run, but with an opaque origin they
- * can't read Huddle's cookies, storage or the parent page.
+ * can't read Cairn's cookies, storage or the parent page.
  */
 export default function ArtifactViewer({ ydoc, file, synced }: EditorProps) {
   const versions = versionsOf(ydoc);

@@ -22,7 +22,7 @@ export function AgeCheck({ checked, onChange }: { checked: boolean; onChange: (v
     <label className="mt-4 flex items-start gap-2.5 text-sm text-fg-muted">
       <input type="checkbox" className="mt-0.5" checked={checked} onChange={(e) => onChange(e.target.checked)} data-testid="age-13" />
       <span>
-        I'm 13 or older. <span className="text-fg-subtle">Huddle is for ages 13 and up.</span>
+        I'm 13 or older. <span className="text-fg-subtle">Cairn is for ages 13 and up.</span>
       </span>
     </label>
   );
@@ -45,7 +45,7 @@ function NamePrompt({ onDone, needName }: { onDone: (n: string) => void; needNam
         }}
       >
         <Logo className="h-9 w-9" />
-        <h1 className="mt-5 text-2xl font-semibold tracking-tight">You're invited to a Huddle</h1>
+        <h1 className="mt-5 text-2xl font-extrabold tracking-tight">You're invited to a project on Cairn</h1>
         <p className="mt-1.5 text-[15px] text-fg-muted">{needName ? "Pick a name so others know who you are." : "One quick check before you join."}</p>
         {needName && <Input autoFocus maxLength={32} value={n} onChange={(e) => setN(e.target.value)} placeholder="Your name" className="mt-5 h-11" />}
         {askAge && <AgeCheck checked={age} onChange={setAge} />}
@@ -80,7 +80,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
   const { state, send, localProgress, clearToast, showToast, dismissNotice } = useRoom(code, me);
   const project = state.settings?.project;
   usePasteGuard(!!project?.pasteGuard && project.ai !== "full" && !project.pasteExempt.includes(me.uid), () =>
-    showToast("Pasting from outside Huddle is off for this project."),
+    showToast("Pasting from outside Cairn is off for this project."),
   );
   const [openFile, setOpenFile] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -170,8 +170,8 @@ function Room({ code, me }: { code: string; me: Identity }) {
   const sidebar = (
     <aside className="flex h-full w-[264px] shrink-0 flex-col bg-sidebar">
       <div className="flex h-12 items-center gap-2 px-3">
-        <Link to="/" className="press flex items-center gap-2 rounded-lg px-1.5 py-1 text-[15px] font-semibold tracking-tight hover:bg-accent-soft" title="Huddle home">
-          <Logo className="h-6 w-6" /> Huddle
+        <Link to="/" className="press flex items-center gap-2 rounded-lg px-1.5 py-1 text-[15px] font-semibold tracking-tight hover:bg-accent-soft" title="Cairn home">
+          <Logo className="h-7 w-7" /> <span className="font-display text-[17px] font-extrabold tracking-tight">Cairn</span>
         </Link>
         <button onClick={() => setShowSidebar(false)} className="press ml-auto rounded-lg p-1.5 text-fg-muted hover:bg-accent-soft md:hidden" aria-label="Close menu">
           <X className="h-4 w-4" />

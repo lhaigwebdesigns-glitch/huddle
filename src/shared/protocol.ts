@@ -72,7 +72,7 @@ export interface Ban {
 }
 export type ModerationAction = "kick" | "ban" | "unban";
 
-/** Profile pictures rooms will show: ones uploaded to Huddle, or Google/GitHub's. */
+/** Profile pictures rooms will show: ones uploaded to Cairn, or Google/GitHub's. */
 export const AVATAR_URL_RE =
   /^(\/api\/avatars\/[\w-]{6,32}\/[a-z0-9]{1,16}|https:\/\/(lh\d\.googleusercontent\.com|avatars\.githubusercontent\.com)\/[\w\-./?=&%]{1,400})$/;
 
@@ -136,7 +136,7 @@ export interface ProjectSettings {
   rubric: string;
   dueAt?: number;
   ai: AiSetting;
-  /** Block pasting text that wasn't copied inside Huddle (AI off / tutor projects). */
+  /** Block pasting text that wasn't copied inside Cairn (AI off / tutor projects). */
   pasteGuard: boolean;
   /** People allowed to paste anyway (dictation and other accessibility tools). */
   pasteExempt: string[];
@@ -269,7 +269,7 @@ export interface Receipt {
   people: ReceiptPerson[];
   files: ReceiptFile[];
   days: ReceiptDay[];
-  /** Words written by Huddle AI that are still in the files. */
+  /** Words written by Cairn AI that are still in the files. */
   aiWords: number;
   aiUnits: number;
 }

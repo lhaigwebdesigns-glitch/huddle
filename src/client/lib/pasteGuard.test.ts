@@ -4,7 +4,7 @@ import { PasteGuard } from "./pasteGuard";
 describe("paste guard", () => {
   const essay = "The main cause of the war was the alliance system between the great powers.";
 
-  it("blocks long text that wasn't copied in Huddle", () => {
+  it("blocks long text that wasn't copied in Cairn", () => {
     expect(new PasteGuard().allows(essay)).toBe(false);
   });
 
@@ -13,7 +13,7 @@ describe("paste guard", () => {
     expect(new PasteGuard().allows("https://x.co/a")).toBe(true);
   });
 
-  it("allows text copied inside Huddle, or part of it", () => {
+  it("allows text copied inside Cairn, or part of it", () => {
     const g = new PasteGuard();
     g.noteCopy(essay);
     expect(g.allows(essay)).toBe(true);

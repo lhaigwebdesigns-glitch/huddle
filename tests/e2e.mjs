@@ -522,7 +522,7 @@ try {
   await sam.waitForTimeout(1500);
   ok((await sam.getByTestId("ai-message").count()) === 0, "with AI off, @ai gets no AI reply");
 
-  // Paste block: outside text is refused (and the student is told); text copied inside Huddle pastes fine.
+  // Paste block: outside text is refused (and the student is told); text copied inside Cairn pastes fine.
   const pasteResult = await sam.evaluate(() => {
     const box = document.querySelector('[data-testid="composer"]');
     box.focus();
@@ -540,8 +540,8 @@ try {
     const inside = paste(essay);
     return { outside, inside };
   });
-  ok(pasteResult.outside === false && pasteResult.inside === true, "outside pastes are blocked; pastes copied inside Huddle work");
-  await sam.getByTestId("toast").getByText(/Pasting from outside Huddle is off/).waitFor();
+  ok(pasteResult.outside === false && pasteResult.inside === true, "outside pastes are blocked; pastes copied inside Cairn work");
+  await sam.getByTestId("toast").getByText(/Pasting from outside Cairn is off/).waitFor();
   ok(true, "a blocked paste tells the student why");
 
   // The teacher switches the project to tutor only: the AI talks but makes no files.
@@ -613,7 +613,7 @@ try {
   ok(true, "the receipt credits Sam with the 6 words Sam wrote");
   ok(/asked the AI to make or change files 1 time/.test(await samRow.innerText()), "AI-made work is credited as AI help to whoever asked");
   ok(/Researcher/.test(await samRow.innerText()) && /Tasks: 1 of 1 done/.test(await samRow.innerText()), "the receipt shows each person's role and tasks");
-  ok(/Huddle AI wrote/.test(await sam.getByTestId("receipt").innerText()), "the receipt shows what Huddle AI wrote separately");
+  ok(/Cairn AI wrote/.test(await sam.getByTestId("receipt").innerText()), "the receipt shows what Cairn AI wrote separately");
   ok((await sam.getByTestId("receipt-person").filter({ hasText: "Ms. Lee" }).count()) === 0, "the teacher isn't listed on the receipt");
   await sam.getByTestId("receipt-note").fill("I wrote the conclusion and found two sources.");
   await sam.getByTestId("receipt-note-save").click();
@@ -1027,8 +1027,19 @@ try {
   // ---------- Landing page: the two paths and the teacher pilot form ----------
   const visitor = await (await browser.newContext({ viewport: { width: 1300, height: 900 } })).newPage();
   await visitor.goto(BASE);
-  await visitor.getByRole("heading", { level: 1 }).getByText("Group projects where everyone gets credit.").waitFor();
-  ok((await visitor.getByText("Your AI, your rules.").count()) === 0, "the landing page leads with group projects, not AI providers");
+  await visitor.getByRole("heading", { level: 1 }).getByText(/Show your/).waitFor();
+  ok((await visitor.getByText("Your AI, your rules.").count()) === 0, "the landing page leads with Cairn's promise, not AI providers");
+  ok((await visitor.locator("#research a[href^=\"https://\"]").count()) >= 5, "every research figure on the landing page links to its source");
+  await visitor.getByRole("radio", { name: "Dark" }).first().click();
+  ok(await visitor.evaluate(() => document.documentElement.classList.contains("dark")), "the landing page has a dark mode switch");
+  await visitor.getByRole("radio", { name: "Light" }).first().click();
+  // The class from earlier was erased, so make a fresh one to join from the landing page.
+  const heroClass = await park.evaluate(async () => (await (await fetch("/api/classes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Landing check" }) })).json()).code);
+  await visitor.getByTestId("hero-code").fill(heroClass);
+  await visitor.getByTestId("hero-code").press("Enter");
+  await visitor.waitForURL(/\/c\/[A-Z0-9]{6}$/);
+  ok(true, "a class code typed on the landing page goes straight to the class");
+  await visitor.goto(BASE);
   await visitor.getByTestId("path-teacher").click();
   await visitor.getByTestId("pilot-form").waitFor();
   await visitor.getByTestId("pilot-submit").click();
