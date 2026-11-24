@@ -1,6 +1,6 @@
 /**
  * Run a JavaScript snippet in a throwaway sandboxed iframe (scripts only, opaque origin: no
- * access to Huddle, cookies or storage) and collect console output. Killed after a timeout.
+ * access to Cairn, cookies or storage) and collect console output. Killed after a timeout.
  */
 export function runJs(code: string, timeoutMs = 5000): Promise<{ output: string; error?: string; ms: number }> {
   return new Promise((resolve) => {

@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-23T00:00:00Z",
+  "title": "Design System: Cairn",
+  "extensions": {
+    "colorMeta": {
+      "ink": { "role": "neutral", "displayName": "Ink", "canonical": "#0a100d", "tonalRamp": ["#0a100d", "#0d1511", "#18231d", "#24322a", "#34463b", "#4f5d55", "#66766d", "#93a59a"] },
+      "mint": { "role": "secondary", "displayName": "Highlighter Mint", "canonical": "#a9fdac", "tonalRamp": ["#16301a", "#1f4d25", "#2d7436", "#3f9e4b", "#6fd477", "#a9fdac", "#cdfdcf", "#f0fff0"] },
+      "green": { "role": "primary", "displayName": "Go Green", "canonical": "#44cf6c", "tonalRamp": ["#1a3321", "#1b6a32", "#2a9a4b", "#3bbf61", "#44cf6c", "#57d97c", "#c3eace", "#e6fbe8"] },
+      "periwinkle": { "role": "tertiary", "displayName": "Student Periwinkle", "canonical": "#8fa6cb", "tonalRamp": ["#1f242e", "#2a3d5b", "#3c5681", "#4e70a7", "#7490be", "#8fa6cb", "#cad3e2", "#f0f2f4"] },
+      "teal": { "role": "tertiary", "displayName": "Teacher Teal", "canonical": "#5eb1bf", "tonalRamp": ["#1d2d2f", "#26575f", "#367b87", "#46a0af", "#5eb1bf", "#99cdd6", "#c8e0e4", "#f0f4f5"] },
+      "green-ledge": { "role": "primary", "displayName": "Ledge Green" },
+      "green-hover": { "role": "primary", "displayName": "Green Hover (landing)" },
+      "green-hover-app": { "role": "primary", "displayName": "Green Hover (app, light)" },
+      "link-green": { "role": "primary", "displayName": "Link Green" },
+      "paper": { "role": "neutral", "displayName": "Paper" },
+      "mist": { "role": "neutral", "displayName": "Mist", "tonalRamp": ["#0d1511", "#18231d", "#34463b", "#66766d", "#93a59a", "#c7d3cc", "#eef4f0", "#f6faf7"] },
+      "sage-wash": { "role": "neutral", "displayName": "Sage Wash" },
+      "line": { "role": "neutral", "displayName": "Line" },
+      "line-strong": { "role": "neutral", "displayName": "Strong Line" },
+      "fg-muted": { "role": "neutral", "displayName": "Muted Ink" },
+      "fg-subtle": { "role": "neutral", "displayName": "Subtle Ink" },
+      "accent-soft": { "role": "neutral", "displayName": "Soft Green Wash" },
+      "night-ground": { "role": "neutral", "displayName": "Night Ground" },
+      "night-surface": { "role": "neutral", "displayName": "Night Surface" },
+      "night-surface-2": { "role": "neutral", "displayName": "Night Surface 2" },
+      "night-line": { "role": "neutral", "displayName": "Night Line" },
+      "night-fg": { "role": "neutral", "displayName": "Night Ink" },
+      "night-fg-muted": { "role": "neutral", "displayName": "Night Muted Ink" },
+      "night-ink-tile": { "role": "neutral", "displayName": "Night Ink Tile" },
+      "night-rock-edge": { "role": "neutral", "displayName": "Night Rock Edge" },
+      "night-link": { "role": "primary", "displayName": "Night Link Green" }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "The landing hero headline only." },
+      "headline": { "displayName": "Headline", "purpose": "Section headings; the closing band runs it up to 4.6rem." },
+      "title": { "displayName": "Title", "purpose": "Card and step headings, FAQ summaries, app empty-state titles." },
+      "body": { "displayName": "Body", "purpose": "Landing copy, 36 to 62ch." },
+      "body-app": { "displayName": "Body (app)", "purpose": "App controls and copy at 15px." },
+      "label": { "displayName": "Label", "purpose": "Uppercase Example badge, group labels inside product UI, app panel headings. Never a kicker above another heading." },
+      "hand": { "displayName": "Hand", "purpose": "Caveat Brush callouts beside hand-drawn arrows, short notes, signatures." }
+    },
+    "shadows": [
+      { "name": "ledge", "value": "0 4px 0 #2a9a4b", "purpose": "Solid ledge under primary buttons; collapses to 0 1px 0 on press. The code field uses 0 4px 0 var(--line)." },
+      { "name": "lift", "value": "0 18px 40px -22px rgba(10, 16, 13, 0.35)", "purpose": "Soft drop under floating demo cards, the teacher mock and the start box. Dark: rgba(0, 0, 0, 0.7)." },
+      { "name": "pill-glow", "value": "0 2px 8px rgb(0 0 0 / 0.15)", "purpose": "Live-pointer and caret name pills." }
+    ],
+    "motion": [
+      { "name": "dur-1", "value": "150ms", "purpose": "Color and border state changes." },
+      { "name": "dur-2", "value": "220ms", "purpose": "Fades and scrims." },
+      { "name": "dur-3", "value": "320ms", "purpose": "Entrances: messages, sheets, panels, list stagger." },
+      { "name": "ease-out", "value": "cubic-bezier(0.23, 1, 0.32, 1)", "purpose": "Default easing for entrances and press feedback." },
+      { "name": "ease-drawer", "value": "cubic-bezier(0.32, 0.72, 0, 1)", "purpose": "Side sheets and the file panel." },
+      { "name": "ease-in-out", "value": "cubic-bezier(0.77, 0, 0.175, 1)", "purpose": "On-screen movement between two states." },
+      { "name": "spring", "value": "cubic-bezier(0.34, 1.32, 0.64, 1)", "purpose": "Thought bubbles and toasts." },
+      { "name": "cairn-drop", "value": "760ms cubic-bezier(0.2, 0.9, 0.25, 1.18), staggered 260ms", "purpose": "The landing hero's one authored moment: stones drop 140px and settle with a slight physical overshoot." },
+      { "name": "press", "value": "transform 120-160ms ease-out, scale(0.97)", "purpose": "Every pressable answers on press." }
+    ],
+    "breakpoints": [
+      { "name": "phone", "value": "520px" },
+      { "name": "phone-wide", "value": "560px" },
+      { "name": "tablet", "value": "760px" },
+      { "name": "stack", "value": "900px" },
+      { "name": "nav", "value": "960px" },
+      { "name": "callouts", "value": "1100px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one action color, ink text, sitting on a 4px ledge that collapses on press.",
+      "html": "<button class=\"ds-btn-go\">Start a class</button>",
+      "css": ".ds-btn-go { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 52px; padding: 0 24px; border: 0; border-radius: 14px; background: #44cf6c; color: #0a100d; font: 700 1.02rem/1 'Figtree Variable', system-ui, sans-serif; box-shadow: 0 4px 0 #2a9a4b; cursor: pointer; transition: transform 120ms ease-out, background-color 160ms ease-out, box-shadow 160ms ease-out; } .ds-btn-go:hover { background: #57d97c; } .ds-btn-go:active { box-shadow: 0 1px 0 #2a9a4b; transform: translateY(3px) scale(0.99); } .ds-btn-go:focus-visible { outline: 2px solid #2a9a4b; outline-offset: 2px; }"
+    },
+    {
+      "name": "Quiet Button",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Secondary landing action: transparent with a 2px line border.",
+      "html": "<button class=\"ds-btn-quiet\">See how it works</button>",
+      "css": ".ds-btn-quiet { display: inline-flex; align-items: center; height: 52px; padding: 0 24px; border-radius: 14px; border: 2px solid #dfe7e2; background: transparent; color: #0a100d; font: 700 1.02rem/1 'Figtree Variable', system-ui, sans-serif; cursor: pointer; transition: transform 120ms ease-out, border-color 160ms ease-out; } .ds-btn-quiet:hover { border-color: #0a100d; } .ds-btn-quiet:active { transform: scale(0.97); } .ds-btn-quiet:focus-visible { outline: 2px solid #2a9a4b; outline-offset: 2px; }"
+    },
+    {
+      "name": "App Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "40px app field with a strong hairline; focus darkens to ink with a faint ring.",
+      "html": "<input class=\"ds-input\" placeholder=\"Class name\" />",
+      "css": ".ds-input { height: 40px; width: 260px; padding: 0 14px; border-radius: 12px; border: 1px solid #c7d3cc; background: #ffffff; color: #0a100d; font: 400 15px/1.4 'Figtree Variable', system-ui, sans-serif; transition: border-color 150ms, box-shadow 150ms; } .ds-input::placeholder { color: #5a6760; } .ds-input:focus { outline: none; border-color: #0a100d; box-shadow: 0 0 0 4px rgba(10, 16, 13, 0.1); }"
+    },
+    {
+      "name": "Code Field",
+      "kind": "input",
+      "refersTo": "code-field",
+      "description": "Join-by-code field on a ledge, with an ink Join button.",
+      "html": "<div class=\"ds-code\"><input placeholder=\"Class code\" /><button>Join</button></div>",
+      "css": ".ds-code { display: inline-flex; align-items: center; gap: 6px; height: 52px; padding: 0 4px 0 16px; border: 2px solid #dfe7e2; border-radius: 14px; background: #ffffff; box-shadow: 0 4px 0 #dfe7e2; } .ds-code:focus-within { border-color: #0a100d; } .ds-code input { width: 9.5ch; border: 0; outline: 0; background: transparent; color: #0a100d; font: 700 1.05rem/1 'Lexend Variable', system-ui, sans-serif; letter-spacing: 0.14em; text-transform: uppercase; } .ds-code input::placeholder { letter-spacing: 0.02em; text-transform: none; font-weight: 500; color: #5a6760; } .ds-code button { height: 40px; padding: 0 14px; border: 0; border-radius: 10px; background: #0a100d; color: #ffffff; font: 700 0.92rem/1 'Figtree Variable', system-ui, sans-serif; cursor: pointer; transition: transform 120ms ease-out; } .ds-code button:active { transform: scale(0.96); } .ds-code button:focus-visible { outline: 2px solid #2a9a4b; outline-offset: 2px; }"
+    },
+    {
+      "name": "Navigation",
+      "kind": "nav",
+      "refersTo": "nav",
+      "description": "Sticky blurred bar with the three-stone logo, Lexend wordmark and muted links.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-brand\" href=\"#\"><svg viewBox=\"0 0 40 40\" width=\"34\" height=\"34\" aria-hidden=\"true\"><ellipse cx=\"20\" cy=\"32.5\" rx=\"15\" ry=\"6\" fill=\"#0a100d\"/><ellipse cx=\"18.5\" cy=\"22.5\" rx=\"11\" ry=\"5.2\" fill=\"#5eb1bf\"/><ellipse cx=\"21.5\" cy=\"13.5\" rx=\"7.4\" ry=\"4.4\" fill=\"#44cf6c\"/><path d=\"M34 1.5c.4 3 1.3 4.4 5.5 5.5-4.2 1.1-5.1 2.5-5.5 5.5-.4-3-1.3-4.4-5.5-5.5 4.2-1.1 5.1-2.5 5.5-5.5z\" fill=\"#8fa6cb\"/></svg>Cairn</a><a href=\"#\">Research</a><a href=\"#\">Students</a><a href=\"#\">Teachers</a></nav>",
+      "css": ".ds-nav { display: flex; align-items: center; gap: 26px; height: 76px; padding: 0 16px; background: color-mix(in srgb, #ffffff 84%, transparent); backdrop-filter: blur(16px) saturate(160%); } .ds-nav a { color: #3b4640; font: 600 0.98rem/1 'Figtree Variable', system-ui, sans-serif; text-decoration: none; transition: color 150ms; } .ds-nav a:hover { color: #0a100d; } .ds-nav a:focus-visible { outline: 2px solid #2a9a4b; outline-offset: 2px; border-radius: 8px; } .ds-nav .ds-brand { display: flex; align-items: center; gap: 10px; color: #0a100d; font: 800 1.55rem/1 'Lexend Variable', system-ui, sans-serif; letter-spacing: -0.03em; margin-right: 12px; }"
+    },
+    {
+      "name": "Example Badge",
+      "kind": "chip",
+      "refersTo": "badge-example",
+      "description": "Marks every piece of demo data.",
+      "html": "<span class=\"ds-example\">Example</span>",
+      "css": ".ds-example { display: inline-block; font: 700 0.78rem/1.2 'Figtree Variable', system-ui, sans-serif; letter-spacing: 0.06em; text-transform: uppercase; color: #0a100d; background: rgba(10, 16, 13, 0.1); padding: 4px 9px; border-radius: 999px; }"
+    },
+    {
+      "name": "Status Chips",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "App status by role color: mint for graded, periwinkle for working.",
+      "html": "<span class=\"ds-chip ds-chip-graded\">Graded</span> <span class=\"ds-chip ds-chip-working\">Working</span> <span class=\"ds-chip ds-chip-not\">Not a spy app</span>",
+      "css": ".ds-chip { display: inline-flex; align-items: center; padding: 6px 12px; border-radius: 999px; font: 600 0.9rem/1 'Figtree Variable', system-ui, sans-serif; color: #0a100d; } .ds-chip-graded { background: #a9fdac; } .ds-chip-working { background: rgba(143, 166, 203, 0.35); } .ds-chip-not { background: #eef4f0; padding: 8px 14px; }"
+    },
+    {
+      "name": "Research Card",
+      "kind": "card",
+      "refersTo": "card-finding",
+      "description": "Finding on the ink band: mint numeral, Lexend title, cited source.",
+      "html": "<div class=\"ds-band\"><article class=\"ds-finding\"><div class=\"ds-big\">2x</div><h3>Teens using ChatGPT for schoolwork doubled in a year</h3><p class=\"ds-src\">Source: published survey</p></article></div>",
+      "css": ".ds-band { background: #0a100d; padding: 24px; } .ds-finding { background: #141f19; border-radius: 18px; padding: 28px; display: grid; gap: 16px; color: #cfdbd3; } .ds-finding h3 { margin: 0; color: #ffffff; font: 700 1.3rem/1.2 'Lexend Variable', system-ui, sans-serif; letter-spacing: -0.01em; } .ds-big { font: 800 3.2rem/1 'Lexend Variable', system-ui, sans-serif; letter-spacing: -0.04em; color: #a9fdac; } .ds-src { margin: 0; font-size: 0.85rem; color: #93a59a; }"
+    },
+    {
+      "name": "Student Stage Card",
+      "kind": "card",
+      "refersTo": "card-stage",
+      "description": "Big periwinkle stage for student content, with a hand-lettered note.",
+      "html": "<div class=\"ds-stage\"><span class=\"ds-hand\">Drag through the week</span><b>Ava's history project</b></div>",
+      "css": ".ds-stage { background: #8fa6cb; color: #0a100d; border-radius: 28px; padding: 28px; display: grid; gap: 12px; max-width: 360px; } .ds-stage b { font: 700 1.15rem/1.2 'Lexend Variable', system-ui, sans-serif; } .ds-hand { font: 400 1.15rem/1.1 'Caveat Brush', cursive; }"
+    },
+    {
+      "name": "Highlighter Mark",
+      "kind": "custom",
+      "refersTo": "highlighter",
+      "description": "Emphasis inside long text: a mint swipe across the lower half of the line.",
+      "html": "<p class=\"ds-letter\">Blocking it doesn't work. <mark class=\"ds-hl\">Students should be able to show what they did.</mark> That is the point.</p>",
+      "css": ".ds-letter { font: 400 1.15rem/1.6 'Figtree Variable', system-ui, sans-serif; color: #0a100d; max-width: 52ch; } .ds-hl { color: inherit; background: linear-gradient(transparent 52%, #a9fdac 52%, #a9fdac 92%, transparent 92%); padding: 0 2px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Stones on the Trail",
+    "overview": "A cairn is a stack of stones hikers leave to show the way and prove someone passed. Cairn's interface works the same way: bright, flat shapes stacked into friendly figures, each one a marker of real work a student did. The world is a white page with near-black ink, five fixed colors laid down as solid geometric tiles, and a cast of grainy rock people with faces, limbs and school props. It borrows the familiar education-site arrangement (split hero, proof band, how it works, audiences, story, close) and holds it to Duolingo and Khan Academy craft: chunky pressable buttons, heavy rounded display type, generous air, and color used in big confident fields rather than thin accents.\n\nDensity is relaxed on the landing page and moderate in the app, where the same tokens run quieter: green actions, sage-washed surfaces, periwinkle and teal as role markers, rock art saved for empty states and moments of success. Light and dark are both first-class. Dark mode keeps the palette and swaps the ground for a deep green-black, never a neutral gray.\n\nThe system refuses the dark, chat-window look of AI tools and anything that reads as surveillance: no monitoring dashboards, no warning reds as decoration, no cold neutral grays.",
+    "keyCharacteristics": [
+      "Five fixed brand colors with fixed roles; neutrals lean green so they belong to the ink.",
+      "Heavy geometric display face (Lexend, 800) over a friendly humanist body (Figtree).",
+      "Solid shape tiles (half-discs, quarter circles, D-shapes, rings) as the structural ornament.",
+      "Flat rock characters with a grain filter, faces, arms, legs and props.",
+      "Sparkles, squiggle underlines and hand-drawn arrows with Caveat Brush notes.",
+      "Pressable primary actions with a 4px ledge underneath, Duolingo style."
+    ],
+    "rules": [
+      { "name": "The Five Stones Rule", "body": "The five brand colors are fixed. New surfaces get color by role (green acts, mint marks good news, periwinkle is students, teal is teachers, ink grounds), never by inventing a sixth hue.", "section": "colors" },
+      { "name": "The Ink-On-Color Rule", "body": "Text on green, mint, periwinkle and teal is ink. White text appears only on ink, and on the darker member-avatar shades.", "section": "colors" },
+      { "name": "The Green-Leaning Neutral Rule", "body": "No neutral gray. Every gray in the system is tinted toward the ink's green.", "section": "colors" },
+      { "name": "The No Kicker Rule", "body": "No eyebrow or kicker label sits above a heading. The heading opens its section by itself; a squiggle underline may follow it.", "section": "typography" },
+      { "name": "The Highlighter Rule", "body": "Emphasis inside long text is a mint highlighter swipe across the lower half of the line (same size, same weight), never a large pull quote. In dark mode the swipe drops to mint at 32% opacity.", "section": "typography" },
+      { "name": "The Ledge Is For Pressing Rule", "body": "The 4px ledge belongs only to things you press (primary buttons, the code field). Cards, tiles and badges never get a hard offset shadow.", "section": "elevation" },
+      { "name": "The Flat Grainy People Rule", "body": "Characters are flat rock people with grain, faces and limbs, in brand colors only. No gradients, no glossy 3D, no photo people.", "section": "shapes" }
+    ],
+    "dos": [
+      "Do give every color a role: green acts, mint marks good news, periwinkle is students, teal is teachers.",
+      "Do put ink text on every brand color fill.",
+      "Do use Lexend 800 with tight tracking (-0.03em to -0.04em) for headlines and Figtree for everything you read.",
+      "Do mark emphasis in long text with the mint highlighter swipe.",
+      "Do label every piece of demo data with the \"Example\" badge.",
+      "Do use rock people in the flat, grainy style for empty states and illustration.",
+      "Do keep the ledge on primary pressables and collapse it on press.",
+      "Do ship light and dark together; dark keeps the palette on a green-black ground."
+    ],
+    "donts": [
+      "Don't add a sixth brand color or recolor the five.",
+      "Don't put an eyebrow or kicker label above a heading.",
+      "Don't use large pull quotes for emphasis.",
+      "Don't fabricate testimonials, quotes or results.",
+      "Don't put white text on green, mint, periwinkle or teal.",
+      "Don't use neutral grays; neutrals lean green.",
+      "Don't build the dark, chat-window look of AI tools or anything that reads as monitoring.",
+      "Don't put the theme switch in the landing nav; it lives in the footer.",
+      "Don't give cards or tiles a hard offset shadow; the ledge is for pressing."
+    ]
+  }
+}

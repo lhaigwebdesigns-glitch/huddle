@@ -68,7 +68,7 @@ function ModelAlerts({ token }: { token: string }) {
   return (
     <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-900/60 dark:bg-amber-950/20" data-testid="model-alerts">
       <h2 className="font-semibold text-amber-900 dark:text-amber-200">A provider retired a model</h2>
-      <p className="mt-0.5 text-xs text-amber-900/80 dark:text-amber-200/80">Huddle is skipping it and using the next provider. Update the model name in your settings when you can.</p>
+      <p className="mt-0.5 text-xs text-amber-900/80 dark:text-amber-200/80">Cairn is skipping it and using the next provider. Update the model name in your settings when you can.</p>
       <ul className="mt-2 space-y-1.5">
         {alerts.map((a) => (
           <li key={a.provider + a.model}>
@@ -129,10 +129,10 @@ function PcSwitch({ token, onChanged }: { token: string; onChanged: () => void }
       <div>
         <div className="font-medium">Use my PC for AI</div>
         <p className="mt-0.5 text-sm text-fg-muted">
-          Turn off to game: Huddle stops sending prompts to Ollama and empties your graphics card. Rooms keep working on Groq and Cloudflare.
+          Turn off to game: Cairn stops sending prompts to Ollama and empties your graphics card. Rooms keep working on Groq and Cloudflare.
         </p>
         <p className="mt-2 flex items-center gap-2 text-xs text-fg-subtle">
-          <span className={`inline-block h-2 w-2 rounded-full ${pc.online ? "bg-emerald-500" : "bg-zinc-400"}`} aria-hidden />
+          <span className={`inline-block h-2 w-2 rounded-full ${pc.online ? "bg-green" : "bg-zinc-400"}`} aria-hidden />
           {status}
         </p>
         {note && <p className="mt-1 text-xs text-fg-muted" role="status">{note}</p>}
@@ -162,7 +162,7 @@ interface KeyCheck {
 }
 
 const STATUS_STYLE: Record<KeyCheck["status"], [string, string]> = {
-  ok: ["bg-emerald-500", "OK"],
+  ok: ["bg-green", "OK"],
   warning: ["bg-amber-500", "Check"],
   problem: ["bg-red-500", "Problem"],
   "not set": ["bg-zinc-400", "Not set"],
@@ -232,7 +232,7 @@ export default function Admin() {
     setRows(((await res.json()) as { items: Row[] }).items);
   };
   useEffect(() => {
-    document.title = "Admin · Huddle";
+    document.title = "Admin · Cairn";
     fetch("/api/health").then((r) => r.json()).then(setHealth);
     fetch("/api/auth/me")
       .then((r) => r.json() as Promise<{ isAdmin?: boolean }>)
@@ -261,7 +261,7 @@ export default function Admin() {
       <div className="flex min-h-full items-center justify-center bg-sidebar p-4">
         <form className="rise w-full max-w-sm rounded-[24px] border border-line bg-bg p-7 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.18)]" onSubmit={(e) => (e.preventDefault(), load())}>
           <Logo className="h-9 w-9" />
-          <h1 className="mt-5 text-2xl font-semibold tracking-tight">Huddle admin</h1>
+          <h1 className="mt-5 text-2xl font-extrabold tracking-tight">Cairn admin</h1>
           <p className="mt-1.5 text-[15px] text-fg-muted">Sign in with your admin Google account on the home page, or enter the admin password.</p>
           <Input type="password" autoFocus aria-label="Admin password" placeholder="Admin password" value={token} onChange={(e) => setToken(e.target.value)} className="mt-5 h-11" />
           {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">{err}</p>}
@@ -278,7 +278,7 @@ export default function Admin() {
       <header className="glass sticky top-0 z-30 border-b border-line/60 bg-bg/80 backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
           <Link to="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
-            <Logo className="h-6 w-6" /> Huddle
+            <Logo className="h-7 w-7" /> <span className="font-display text-[17px] font-extrabold tracking-tight">Cairn</span>
           </Link>
           <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-fg-muted">Admin</span>
           <div className="ml-auto flex items-center gap-2">

@@ -1122,9 +1122,9 @@ export class Room extends Server<Env> {
     return { ok: await this.reopen(name || "Your teacher") };
   }
 
-  /** A line from Huddle itself in the chat ("Maya turned in the project"). */
+  /** A line from Cairn itself in the chat ("Maya turned in the project"). */
   private notice(text: string) {
-    const m: ChatMessage = { id: crypto.randomUUID(), role: "system", authorId: "huddle", authorName: "Huddle", content: text, createdAt: Date.now() };
+    const m: ChatMessage = { id: crypto.randomUUID(), role: "system", authorId: "huddle", authorName: "Cairn", content: text, createdAt: Date.now() };
     this.saveMessage(m);
     this.broadcastMsg({ t: "msg", message: m });
   }
@@ -1198,7 +1198,7 @@ export class Room extends Server<Env> {
       id: crypto.randomUUID(),
       role: "assistant",
       authorId: "ai",
-      authorName: s.assistant?.name || "Huddle AI",
+      authorName: s.assistant?.name || "Cairn AI",
       content: "",
       createdAt: Date.now(),
       meta: { streaming: true, steps: [], sources: [] },
@@ -1246,14 +1246,14 @@ export class Room extends Server<Env> {
         msg.content =
           budget === "room"
             ? "This room has used today's free AI allowance. 💤 The host can switch to **Local mode** (runs on their own device, unlimited) in Room settings, or try again tomorrow."
-            : "Huddle has used today's shared free AI allowance across all rooms. 💤 The host can switch to **Local mode** (runs on their own device, unlimited) in Room settings, or try again tomorrow.";
+            : "Cairn has used today's shared free AI allowance across all rooms. 💤 The host can switch to **Local mode** (runs on their own device, unlimited) in Room settings, or try again tomorrow.";
         msg.meta!.error = true;
         this.noticeAiUnavailable(
           budget === "room" ? "This room used today's free cloud AI allowance." : "Today's shared free cloud AI allowance is used up.",
         );
       } else if (!safety.safe) {
         msg.content = safetyReply(safety.category);
-        msg.meta!.model = "Huddle safety";
+        msg.meta!.model = "Cairn safety";
       } else if (s.engine === "local") {
         await this.localTurn(msg);
       } else {
@@ -1307,7 +1307,7 @@ export class Room extends Server<Env> {
           if (!res.toolCalls.length && !res.content.trim() && !emptyRetried) {
             // Occasionally a model returns nothing at all; ask once more rather than showing "(no response)".
             emptyRetried = true;
-            llm.push({ role: "user", content: "(Huddle: your last reply was empty. Please answer the request above, using a tool if needed.)" });
+            llm.push({ role: "user", content: "(Cairn: your last reply was empty. Please answer the request above, using a tool if needed.)" });
             continue;
           }
           const imageMissing =
@@ -1323,7 +1323,7 @@ export class Room extends Server<Env> {
             llm.push({ role: "assistant", content: res.content || null });
             llm.push({
               role: "user",
-              content: "(Huddle: no image exists yet, because generate_image was not called. Call generate_image now with a detailed visual prompt, then reply in one or two sentences. Don't describe an image you haven't made.)",
+              content: "(Cairn: no image exists yet, because generate_image was not called. Call generate_image now with a detailed visual prompt, then reply in one or two sentences. Don't describe an image you haven't made.)",
             });
             continue;
           }
@@ -1382,7 +1382,7 @@ export class Room extends Server<Env> {
           }
           if (i === maxSteps - 2) {
             // As a user-role note: gpt-oss/Qwen largely ignore system messages mid-conversation.
-            llm.push({ role: "user", content: "(Huddle: tool budget reached. Write your final answer now without calling tools.)" });
+            llm.push({ role: "user", content: "(Cairn: tool budget reached. Write your final answer now without calling tools.)" });
           }
         }
       }
@@ -1472,7 +1472,7 @@ export class Room extends Server<Env> {
   }
 
   private history(limit = HISTORY_FOR_AI): LlmMessage[] {
-    // Huddle's own notices ("Maya turned in the project") aren't part of the conversation.
+    // Cairn's own notices ("Maya turned in the project") aren't part of the conversation.
     const msgs = this.loadMessages(limit).filter((m) => !m.meta?.error && m.role !== "system");
     const lastAi = msgs.map((m) => m.role).lastIndexOf("assistant");
     return msgs.map((m, i) => {
@@ -1506,7 +1506,7 @@ export class Room extends Server<Env> {
     const files = this.files();
     const skills = SKILLS.filter((k) => !s.disabledSkills.includes(k.name));
     const lines = [
-      `You are Huddle AI, a helpful, capable assistant inside a multiplayer workspace room.`,
+      `You are Cairn AI, a helpful, capable assistant inside a multiplayer workspace room.`,
       `Several people can be in the chat at once. Each user message is prefixed with the speaker's name ("Name: message"). Address people by name when helpful, keep track of who asked what, and when several people talk at once, answer each of them.`,
       `Respond to the messages that arrived after your last reply. Earlier messages are context only: never redo or re-answer a request you already handled.`,
       `Format with Markdown (headings, lists, tables, fenced code with language tags, LaTeX with $...$). Be concise by default and expand when asked.`,
@@ -1516,7 +1516,7 @@ export class Room extends Server<Env> {
     const volatile = [
       ...(s.assistant
         ? [
-            `In this room you are "${s.assistant.name || "Huddle AI"}", set up by the host with these instructions (follow them unless they conflict with the rules above):\n${s.assistant.instructions}`,
+            `In this room you are "${s.assistant.name || "Cairn AI"}", set up by the host with these instructions (follow them unless they conflict with the rules above):\n${s.assistant.instructions}`,
           ]
         : []),
       `This room is called "${s.title}". Today's date: ${new Date().toISOString().slice(0, 10)}. People here now: ${people}.`,

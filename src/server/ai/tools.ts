@@ -533,7 +533,7 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
         return String(out?.description ?? out?.response ?? "").trim() || "(the vision model returned nothing)";
       } catch (err) {
         return /remote|login/i.test(String(err))
-          ? "Image understanding works once Huddle is deployed to Cloudflare (it isn't available in local dev). Tell the users."
+          ? "Image understanding works once Cairn is deployed to Cloudflare (it isn't available in local dev). Tell the users."
           : `Error looking at the image: ${String(err).slice(0, 150)}`;
       }
     }
@@ -556,7 +556,7 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
         return `Image created (image_id ${id}). It is already displayed under your reply, so do NOT write a link or markdown image for it; just say a sentence about it. Only if you put it on a slide, use the URL /api/rooms/${ctx.roomCode}/blobs/${id}`;
       } catch (err) {
         return /remote|login/i.test(String(err))
-          ? "Image generation works once Huddle is deployed to Cloudflare (it isn't available in local dev). Tell the users."
+          ? "Image generation works once Cairn is deployed to Cloudflare (it isn't available in local dev). Tell the users."
           : `Error generating the image: ${String(err).slice(0, 150)}`;
       }
     }
@@ -588,7 +588,7 @@ async function dispatch(name: string, args: any, ctx: ToolContext): Promise<stri
         file = ctx.createFile("artifact", String(args.title ?? "Artifact").slice(0, 120));
       }
       ctx.step({ kind: "doc", label: `${args.file_id ? "Updating" : "Building"} “${file.title}”` });
-      const n = await (await fileStub(ctx, file)).addArtifactVersion(html, String(args.note ?? (args.file_id ? "Update" : "First version")), "Huddle AI");
+      const n = await (await fileStub(ctx, file)).addArtifactVersion(html, String(args.note ?? (args.file_id ? "Update" : "First version")), "Cairn AI");
       ctx.openFile(file.id);
       return `Artifact "${file.title}" (file_id ${file.id}) is live beside the chat for everyone (version ${n}).`;
     }
@@ -678,7 +678,7 @@ async function duckDuckGo(query: string): Promise<SearchResult[]> {
     method: "POST",
     headers: {
       "content-type": "application/x-www-form-urlencoded",
-      "user-agent": "Mozilla/5.0 (compatible; HuddleBot/0.1)",
+      "user-agent": "Mozilla/5.0 (compatible; CairnBot/0.1)",
     },
     body: new URLSearchParams({ q: query }).toString(),
   });
@@ -715,7 +715,7 @@ export async function fetchReadable(url: string): Promise<string> {
     if (/^Error: HTTP \d{3}$/.test(String(e))) throw e;
     console.warn("jina failed", e);
   }
-  const res = await fetch(url, { headers: { "user-agent": "Mozilla/5.0 (compatible; HuddleBot/0.1)" } });
+  const res = await fetch(url, { headers: { "user-agent": "Mozilla/5.0 (compatible; CairnBot/0.1)" } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   const html = await res.text();
   const body = html

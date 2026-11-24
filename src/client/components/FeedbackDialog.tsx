@@ -9,7 +9,7 @@ export function FeedbackDialog({ room, uid, name, onClose }: { room: string; uid
         {done ? (
           <>
             <h2 className="text-lg font-semibold">Thank you! 💜</h2>
-            <p className="mt-2 text-sm text-zinc-500">Your feedback goes straight to the team building Huddle.</p>
+            <p className="mt-2 text-sm text-zinc-500">Your feedback goes straight to the team building Cairn.</p>
             <button onClick={onClose} className="mt-4 rounded-lg bg-primary px-4 py-2 text-primary-fg">Close</button>
           </>
         ) : (

@@ -577,7 +577,7 @@ classes.post("/join/:code", async (c) => {
   const uid = String(body.uid ?? "").slice(0, 64);
   const name = String(body.name ?? "").trim().slice(0, 32);
   if (!uid || !name) return c.json({ error: "Type your name to join." }, 400);
-  if (body.age13 !== true) return c.json({ error: "Huddle is for ages 13 and up." }, 400);
+  if (body.age13 !== true) return c.json({ error: "Cairn is for ages 13 and up." }, 400);
   const count = await c.env.DB!.prepare(`SELECT COUNT(*) AS n FROM class_students WHERE class_id = ?`).bind(cls.id).first<{ n: number }>();
   if ((count?.n ?? 0) >= CLASS_LIMITS.students) return c.json({ error: "This class is full." }, 400);
   await c.env.DB!.prepare(`INSERT INTO class_students (class_id, uid, name, joined_at) VALUES (?, ?, ?, ?) ON CONFLICT (class_id, uid) DO UPDATE SET name = excluded.name`)

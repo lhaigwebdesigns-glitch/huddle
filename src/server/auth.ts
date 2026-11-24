@@ -42,7 +42,7 @@ const PROVIDERS: Record<string, Provider> = {
     clientId: (e) => e.GITHUB_CLIENT_ID,
     clientSecret: (e) => e.GITHUB_CLIENT_SECRET,
     async profile(token) {
-      const h = { authorization: `Bearer ${token}`, "user-agent": "Huddle", accept: "application/vnd.github+json" };
+      const h = { authorization: `Bearer ${token}`, "user-agent": "Cairn", accept: "application/vnd.github+json" };
       const u: any = await (await fetch("https://api.github.com/user", { headers: h })).json();
       let email: string | null = u.email ?? null;
       if (!email) {

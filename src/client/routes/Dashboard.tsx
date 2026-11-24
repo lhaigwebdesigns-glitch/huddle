@@ -67,7 +67,7 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
   useEffect(() => {
     if (account.user === null) nav("/", { replace: true });
     if (account.user) {
-      document.title = view === "profile" ? "Profile · Huddle" : "Your rooms · Huddle";
+      document.title = view === "profile" ? "Profile · Cairn" : "Your rooms · Cairn";
       load();
     }
   }, [account.user, view]);
@@ -145,7 +145,7 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
       <aside className="hidden w-64 shrink-0 flex-col border-r border-line bg-sidebar md:flex">
         <div className="flex h-14 items-center gap-2 px-4">
           <Link to="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
-            <Logo className="h-6 w-6" /> Huddle
+            <Logo className="h-7 w-7" /> <span className="font-display text-[17px] font-extrabold tracking-tight">Cairn</span>
           </Link>
         </div>
         <div className="px-3">
@@ -212,7 +212,7 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
       <main className="flex min-w-0 flex-1 flex-col">
         {/* Mobile top bar */}
         <header className="flex h-14 items-center justify-between border-b border-line px-4 md:hidden">
-          <Link to="/" className="flex items-center gap-2 font-semibold"><Logo className="h-6 w-6" /> Huddle</Link>
+          <Link to="/" className="flex items-center gap-2 font-semibold"><Logo className="h-7 w-7" /> <span className="font-display text-[17px] font-extrabold tracking-tight">Cairn</span></Link>
           <div className="flex items-center gap-2"><ThemeToggle /><AccountMenu user={account.user} providers={account.providers} /></div>
         </header>
 
@@ -223,7 +223,7 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
           </div>
         ) : (
         <div className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-4 pb-16 pt-8 sm:px-8">
-          <h1 className="rise text-3xl font-semibold tracking-tight">Welcome back, {account.user.name.split(" ")[0]}</h1>
+          <h1 className="rise text-3xl font-extrabold tracking-tight">Welcome back, {account.user.name.split(" ")[0]}</h1>
           <p className="rise rise-1 mt-1 text-fg-muted">Your rooms, wherever you left them.</p>
 
           {/* Start a room */}
@@ -374,7 +374,7 @@ function RoomRow({
       <button onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 text-left" aria-label={`Open ${r.title}`}>
         <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-sm font-semibold uppercase">
           {r.title.trim()[0] ?? "R"}
-          {r.online > 0 && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-surface bg-emerald-500" aria-hidden />}
+          {r.online > 0 && <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-surface bg-green" aria-hidden />}
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">

@@ -1,4 +1,5 @@
-const COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#3b82f6", "#6366f1", "#a855f7", "#ec4899"];
+// Member colors, from the Cairn palette: deeper green, teal and periwinkle shades so white initials stay readable.
+const COLORS = ["#2a9a4b", "#2f7f8c", "#5a72a0", "#3a8f6a", "#46647f", "#1f7a5a", "#4d6fae", "#36796b"];
 
 export interface Identity {
   uid: string;
@@ -76,7 +77,7 @@ export function forgetRoom(code: string) {
   safeSet("huddle.recent", JSON.stringify(recentRooms().filter((r) => r.code !== code)));
 }
 
-/** Huddle is for ages 13 and up: people confirm it once on this device. */
+/** Cairn is for ages 13 and up: people confirm it once on this device. */
 export function ageConfirmed() {
   return safeGet("huddle.age13") === "1";
 }

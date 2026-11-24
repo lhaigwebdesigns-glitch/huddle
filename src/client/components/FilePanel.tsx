@@ -83,7 +83,7 @@ function History({ room, file, onClose }: { room: string; file: RoomFile; onClos
 function Body({ room, file, me, locked }: { room: string; file: RoomFile; me: Identity; locked: boolean }) {
   const { conn, synced } = useYDoc(room, file.id, me);
   const Editor = EDITORS[file.kind];
-  if (!Editor) return <div className="p-6 text-sm text-fg-subtle">This file type isn't supported in this version of Huddle.</div>;
+  if (!Editor) return <div className="p-6 text-sm text-fg-subtle">This file type isn't supported in this version of Cairn.</div>;
   if (!conn) return <div className="p-6 text-sm text-fg-subtle">Connecting to {FILE_INFO[file.kind].label.toLowerCase()}…</div>;
   return (
     <Suspense fallback={<div className="p-6 text-sm text-fg-subtle">Loading editor…</div>}>

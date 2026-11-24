@@ -256,7 +256,7 @@ export function DocEditor({
     const html = schoolPaper(file.title, names, editor.getHTML(), kind === "pdf");
     if (kind === "word") return download(`${name}.doc`, "application/msword", html);
     const w = window.open("", "_blank", "width=850,height=1000");
-    if (!w) return alert("Allow pop-ups for Huddle to save a PDF.");
+    if (!w) return alert("Allow pop-ups for Cairn to save a PDF.");
     w.document.write(html);
     w.document.close();
   };
@@ -264,7 +264,7 @@ export function DocEditor({
     <>
       <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-1.5 text-xs text-fg-subtle">
         <span className="flex items-center gap-1.5">
-          <span className={`h-1.5 w-1.5 rounded-full ${synced ? "bg-emerald-500" : "bg-fg-subtle"}`} aria-hidden />
+          <span className={`h-1.5 w-1.5 rounded-full ${synced ? "bg-green" : "bg-fg-subtle"}`} aria-hidden />
           {uploadNote || (synced ? (readOnly ? "Read-only" : "Live, edits sync for everyone") : "Connecting…")}
         </span>
         <span className="flex gap-2">

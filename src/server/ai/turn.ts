@@ -18,8 +18,8 @@ export function withFreshNote(hist: LlmMessage[]): LlmMessage[] {
   const names = speakers.join(" and ");
   const note =
     speakers.length > 1
-      ? `[Huddle note: ${names} have each sent a message since your last reply. Answer every one of them, by name.${lastAi >= 0 ? " Don't repeat earlier answers." : ""}]`
-      : `[Huddle note: reply only to the message(s) from ${names} after your last reply; earlier messages were already answered.]`;
+      ? `[Cairn note: ${names} have each sent a message since your last reply. Answer every one of them, by name.${lastAi >= 0 ? " Don't repeat earlier answers." : ""}]`
+      : `[Cairn note: reply only to the message(s) from ${names} after your last reply; earlier messages were already answered.]`;
   const lastUser = hist.map((m) => m.role).lastIndexOf("user");
   return hist.map((m, i) => (i === lastUser ? { ...m, content: `${m.content}\n\n${note}` } : m));
 }

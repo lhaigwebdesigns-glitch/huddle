@@ -32,7 +32,7 @@ export function PartyLists({
           <li key={p.uid} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-accent-soft/60">
             <span className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold text-white" style={{ background: p.color }}>
               {p.name[0]?.toUpperCase()}
-              {p.online && <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-bg bg-emerald-500" />}
+              {p.online && <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-bg bg-green" />}
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium">{p.name}{p.isHost && <span className="ml-1.5 text-xs font-normal text-fg-subtle">(host)</span>}</span>

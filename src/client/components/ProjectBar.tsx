@@ -64,7 +64,7 @@ export function ProjectBar({
         )}
         {status && !project.turnedInAt && (
           <span
-            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${status.open ? "bg-emerald-100 text-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-200" : "bg-surface-2 text-fg-muted"}`}
+            className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${status.open ? "bg-mint text-ink dark:bg-mint/15 dark:text-mint" : "bg-surface-2 text-fg-muted"}`}
             data-testid="access-chip"
           >
             <Clock className="h-3 w-3" aria-hidden />

@@ -2,7 +2,7 @@ import type { Env } from "../env";
 import { ensureTables } from "../db";
 
 /**
- * The "Use my PC for AI" switch on /admin. Off = Huddle never calls Ollama (so the GPU is free
+ * The "Use my PC for AI" switch on /admin. Off = Cairn never calls Ollama (so the GPU is free
  * for games) and the router goes straight to the hosted free models. Stored in D1 so every
  * room sees it; each isolate re-reads it at most every few seconds.
  */
