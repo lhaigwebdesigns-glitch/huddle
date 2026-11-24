@@ -8,7 +8,7 @@ export function StaticElement({ e, fg }: { e: ElementData; fg: string }) {
     return e.src ? <img src={e.src} alt="" referrerPolicy="no-referrer" style={{ ...box, objectFit: "cover" }} /> : <div style={{ ...box, border: "2px dashed " + fg + "55" }} />;
   if (e.type === "rect" || e.type === "ellipse") return <div style={{ ...box, background: e.fill, borderRadius: e.type === "ellipse" ? "50%" : 8 }} />;
   return (
-    <div style={{ ...box, fontSize: e.size ?? 28, lineHeight: 1.3, color: fg, whiteSpace: "pre-wrap", overflow: "hidden" }}>
+    <div style={{ ...box, fontSize: e.size ?? 28, lineHeight: 1.3, color: e.color ?? fg, fontWeight: e.bold ? 700 : undefined, whiteSpace: "pre-wrap", overflow: "hidden" }}>
       {e.text}
     </div>
   );

@@ -18,6 +18,8 @@ import {
   toCsv,
   type Assignment,
   type AssignmentMode,
+  type WorksheetInfo,
+  type WorksheetRequest,
   type ClassInfo,
   type ClassStudent,
   type ClassView,
@@ -65,6 +67,8 @@ function ensureClassTables(db: D1Database) {
     .then(() =>
       Promise.all([`ALTER TABLE classes ADD COLUMN access TEXT`, `ALTER TABLE class_students ADD COLUMN email TEXT`].map((q) => db.prepare(q).run().catch(() => {}))),
     )
+    // Added in Build 14: the worksheet room (starter files and answer key) for an assignment.
+    .then(() => db.prepare(`ALTER TABLE assignments ADD COLUMN worksheet TEXT`).run().catch(() => {}))
     .then(() => undefined)
     .catch((e) => {
       ready = null;
@@ -95,6 +99,7 @@ interface AssignmentRow {
   mode: string | null;
   group_size: number | null;
   teacher_uid: string | null;
+  worksheet?: string | null;
 }
 const toInfo = (r: ClassRow): ClassInfo => ({ id: r.id, code: r.code, name: r.name, createdAt: r.created_at });
 
@@ -131,6 +136,7 @@ const toAssignment = (a: AssignmentRow, groups: GroupInfo[]): Assignment => ({
   mode: a.mode === "solo" ? "solo" : "groups",
   groupSize: a.group_size ?? 3,
   groups,
+  ...(a.worksheet ? { worksheet: { room: a.worksheet } } : {}),
 });
 
 async function loadAssignments(c: C, classId: string, withStatus: boolean): Promise<Assignment[]> {
@@ -138,6 +144,11 @@ async function loadAssignments(c: C, classId: string, withStatus: boolean): Prom
   return Promise.all(
     results.map(async (a) => {
       const groups = await loadGroups(c.env.DB!, a.id);
+      const out = toAssignment(a, groups);
+      if (withStatus && out.worksheet) {
+        const info = await (await getServerByName(c.env.Room, out.worksheet.room)).worksheetInfo().catch(() => null);
+        if (info) out.worksheet = { ...out.worksheet, ...(info as Omit<WorksheetInfo, "room">) };
+      }
       if (withStatus)
         await Promise.all(
           groups.map(async (g) => {
@@ -148,20 +159,45 @@ async function loadAssignments(c: C, classId: string, withStatus: boolean): Prom
             g.grade = await loadGrade(c.env.DB!, a.id, g.roomCode);
           }),
         );
-      return toAssignment(a, groups);
+      return out;
     }),
   );
 }
 
 /** Makes one project room for an assignment, hosted by the teacher and linked to the class. */
-async function createRoom(c: C, hostUid: string, title: string, project: ProjectSettings, template: string | undefined, link: { classId: string; assignmentId: string; group: string }) {
+async function createRoom(
+  c: C,
+  hostUid: string,
+  title: string,
+  project: ProjectSettings,
+  template: string | undefined,
+  link: { classId: string; assignmentId: string; group: string },
+  worksheet?: string | null,
+) {
   for (let tries = 0; tries < 5; tries++) {
     const code = makeCode();
     const room = await getServerByName(c.env.Room, code);
     const res = await room.init(hostUid, title.slice(0, 80), project, template);
     if (!res.ok) continue;
     await room.setClassLink(link);
+    // The worksheet's starter files, as their own copy (credited to nobody: it's not their work).
+    if (worksheet) await room.copyStarter(worksheet).catch(() => null);
     return code;
+  }
+  return null;
+}
+
+/** Makes an assignment's worksheet room: the teacher's alone, holding the starter and the answer key. */
+async function makeWorksheet(c: C, hostUid: string, link: { classId: string; assignmentId: string }, title: string, req: WorksheetRequest) {
+  const starter = req.starter === "doc" || req.starter === "slides" ? req.starter : null;
+  for (let tries = 0; tries < 5; tries++) {
+    const code = makeCode();
+    const room = await getServerByName(c.env.Room, code);
+    const res = await room.init(hostUid, `Worksheet · ${title}`.slice(0, 80));
+    if (!res.ok) continue;
+    const made = await room.setupWorksheet(link, starter, !!req.key, title);
+    await c.env.DB!.prepare(`UPDATE assignments SET worksheet = ? WHERE id = ?`).bind(code, link.assignmentId).run();
+    return { room: code, ...(made?.starterId ? { starterId: made.starterId } : {}), ...(made?.keyId ? { keyId: made.keyId } : {}) };
   }
   return null;
 }
@@ -359,7 +395,7 @@ classes.post("/:id/assignments", async (c) => {
   const t = await teacherClass(c);
   if (t instanceof Response) return t;
   const body = await c.req
-    .json<{ title?: string; project?: Record<string, unknown>; template?: string; mode?: string; groupSize?: number; groups?: string[][] }>()
+    .json<{ title?: string; project?: Record<string, unknown>; template?: string; mode?: string; groupSize?: number; groups?: string[][]; worksheet?: WorksheetRequest }>()
     .catch(() => ({}) as Record<string, never>);
   const title = String(body.title ?? "").trim().slice(0, 80);
   if (!title) return c.json({ error: "Give the assignment a title." }, 400);
@@ -405,7 +441,28 @@ classes.post("/:id/assignments", async (c) => {
       c.env.DB!.prepare(`INSERT INTO class_groups (assignment_id, room_code, name, members) VALUES (?, ?, ?, ?)`).bind(id, g.roomCode, g.name, JSON.stringify(g.members)),
     ),
   ]);
-  return c.json({ id, mode, groups: planned });
+  const wants = body.worksheet && (body.worksheet.starter || body.worksheet.key);
+  const worksheet = wants ? await makeWorksheet(c, t.user.uid, { classId: t.cls.id, assignmentId: id }, title, body.worksheet!) : null;
+  return c.json({ id, mode, groups: planned, ...(worksheet ? { worksheet } : {}) });
+});
+
+/**
+ * Add a worksheet to an assignment (a starter file and/or an answer key), or add an answer key
+ * to the one it has. Students who already opened the assignment keep the copy they have.
+ */
+classes.post("/:id/assignments/:aid/worksheet", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  const a = await c.env.DB!.prepare(`SELECT * FROM assignments WHERE id = ? AND class_id = ?`).bind(c.req.param("aid"), t.cls.id).first<AssignmentRow>();
+  if (!a) return c.json({ error: "Assignment not found." }, 404);
+  const body = await c.req.json<WorksheetRequest>().catch(() => ({}) as WorksheetRequest);
+  if (a.worksheet) {
+    const room = await getServerByName(c.env.Room, a.worksheet);
+    const keyId = body.key ? await room.addAnswerKey() : undefined;
+    return c.json({ room: a.worksheet, ...(keyId ? { keyId } : {}) });
+  }
+  const made = await makeWorksheet(c, t.user.uid, { classId: t.cls.id, assignmentId: a.id }, a.title, { starter: body.starter ?? "doc", key: !!body.key });
+  return made ? c.json(made) : c.json({ error: "Couldn't make the worksheet. Try again." }, 500);
 });
 
 /** Put a student in a group (or take them out with room: null). Group assignments only. */
@@ -518,6 +575,7 @@ classes.get("/:id/assignments/:aid/groups/:room", async (c) => {
     files: work.turnedIn ? work.files : [],
     receipt: (work.receipt as Receipt | null) ?? null,
     order: g.assignment.groups.filter((x) => !isPending(x.roomCode)).map((x) => x.roomCode),
+    answerKey: g.assignment.worksheet ? ((await (await getServerByName(c.env.Room, g.assignment.worksheet.room)).answerKey().catch(() => null)) as GradingView["answerKey"]) : null,
   };
   return c.json(view);
 });
@@ -780,7 +838,7 @@ classes.post("/join/:code/a/:aid/open", async (c) => {
     const mine = await db.prepare(`SELECT room_code FROM class_groups WHERE assignment_id = ? AND members LIKE ?`).bind(a.id, memberLike).first<{ room_code: string }>();
     if (mine) return give(mine.room_code);
     if (!host) return c.json({ error: "This assignment can't make rooms. Ask your teacher to create it again." }, 500);
-    const code = await createRoom(c, host, `${a.title} · ${student.name}`, project, template, { classId: cls.id, assignmentId: a.id, group: student.name });
+    const code = await createRoom(c, host, `${a.title} · ${student.name}`, project, template, { classId: cls.id, assignmentId: a.id, group: student.name }, a.worksheet);
     if (!code) return c.json({ error: "Couldn't open your room. Try again." }, 500);
     // One room per student, even if they click twice at once: only the first insert wins.
     const ins = await db
@@ -817,7 +875,7 @@ classes.post("/join/:code/a/:aid/open", async (c) => {
   }
   if (!isPending(group.roomCode)) return give(group.roomCode);
   if (!host) return c.json({ error: "This assignment can't make rooms. Ask your teacher to create it again." }, 500);
-  const code = await createRoom(c, host, `${a.title} · ${group.name}`, project, template, { classId: cls.id, assignmentId: a.id, group: group.name });
+  const code = await createRoom(c, host, `${a.title} · ${group.name}`, project, template, { classId: cls.id, assignmentId: a.id, group: group.name }, a.worksheet);
   if (!code) return c.json({ error: "Couldn't open your group's room. Try again." }, 500);
   // The first member to open it makes the room; anyone racing them gets that same room.
   const swap = await db.prepare(`UPDATE class_groups SET room_code = ? WHERE assignment_id = ? AND room_code = ?`).bind(code, a.id, group.roomCode).run();

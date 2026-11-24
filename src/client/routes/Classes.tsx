@@ -1,7 +1,9 @@
-import { confirmDialog, promptDialog } from "../components/Dialogs";
+import { alertDialog, confirmDialog, promptDialog } from "../components/Dialogs";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, CalendarClock, Check, CircleCheck, Clock, Copy, Download, Flag, GraduationCap, Plus, Users, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, Check, CircleCheck, Clock, Copy, Download, FileText, Flag, GraduationCap, KeyRound, Plus, Upload, Users, X } from "lucide-react";
+import { OFFICE_ACCEPT, officeKind } from "../lib/officeFiles";
+import { getIdentity } from "../lib/identity";
 import type { Report } from "../../shared/protocol";
 import { PROVIDER_LABEL, useAccount, signInUrl } from "../lib/account";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
@@ -304,6 +306,8 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
         )}
       </div>
 
+      <WorksheetRow a={a} classId={view.class.id} solo={solo} reload={reload} />
+
       {solo ? (
         <ul className="mt-3 divide-y divide-line rounded-xl border border-line" data-testid="student-list">
           {view.students.map((s) => {
@@ -385,6 +389,67 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
   );
 }
 
+/**
+ * The assignment's worksheet: the files every student (or group) starts with, and the answer
+ * key only the teacher sees. Editing happens in the worksheet's own room, with Cairn's editors.
+ */
+function WorksheetRow({ a, classId, solo, reload }: { a: Assignment; classId: string; solo: boolean; reload: () => void }) {
+  const nav = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const ws = a.worksheet;
+  const make = async (body: object, open: boolean) => {
+    setBusy(true);
+    const d = await api<{ room?: string }>(`/api/classes/${classId}/assignments/${a.id}/worksheet`, { method: "POST", body: JSON.stringify(body) });
+    setBusy(false);
+    if (d.error) return void alertDialog({ title: "Couldn't add that", message: d.error });
+    if (open && d.room) return nav(`/r/${d.room}`);
+    reload();
+  };
+  const chip = "press inline-flex items-center gap-1 rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2 disabled:opacity-40";
+  if (!ws)
+    return (
+      <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-line-strong px-3 py-2 text-sm" data-testid="worksheet-none">
+        <FileText className="h-4 w-4 shrink-0 text-fg-subtle" aria-hidden />
+        <span className="min-w-[12rem] flex-1 text-fg-muted">No worksheet. Add one and every {solo ? "student" : "group"} starts with their own copy.</span>
+        <button disabled={busy} onClick={() => make({ starter: "doc" }, true)} className={chip} data-testid="add-worksheet">
+          <Plus className="h-3.5 w-3.5" /> Add a worksheet
+        </button>
+      </div>
+    );
+  const files = ws.files ?? [];
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-bg px-3 py-2 text-sm" data-testid="worksheet">
+      <FileText className="h-4 w-4 shrink-0 text-fg-muted" aria-hidden />
+      <span className="min-w-[12rem] flex-1">
+        <span className="font-medium">Worksheet:</span> <span data-testid="worksheet-files">{files.length ? files.map((x) => x.title).join(", ") : "no files yet"}</span>
+        <span className="block text-xs text-fg-subtle">
+          Each {solo ? "student" : "group"} gets a copy when they first open the assignment. Changes you make later reach only the ones who haven't opened it yet.
+        </span>
+      </span>
+      {ws.hasKey ? (
+        <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-fg-muted" data-testid="has-key">
+          <KeyRound className="h-3 w-3" aria-hidden /> Answer key, only you
+        </span>
+      ) : (
+        <button disabled={busy} onClick={() => make({ key: true }, false)} className={chip} data-testid="add-key">
+          <KeyRound className="h-3.5 w-3.5" /> Add an answer key
+        </button>
+      )}
+      <Link to={`/r/${ws.room}`} className={chip} data-testid="edit-worksheet">
+        Edit worksheet
+      </Link>
+    </div>
+  );
+}
+
+type StarterChoice = "none" | "doc" | "slides" | "upload";
+const STARTER_CHOICES: { id: StarterChoice; label: string }[] = [
+  { id: "none", label: "None" },
+  { id: "doc", label: "Blank doc" },
+  { id: "slides", label: "Blank slides" },
+  { id: "upload", label: "Upload Word or PowerPoint" },
+];
+
 const DEFAULT_REFLECTION = "What was hardest about this assignment?";
 
 const WIZARD_STEPS = ["What is it?", "How do students work?", "Share it"] as const;
@@ -406,6 +471,11 @@ function NewAssignmentDialog({ classId, classCode, students, onDone, onClose }: 
   const [err, setErr] = useState("");
   const [made, setMade] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [starter, setStarter] = useState<StarterChoice>("none");
+  const [upload, setUpload] = useState<File | null>(null);
+  const [withKey, setWithKey] = useState(false);
+  const [worksheetRoom, setWorksheetRoom] = useState<string | null>(null);
+  const [importNote, setImportNote] = useState("");
   const template = PROJECT_TEMPLATES.find((t) => t.id === templateId);
   const groups = Math.max(1, Math.round(students / Math.max(1, size)));
   const pick = (id: string) => {
@@ -422,11 +492,13 @@ function NewAssignmentDialog({ classId, classCode, students, onDone, onClose }: 
     setErr("");
     if (step === 0) {
       if (!title.trim()) return setErr("Give the assignment a title.");
+      if (starter === "upload" && !upload) return setErr("Pick a Word or PowerPoint file, or choose another worksheet option.");
       return setStep(1);
     }
     if (step !== 1) return;
     setBusy(true);
-    const d = await api<{ id: string }>(`/api/classes/${classId}/assignments`, {
+    const kind = starter === "upload" ? (upload ? officeKind(upload) : null) : starter === "none" ? null : starter;
+    const d = await api<{ id: string; worksheet?: { room: string; starterId?: string } }>(`/api/classes/${classId}/assignments`, {
       method: "POST",
       body: JSON.stringify({
         title: title.trim(),
@@ -434,11 +506,27 @@ function NewAssignmentDialog({ classId, classCode, students, onDone, onClose }: 
         mode,
         groupSize: size,
         ...(templateId ? { template: templateId } : {}),
+        ...(kind || withKey ? { worksheet: { starter: kind, key: withKey } } : {}),
       }),
     });
-    setBusy(false);
-    if (d.error || !d.id) return setErr(d.error ?? "Couldn't make the assignment.");
+    if (d.error || !d.id) {
+      setBusy(false);
+      return setErr(d.error ?? "Couldn't make the assignment.");
+    }
     setMade(d.id);
+    setWorksheetRoom(d.worksheet?.room ?? null);
+    // Bring the teacher's own file in as the worksheet (it all happens in this browser).
+    if (starter === "upload" && upload && d.worksheet?.starterId) {
+      setImportNote("Bringing in your file…");
+      try {
+        const { importOffice } = await import("../lib/officeImport");
+        const r = await importOffice(d.worksheet.room, d.worksheet.starterId, upload, getIdentity());
+        setImportNote(r.skipped.length ? `Your file is in. Some things didn't come through: ${r.skipped.join(", ")}.` : "Your file is in.");
+      } catch (e) {
+        setImportNote(`The assignment is made, but your file didn't come in (${(e as Error).message}). Open the worksheet to try again or start it by hand.`);
+      }
+    }
+    setBusy(false);
     setStep(2);
   };
   const choice = (on: boolean) => `press rounded-xl border px-3 py-2 text-left text-sm ${on ? "border-fg bg-surface-2" : "border-line-strong hover:border-fg/40"}`;
@@ -500,6 +588,57 @@ function NewAssignmentDialog({ classId, classCode, students, onDone, onClose }: 
                   Each student or group starts with {template.files.map((f) => `${f.title} (${FILE_INFO[f.kind].label.toLowerCase()})`).join(" and ")}, plus {template.tasks.length} starter tasks.
                 </p>
               )}
+            </fieldset>
+            <fieldset data-testid="worksheet-choice">
+              <legend className="text-sm font-medium">
+                Worksheet <span className="font-normal text-fg-subtle">(optional)</span>
+              </legend>
+              <p className="mt-0.5 text-xs text-fg-subtle">A file every student starts with, like a handout to fill in. Each one gets their own copy.</p>
+              <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Worksheet">
+                {STARTER_CHOICES.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={starter === c.id}
+                    onClick={() => setStarter(c.id)}
+                    className={`press rounded-full border px-3 py-1 text-sm ${starter === c.id ? "border-fg bg-surface-2 font-medium" : "border-line-strong text-fg-muted hover:text-fg"}`}
+                    data-testid={`worksheet-${c.id}`}
+                  >
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+              {starter === "upload" && (
+                <div className="mt-2 rounded-xl border border-line bg-bg px-3 py-2.5 text-sm">
+                  <label className="press inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2">
+                    <Upload className="h-3.5 w-3.5" /> {upload ? "Pick a different file" : "Pick a file"}
+                    <input
+                      type="file"
+                      accept={OFFICE_ACCEPT}
+                      className="sr-only"
+                      data-testid="worksheet-file"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        if (file && !officeKind(file)) return setErr("That isn't a Word (.docx) or PowerPoint (.pptx) file.");
+                        setErr("");
+                        setUpload(file);
+                      }}
+                    />
+                  </label>
+                  {upload && <span className="ml-2 text-xs font-medium" data-testid="worksheet-file-name">{upload.name}</span>}
+                  <p className="mt-1.5 text-xs text-fg-subtle">
+                    From Google Docs or Slides, use File, then Download, then .docx or .pptx. Text, headings, lists, tables, pictures and slide layouts come through; exact fonts, themes, charts and animations don't.
+                  </p>
+                </div>
+              )}
+              <label className="mt-2.5 flex items-start gap-2.5 text-sm">
+                <input type="checkbox" className="mt-0.5" checked={withKey} onChange={(e) => setWithKey(e.target.checked)} data-testid="worksheet-key" />
+                <span>
+                  <span className="font-medium">Add an answer key</span>
+                  <span className="block text-xs text-fg-subtle">Only you see it. It sits next to each student's work when you grade.</span>
+                </span>
+              </label>
             </fieldset>
             <ProjectEditor part="what" value={project} onChange={setProject} />
           </div>
@@ -565,6 +704,18 @@ function NewAssignmentDialog({ classId, classCode, students, onDone, onClose }: 
             <div className="mt-4 break-all rounded-xl border border-line bg-bg px-3 py-2 font-mono text-xs text-fg-muted" data-testid="wizard-link">
               {link}
             </div>
+            {worksheetRoom && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-line px-3 py-2 text-sm" data-testid="wizard-worksheet">
+                <FileText className="h-4 w-4 text-fg-muted" aria-hidden />
+                <span className="min-w-[10rem] flex-1">
+                  {importNote || "Your worksheet is ready to fill in."}
+                  <span className="block text-xs text-fg-subtle">Check it before students open the link: each one gets a copy of it as it is then.</span>
+                </span>
+                <Link to={`/r/${worksheetRoom}`} className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2" data-testid="wizard-edit-worksheet">
+                  Open the worksheet
+                </Link>
+              </div>
+            )}
             <div className="mt-4 flex flex-col gap-2">
               <a
                 href={classroomShareUrl(link, title.trim(), `${mode === "solo" ? "Open the link to start your own copy on Cairn." : "Open the link to join your group's room on Cairn."}${due ? ` Due ${due}.` : ""}`)}
@@ -607,7 +758,7 @@ function NewAssignmentDialog({ classId, classCode, students, onDone, onClose }: 
           )}
           {step === 1 && (
             <Button type="submit" disabled={busy} data-testid="create-assignment">
-              {busy ? "Making it…" : "Make the assignment"}
+              {busy ? (importNote ? "Bringing in your file…" : "Making it…") : "Make the assignment"}
             </Button>
           )}
           {step === 2 && (

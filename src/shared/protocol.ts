@@ -124,6 +124,11 @@ export interface RoomSettings {
   project?: ProjectSettings;
   /** Set when the room is a group's room in a teacher's class. */
   classLink?: { classId: string; assignmentId: string; group: string };
+  /**
+   * Set when the room is an assignment's worksheet: only the teacher comes in. Every file in it
+   * except the answer key is copied into each student's (or group's) room when they first open it.
+   */
+  worksheet?: { classId: string; assignmentId: string; keyId?: string };
 }
 
 /** What the AI may do in a project: nothing, coach only, or full help. */
@@ -298,7 +303,8 @@ export type ClientMsg =
   /** Lock the project's files as the submitted version (anyone); the host can reopen. */
   | { t: "turn_in" }
   | { t: "reopen" }
-  | { t: "new_file"; kind: FileKind; title: string }
+  /** `ref` comes back on the open_file reply, so the sender knows which file is theirs (imports). */
+  | { t: "new_file"; kind: FileKind; title: string; ref?: string }
   | { t: "rename_file"; id: string; title: string }
   | { t: "delete_file"; id: string }
   | { t: "duplicate_file"; id: string }
@@ -342,7 +348,7 @@ export type ServerMsg =
   | { t: "ai_done"; message: ChatMessage }
   | { t: "settings"; settings: RoomSettings }
   | { t: "files"; files: RoomFile[] }
-  | { t: "open_file"; id: string }
+  | { t: "open_file"; id: string; ref?: string }
   | { t: "local_request"; id: string; model: string; messages: { role: string; content: string }[] }
   | { t: "remove"; ids: string[] }
   | { t: "memory"; facts: string[] }

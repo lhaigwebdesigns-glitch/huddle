@@ -365,6 +365,7 @@ export class Room extends Server<Env> {
       this.send(conn, { t: "redirect", to: `/classes/${link.classId}/a/${link.assignmentId}/${this.name}` });
       return conn.close(4010, "Teachers grade from the class page");
     }
+    if (this.settings.worksheet && uid !== this.settings.hostId) return conn.close(4003, "This is a teacher's worksheet. Open your assignment link to get your own copy.");
     if ((await this.bans()).some((b) => b.uid === uid)) return conn.close(4003, "The host banned you from this room.");
     const known = (await this.ctx.storage.get<string[]>("members")) ?? [];
     // A class room is only for the students the class placed in it (via the assignment link).
@@ -719,7 +720,7 @@ export class Room extends Server<Env> {
           // Starter content isn't anyone's work, so it's credited to nobody.
           await stub.slideOps([{ op: "insert", slide: { layout: "title", title: "", body: "" } }], false, null);
         }
-        this.send(conn, { t: "open_file", id: f.id });
+        this.send(conn, { t: "open_file", id: f.id, ...(typeof msg.ref === "string" ? { ref: msg.ref.slice(0, 40) } : {}) });
         return;
       }
       case "import_csv": {
@@ -770,6 +771,7 @@ export class Room extends Server<Env> {
       case "delete_file": {
         const f = this.files().find((x) => x.id === msg.id);
         if (!f || (!isHost && f.createdBy !== me.uid)) return;
+        if (f.id === this.settings.worksheet?.keyId) return this.send(conn, { t: "error", message: "The answer key stays with the assignment. Clear it out instead if you don't want one." });
         this.sql`DELETE FROM files WHERE id = ${msg.id}`;
         this.broadcastMsg({ t: "files", files: this.files() });
         // Free the file's storage too.
@@ -1116,6 +1118,92 @@ export class Room extends Server<Env> {
     const reports = (await this.ctx.storage.get<Report[]>("reports")) ?? [];
     await this.ctx.storage.put("reports", reports.filter((r) => r.id !== id));
     return { ok: true };
+  }
+
+  // ---------- worksheets (an assignment's starter files and answer key) ----------
+
+  /** Makes this (new) room an assignment's worksheet, with a starter file and an answer key if asked. */
+  async setupWorksheet(link: { classId: string; assignmentId: string }, starter: "doc" | "slides" | null, key: boolean, title: string) {
+    if (!this.settings) return null;
+    this.settings.worksheet = { classId: link.classId, assignmentId: link.assignmentId };
+    this.settings.locked = true;
+    await this.ctx.storage.put("settings", this.settings);
+    let starterId: string | undefined;
+    if (starter) {
+      const f = this.createFile(starter, title, this.settings.hostId);
+      starterId = f.id;
+      if (starter === "slides") {
+        const stub = await getServerByName(this.env.Doc, `${this.name}--${f.id}`);
+        await stub.slideOps([{ op: "insert", slide: { layout: "title", title, body: "" } }], false, null);
+      }
+    }
+    const keyId = key ? await this.addAnswerKey() : undefined;
+    return { starterId, keyId };
+  }
+
+  /** Adds the answer key doc (once). Only the teacher sees it: it's never copied to students. */
+  async addAnswerKey() {
+    const ws = this.settings?.worksheet;
+    if (!ws) return undefined;
+    if (ws.keyId && this.files().some((f) => f.id === ws.keyId)) return ws.keyId;
+    const f = this.createFile("doc", "Answer key", this.settings!.hostId);
+    const stub = await getServerByName(this.env.Doc, `${this.name}--${f.id}`);
+    await stub.setMarkdown("Write the answers here. Only you see this: it shows next to each student's work when you grade.", "replace", null);
+    ws.keyId = f.id;
+    await this.ctx.storage.put("settings", this.settings);
+    this.broadcastMsg({ t: "settings", settings: this.settings! });
+    return f.id;
+  }
+
+  /** What students get a copy of: every file except the answer key. */
+  async starterFiles(): Promise<RoomFile[]> {
+    const keyId = this.settings?.worksheet?.keyId;
+    return this.files()
+      .filter((f) => f.id !== keyId && f.kind !== "artifact")
+      .reverse();
+  }
+
+  /** The answer key's text, for the grading screen. */
+  async answerKey(): Promise<{ title: string; markdown: string } | null> {
+    const keyId = this.settings?.worksheet?.keyId;
+    const f = keyId ? this.files().find((x) => x.id === keyId) : undefined;
+    if (!f) return null;
+    const stub = await getServerByName(this.env.Doc, `${this.name}--${f.id}`);
+    return { title: f.title, markdown: await stub.getMarkdown() };
+  }
+
+  /** A worksheet's summary for the class page: its files, and whether there's an answer key. */
+  async worksheetInfo() {
+    if (!this.settings?.worksheet) return null;
+    const files = await this.starterFiles();
+    const keyId = this.settings.worksheet.keyId;
+    return { files: files.map((f) => ({ title: f.title, kind: f.kind })), hasKey: !!keyId && this.files().some((f) => f.id === keyId) };
+  }
+
+  /** Gives this (new) room its own copy of every starter file in the worksheet room `from`. */
+  async copyStarter(from: string) {
+    if (!this.settings) return { ok: false, files: 0 };
+    const ws = await getServerByName(this.env.Room, from);
+    const files = (await ws.starterFiles()) as RoomFile[];
+    let n = 0;
+    for (const src of files.slice(0, MAX_FILES)) {
+      const copy = this.createFile(src.kind, src.title, this.settings.hostId);
+      const a = await getServerByName(this.env.Doc, `${from}--${src.id}`);
+      const b = await getServerByName(this.env.Doc, `${this.name}--${copy.id}`);
+      await b.importState(await a.exportState(), src.kind);
+      n++;
+    }
+    return { ok: true, files: n };
+  }
+
+  /** May this person open this file live? Only people in the room (and never someone banned). */
+  async canOpenFile(uid: string, fileId: string) {
+    if (!this.settings || !this.files().some((f) => f.id === fileId)) return false;
+    if (uid === this.settings.hostId) return true;
+    if (this.settings.worksheet) return false;
+    if ((await this.bans()).some((b) => b.uid === uid)) return false;
+    const known = (await this.ctx.storage.get<string[]>("members")) ?? [];
+    return known.includes(uid);
   }
 
   /** The teacher removed this student from the class: send them out and keep them out. */

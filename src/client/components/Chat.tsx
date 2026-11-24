@@ -589,7 +589,7 @@ export function Chat({
               <RockArt className="h-20 w-20" body={GREEN} pose="cheer" />
               <RockArt className="h-14 w-14" body={TEAL} pose="hold" prop="laptop" />
             </div>
-            <h2 className="text-[28px] font-extrabold tracking-[-0.025em]">{settings.project ? "Let's get this project started" : "What are we working on?"}</h2>
+            <h2 className="text-[28px] font-extrabold tracking-[-0.025em]">{settings.project ? "Let's get this project started" : settings.worksheet ? "Set up the worksheet" : "What are we working on?"}</h2>
             <p className="mx-auto mt-2 max-w-md text-[15px] text-fg-muted">
               {settings.project
                 ? aiOff
@@ -597,7 +597,9 @@ export function Chat({
                   : settings.project.ai === "tutor"
                     ? "Share the code with your group. Stuck? Ask the tutor for a hint; it won't do the work for you."
                     : "Share the code with your group, then ask the AI to help you plan, research and build."
-                : "Share the party code so friends can join, then ask the AI anything."}
+                : settings.worksheet
+                  ? "Edit the files on the left, or bring in your own with New file. You can ask the AI to draft questions or an answer key."
+                  : "Share the party code so friends can join, then ask the AI anything."}
             </p>
             {(!settings.project || settings.project.ai === "full") && (<>
             <div className="mt-8 grid gap-2 text-left sm:grid-cols-2" data-testid="suggestions">

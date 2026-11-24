@@ -104,7 +104,7 @@ function exportHtml(slides: Full[], theme: ThemeName, title: string) {
           const pos = `position:absolute;left:${pct(e.x, CANVAS.w)};top:${pct(e.y, CANVAS.h)};width:${pct(e.w, CANVAS.w)};height:${pct(e.h, CANVAS.h)}`;
           if (e.type === "image") return e.src ? `<img class="free" style="${pos};object-fit:cover" src="${esc(new URL(e.src, location.href).href)}">` : "";
           if (e.type === "rect" || e.type === "ellipse") return `<div style="${pos};background:${e.fill};border-radius:${e.type === "ellipse" ? "50%" : "8px"}"></div>`;
-          return `<div style="${pos};font-size:${((e.size ?? 28) * 0.75).toFixed(1)}pt;white-space:pre-wrap;overflow:hidden">${esc(e.text ?? "")}</div>`;
+          return `<div style="${pos};font-size:${((e.size ?? 28) * 0.75).toFixed(1)}pt;${e.color ? `color:${e.color};` : ""}${e.bold ? "font-weight:700;" : ""}white-space:pre-wrap;overflow:hidden">${esc(e.text ?? "")}</div>`;
         })
         .join("");
       if (s.layout === "free") return `<section class="free">${free}</section>`;
@@ -152,7 +152,7 @@ async function exportPptx(slides: Full[], theme: ThemeName, title: string) {
     if (s.layout === "free") {
       for (const e of s.elements ?? []) {
         const box = { x: inch(e.x), y: inch(e.y), w: inch(e.w), h: inch(e.h) };
-        if (e.type === "text") slide.addText(e.text ?? "", { ...box, fontSize: Math.round((e.size ?? 28) * 0.75), color: fg, fontFace: font, valign: "top" });
+        if (e.type === "text") slide.addText(e.text ?? "", { ...box, fontSize: Math.round((e.size ?? 28) * 0.75), color: e.color ? hex(e.color) : fg, bold: !!e.bold, fontFace: font, valign: "top" });
         else if (e.type === "image" && e.src) {
           try {
             slide.addImage({ path: new URL(e.src, location.href).href, ...box, sizing: { type: "cover", w: box.w, h: box.h } });

@@ -27,6 +27,48 @@ browser.newContext = async (opts = {}) => {
   }
   return ctx;
 };
+/** A small Word file: a heading, bold text and a table (what a teacher's handout looks like). */
+async function makeDocx() {
+  const JSZip = createRequire(import.meta.url)("jszip");
+  const zip = new JSZip();
+  const W = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"';
+  zip.file(
+    "[Content_Types].xml",
+    '<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/><Override PartName="/word/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/></Types>',
+  );
+  zip.file(
+    "_rels/.rels",
+    '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+  );
+  zip.file(
+    "word/_rels/document.xml.rels",
+    '<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+  );
+  zip.file("word/styles.xml", `<?xml version="1.0" encoding="UTF-8"?><w:styles ${W}><w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/></w:style></w:styles>`);
+  zip.file(
+    "word/document.xml",
+    `<?xml version="1.0" encoding="UTF-8"?><w:document ${W}><w:body>` +
+      '<w:p><w:pPr><w:pStyle w:val="Heading1"/></w:pPr><w:r><w:t>Cell Worksheet</w:t></w:r></w:p>' +
+      '<w:p><w:r><w:rPr><w:b/></w:rPr><w:t>Question 1:</w:t></w:r><w:r><w:t xml:space="preserve"> What does the nucleus do?</w:t></w:r></w:p>' +
+      "<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Organelle</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Job</w:t></w:r></w:p></w:tc></w:tr></w:tbl>" +
+      "</w:body></w:document>",
+  );
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
+/** A small PowerPoint: one slide with a title and a text box. */
+async function makePptx() {
+  const PptxGenJS = createRequire(import.meta.url)("pptxgenjs");
+  const pptx = new PptxGenJS();
+  pptx.layout = "LAYOUT_WIDE";
+  const slide = pptx.addSlide();
+  slide.addText("Organelles", { x: 1, y: 0.5, w: 8, h: 1, fontSize: 40, bold: true });
+  slide.addText("Mitochondria make energy", { x: 1, y: 2, w: 8, h: 1, fontSize: 24, color: "2F7F8C" });
+  return Buffer.from(await pptx.write({ outputType: "nodebuffer" }));
+}
+const DOCX_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+const PPTX_TYPE = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+
 const ok = (cond, msg) => {
   if (!cond) throw new Error("FAILED: " + msg);
   console.log("✓", msg);
@@ -905,6 +947,78 @@ try {
   await park.getByTestId("all-graded").waitFor();
   ok(true, "Start grading → Save & next walks through every turned-in student, then says all are graded");
   await eve.close();
+
+  // ---------- Worksheets: a starter every student gets a copy of, and an answer key only the teacher sees ----------
+  await park.goto(classUrl);
+  await park.getByTestId("new-assignment-btn").click();
+  await park.getByLabel("Assignment title").fill("Cell worksheet");
+  await park.getByTestId("worksheet-upload").click();
+  await park.getByTestId("worksheet-file").setInputFiles({ name: "Cell worksheet.docx", mimeType: DOCX_TYPE, buffer: await makeDocx() });
+  await park.getByTestId("worksheet-file-name").getByText("Cell worksheet.docx").waitFor();
+  await park.getByTestId("worksheet-key").check();
+  await park.getByTestId("wizard-next").click();
+  await park.getByTestId("mode-solo").click();
+  await park.getByTestId("create-assignment").click();
+  await park.getByTestId("wizard-worksheet").getByText("Your file is in.").waitFor({ timeout: 30000 });
+  ok(true, "a teacher can make a Word file the assignment's worksheet");
+  await park.getByTestId("wizard-done").click();
+  const wsSection = park.getByTestId("assignment").filter({ hasText: "Cell worksheet" });
+  await wsSection.getByTestId("has-key").waitFor();
+  ok((await wsSection.getByTestId("worksheet-files").innerText()).includes("Cell worksheet"), "the class page shows the worksheet and that it has an answer key");
+  const wsLink = await wsSection.getByTestId("copy-assignment-link").getAttribute("data-link");
+  // The worksheet opens in its own room, with Cairn's editors.
+  await wsSection.getByTestId("edit-worksheet").click();
+  await park.getByTestId("worksheet-banner").waitFor();
+  const wsRoom = park.url().split("/r/")[1];
+  await park.getByTestId("drive-file").filter({ hasText: "Cell worksheet" }).getByRole("button").first().click();
+  await park.getByTestId("doc-editor").locator("h1", { hasText: "Cell Worksheet" }).waitFor({ timeout: 15000 });
+  ok(
+    (await park.getByTestId("doc-editor").locator("strong", { hasText: "Question 1:" }).count()) === 1 && (await park.getByTestId("doc-editor").locator("table").count()) === 1,
+    "the Word file keeps its heading, bold text and table",
+  );
+  // The teacher writes the answer key.
+  await park.getByTestId("drive-file").filter({ hasText: "Answer key" }).getByRole("button").first().click();
+  await park.getByTestId("doc-editor").getByText(/Write the answers here/).waitFor({ timeout: 15000 });
+  await park.evaluate(() => document.querySelector('[data-testid="doc-editor"]').editor.commands.setContent("<p>The nucleus holds the cell's DNA.</p>"));
+  await park.waitForTimeout(2500);
+  const wsAid = wsLink.split("/a/")[1];
+  const wsClass = classUrl.split("/classes/")[1];
+  const { keyId } = await park.evaluate(
+    async ([cid, aid]) => (await fetch(`/api/classes/${cid}/assignments/${aid}/worksheet`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key: true }) })).json(),
+    [wsClass, wsAid],
+  );
+  // A student opens the assignment: their own copy of the worksheet, without the answer key.
+  const cara = kids[2];
+  await cara.goto(wsLink);
+  await cara.waitForURL(/\/r\/[A-Z0-9]{6}$/, { timeout: 20000 });
+  const caraRoom = cara.url().split("/r/")[1];
+  await cara.getByTestId("drive-file").filter({ hasText: "Cell worksheet" }).waitFor();
+  ok((await cara.getByTestId("drive-file").filter({ hasText: "Answer key" }).count()) === 0, "each student gets their own copy of the worksheet, without the answer key");
+  await cara.getByTestId("drive-file").filter({ hasText: "Cell worksheet" }).getByRole("button").first().click();
+  await cara.getByTestId("doc-editor").locator("h1", { hasText: "Cell Worksheet" }).waitFor({ timeout: 15000 });
+  ok(true, "the student's copy has the worksheet's content");
+  // The worksheet room and its answer key are the teacher's alone.
+  await cara.goto(`${BASE}/r/${wsRoom}`);
+  await cara.getByText(/teacher's worksheet/).waitFor({ timeout: 15000 });
+  const keyStatus = await cara.evaluate(async (p) => (await fetch(p)).status, `/parties/doc/${wsRoom}--${keyId}`);
+  ok(keyStatus === 403, "students can't open the worksheet room or its answer key, even with their codes");
+  // Bringing a PowerPoint into your own room.
+  await cara.goto(`${BASE}/r/${caraRoom}`);
+  await cara.getByTestId("new-file").click();
+  await cara.getByTestId("import-office-input").setInputFiles({ name: "Organelles.pptx", mimeType: PPTX_TYPE, buffer: await makePptx() });
+  await cara.getByText("Organelles.pptx is in.").waitFor({ timeout: 30000 });
+  await cara.waitForFunction(() => [...document.querySelectorAll("textarea")].some((t) => t.value.includes("Mitochondria make energy")), null, { timeout: 15000 });
+  ok((await cara.getByTestId("drive-file").filter({ hasText: "Organelles" }).count()) === 1, "a PowerPoint file comes into the room as slides, text boxes and all");
+  // She turns it in; the teacher sees the answer key next to her work.
+  await cara.getByTestId("turn-in").click();
+  await cara.getByTestId("receipt-note").fill("Labeling the parts.");
+  await cara.getByTestId("confirm-turn-in").click();
+  await cara.getByTestId("turned-in").waitFor();
+  await park.goto(classUrl);
+  await wsSection.getByTestId("start-grading").click();
+  await park.getByTestId("answer-key-tab").click();
+  await park.getByTestId("answer-key").getByText("The nucleus holds the cell's DNA.").waitFor({ timeout: 15000 });
+  ok(true, "the answer key shows next to the student's work when grading");
 
   // ---------- Timed assignments: closed outside the set times, more time on request ----------
   const classId = classUrl.split("/classes/")[1];

@@ -389,6 +389,13 @@ export default {
           url.searchParams.set("uid", user.uid);
           request = new Request(url.toString(), request);
         }
+        // A file opens live only for people in its room (and a worksheet's only for its teacher).
+        if (url.pathname.startsWith("/parties/doc/")) {
+          const m = /^([A-Z0-9]+)--([\w-]{1,40})$/.exec(decodeURIComponent(url.pathname.slice("/parties/doc/".length)));
+          if (!m || !isValidCode(m[1])) return new Response("Not found", { status: 404 });
+          const room = await getServerByName(env.Room, m[1]);
+          if (!(await room.canOpenFile(user.uid, m[2]))) return new Response("This file isn't yours to open.", { status: 403 });
+        }
       }
       return (await routePartykitRequest(request, env as any)) ?? new Response("Not found", { status: 404 });
     }

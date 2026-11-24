@@ -33,6 +33,9 @@ export interface ElementData {
   src?: string;
   fill?: string;
   size?: number;
+  /** Text boxes: their own color (otherwise the theme's) and bold. */
+  color?: string;
+  bold?: boolean;
 }
 export const CANVAS = { w: 960, h: 540 } as const;
 
@@ -57,13 +60,15 @@ export function makeElement(e: ElementData): Y.Map<any> {
   if (type === "text") {
     m.set("text", new Y.Text(String(e.text ?? "").slice(0, 2000)));
     m.set("size", clamp(e.size, 10, 120, 28));
+    if (e.color && /^#[0-9a-f]{6}$/i.test(e.color)) m.set("color", e.color);
+    if (e.bold) m.set("bold", true);
   }
   if (type === "image") m.set("src", safeSrc(e.src));
   if (type === "rect" || type === "ellipse") m.set("fill", safeFill(e.fill));
   return m;
 }
 
-export function readElement(m: Y.Map<any>): Required<Omit<ElementData, "text" | "src" | "fill" | "size">> & Pick<ElementData, "text" | "src" | "fill" | "size"> {
+export function readElement(m: Y.Map<any>): Required<Omit<ElementData, "text" | "src" | "fill" | "size" | "color" | "bold">> & Pick<ElementData, "text" | "src" | "fill" | "size" | "color" | "bold"> {
   const t = m.get("text");
   return {
     id: m.get("id"),
@@ -76,6 +81,8 @@ export function readElement(m: Y.Map<any>): Required<Omit<ElementData, "text" | 
     ...(m.get("src") !== undefined ? { src: m.get("src") } : {}),
     ...(m.get("fill") !== undefined ? { fill: m.get("fill") } : {}),
     ...(m.get("size") !== undefined ? { size: m.get("size") } : {}),
+    ...(m.get("color") !== undefined ? { color: m.get("color") } : {}),
+    ...(m.get("bold") ? { bold: true } : {}),
   };
 }
 

@@ -1,15 +1,9 @@
 import { alertDialog, promptDialog } from "./Dialogs";
 import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
 import Collaboration from "@tiptap/extension-collaboration";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
-import Image from "@tiptap/extension-image";
-import { TableKit } from "@tiptap/extension-table";
-import { Color, TextStyle } from "@tiptap/extension-text-style";
-import Highlight from "@tiptap/extension-highlight";
-import { TaskItem, TaskList } from "@tiptap/extension-list";
-import TextAlign from "@tiptap/extension-text-align";
+import { docExtensions } from "../lib/docExtensions";
 import * as Y from "yjs";
 import YProvider from "y-partyserver/provider";
 import type { RoomFile } from "../../shared/protocol";
@@ -211,18 +205,10 @@ export function DocEditor({
   const editor = useEditor(
     {
       extensions: [
-        StarterKit.configure({ undoRedo: false, trailingNode: false, link: { openOnClick: false, protocols: ["https", "http", "mailto"] } }),
+        ...docExtensions(),
         Collaboration.configure({ document: ydoc }),
         // Keep uid in the presence "user" field: the server uses it to credit edits on the receipt.
         CollaborationCaret.configure({ provider, user: { name: me.name, color: me.color, uid: me.uid } }),
-        Image.configure({ allowBase64: false }),
-        TableKit.configure({ table: { resizable: false } }),
-        TextStyle,
-        Color,
-        Highlight,
-        TaskList,
-        TaskItem.configure({ nested: true }),
-        TextAlign.configure({ types: ["heading", "paragraph"] }),
       ],
       editorProps: {
         attributes: { class: "prose prose-zinc dark:prose-invert max-w-none px-6 py-6 md:px-10", "data-testid": "doc-editor" },

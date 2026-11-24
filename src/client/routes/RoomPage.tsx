@@ -1,5 +1,6 @@
 import { confirmDialog } from "../components/Dialogs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { importOffice, officeKind, officeTitle } from "../lib/officeImport";
 import { Link, useParams } from "react-router-dom";
 import { formatCode, normalizeCode } from "../../shared/code";
 import { ageConfirmed, confirmAge, getIdentity, rememberRoom, setName, type Identity } from "../lib/identity";
@@ -75,6 +76,48 @@ export default function RoomPage() {
   return <RoomEntry code={code} />;
 }
 
+/**
+ * In an assignment's worksheet room (the teacher's alone): what happens to these files, the
+ * answer key, and the way back to the class.
+ */
+function WorksheetBanner({ ws }: { ws: { classId: string; assignmentId: string; keyId?: string } }) {
+  const [busy, setBusy] = useState(false);
+  return (
+    <div
+      role="note"
+      data-testid="worksheet-banner"
+      className="mx-auto mt-2 flex w-[calc(100%-1.5rem)] max-w-3xl flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line bg-surface px-4 py-2.5 text-sm"
+    >
+      <span className="min-w-[14rem] flex-1">
+        <span className="font-semibold">This is the worksheet.</span> Each student gets their own copy of every file here{ws.keyId ? ", except the answer key" : ""}, when they first open the assignment.
+        {ws.keyId && <span className="text-fg-muted"> The answer key stays with you and shows next to their work when you grade.</span>}
+        <span className="block text-xs text-fg-subtle">Only you can come into this room.</span>
+      </span>
+      {!ws.keyId && (
+        <button
+          disabled={busy}
+          onClick={async () => {
+            setBusy(true);
+            await fetch(`/api/classes/${ws.classId}/assignments/${ws.assignmentId}/worksheet`, {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ key: true }),
+            }).catch(() => null);
+            setBusy(false);
+          }}
+          className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2 disabled:opacity-40"
+          data-testid="banner-add-key"
+        >
+          Add an answer key
+        </button>
+      )}
+      <Link to={`/classes/${ws.classId}`} className="press rounded-lg bg-primary px-2.5 py-1 text-xs font-semibold text-primary-fg hover:bg-primary-hover" data-testid="back-to-class">
+        Back to the class
+      </Link>
+    </div>
+  );
+}
+
 /** After sign-in: a name if we still need one, the 13+ check, then the room. */
 function RoomEntry({ code }: { code: string }) {
   const [me, setMe] = useState<Identity>(() => getIdentity());
@@ -110,12 +153,35 @@ function Room({ code, me }: { code: string; me: Identity }) {
   useEffect(() => {
     if (state.openFileId) setOpenFile(state.openFileId);
   }, [state.openFileId, state.openFileNonce]);
+
+  // Importing a Word or PowerPoint file: make the file, then fill it in once the room says which it is.
+  const pendingImport = useRef<{ ref: string; file: File } | null>(null);
+  const startImport = useCallback(
+    (file: File) => {
+      const kind = officeKind(file);
+      if (!kind) return showToast("Pick a Word (.docx) or PowerPoint (.pptx) file.");
+      const ref = Math.random().toString(36).slice(2, 10);
+      pendingImport.current = { ref, file };
+      showToast(`Bringing in ${file.name}…`);
+      send({ t: "new_file", kind, title: officeTitle(file), ref });
+    },
+    [send, showToast],
+  );
+  useEffect(() => {
+    const p = pendingImport.current;
+    if (!p || !state.openFileId || state.openFileRef !== p.ref) return;
+    pendingImport.current = null;
+    importOffice(code, state.openFileId, p.file, me)
+      .then((r) => showToast(r.skipped.length ? `${p.file.name} is in. Some things didn't come through: ${r.skipped.join(", ")}.` : `${p.file.name} is in.`))
+      .catch((e: Error) => showToast(`Couldn't bring in ${p.file.name}: ${e.message}`));
+  }, [state.openFileId, state.openFileNonce, state.openFileRef, code, me, showToast]);
   useEffect(() => {
     setEditorSender(send);
     return () => setEditorSender(null);
   }, [send]);
   useEffect(() => {
-    if (!state.settings) return;
+    // A worksheet lives on its class page, not in "My rooms".
+    if (!state.settings || state.settings.worksheet) return;
     rememberRoom(code, state.settings.title);
     // Signed in? Add it to "My rooms" on every device (no-op for guests).
     fetch("/api/auth/rooms", {
@@ -202,6 +268,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
         isHost={isHost}
         myUid={me.uid}
         send={send}
+        onImport={state.settings.project?.turnedInAt ? undefined : startImport}
         onOpen={(id) => {
           setOpenFile(id);
           setShowSidebar(false);
@@ -226,6 +293,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
       </div>
 
       <div className="space-y-0.5 p-3">
+        {!state.settings.worksheet && (
         <button
           onClick={copyInvite}
           className="press group mb-2 flex w-full items-center justify-between rounded-xl border border-line bg-bg px-3 py-2 hover:border-line-strong"
@@ -238,6 +306,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
           </span>
           {copied ? <Check className="h-4 w-4 text-fg" /> : <Copy className="h-4 w-4 text-fg-subtle group-hover:text-fg" />}
         </button>
+        )}
         <button onClick={() => setShowSettings(true)} className={ROW}>
           <Settings className="h-4 w-4" /> Room settings
         </button>
@@ -344,6 +413,7 @@ function Room({ code, me }: { code: string; me: Identity }) {
             </button>
           </div>
         )}
+        {state.settings.worksheet && <WorksheetBanner ws={state.settings.worksheet} />}
         {state.settings.project && (
           <ProjectBar project={state.settings.project} title={state.settings.title} isHost={isHost} send={send} onReceipt={setReceiptMode} board={state.board} meUid={state.you.uid} />
         )}

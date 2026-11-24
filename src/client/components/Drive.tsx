@@ -1,7 +1,8 @@
 import { confirmDialog } from "./Dialogs";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { MoreHorizontal, Plus, Search } from "lucide-react";
+import { MoreHorizontal, Plus, Search, Upload } from "lucide-react";
+import { OFFICE_ACCEPT } from "../lib/officeFiles";
 import type { ClientMsg, RoomFile } from "../../shared/protocol";
 import { CREATABLE_KINDS, FILE_INFO } from "../../shared/files";
 import { FileIcon } from "./FileIcon";
@@ -147,6 +148,7 @@ export function Drive({
   myUid,
   onOpen,
   send,
+  onImport,
 }: {
   files: RoomFile[];
   openId: string | null;
@@ -154,6 +156,8 @@ export function Drive({
   myUid: string;
   onOpen: (id: string) => void;
   send: (m: ClientMsg) => void;
+  /** Bring in a Word or PowerPoint file as a new doc or slides. */
+  onImport?: (file: File) => void;
 }) {
   const [q, setQ] = useState("");
   const [newMenu, setNewMenu] = useState(false);
@@ -185,6 +189,23 @@ export function Drive({
                 <FileIcon kind={k} className="h-4 w-4 text-fg-muted" /> {FILE_INFO[k].label}
               </button>
             ))}
+            {onImport && (
+              <label role="menuitem" className={`${ITEM} cursor-pointer border-t border-line`} data-testid="import-office">
+                <Upload className="h-4 w-4 text-fg-muted" /> Import Word or PowerPoint
+                <input
+                  type="file"
+                  accept={OFFICE_ACCEPT}
+                  className="sr-only"
+                  data-testid="import-office-input"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    e.target.value = "";
+                    setNewMenu(false);
+                    if (file) onImport(file);
+                  }}
+                />
+              </label>
+            )}
           </div>
         )}
       </div>
