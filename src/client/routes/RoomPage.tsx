@@ -220,7 +220,9 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
               ? "You can rejoin with the party code if you were invited back."
               : state.closeKind === "ban"
                 ? "Only the host can let you back in."
-                : "Check your connection and try again."}
+                : state.closeKind === "refused"
+                  ? "If you should be in here, open the link your teacher or the host gave you."
+                  : "Check your connection and try again."}
         </p>
         <div className="rise rise-2 mt-3 flex gap-2">
           {state.closeKind === "kick" && (

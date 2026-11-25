@@ -362,4 +362,9 @@ export type ServerMsg =
   | { t: "tasks"; board: TaskBoard }
   /** Go somewhere else instead (a teacher opening a group's room goes to grading). */
   | { t: "redirect"; to: string }
+  /**
+   * You can't come in (sent just before the room closes your connection). The close itself can
+   * get lost on the way while the connection is still opening, so the page goes by this.
+   */
+  | { t: "refused"; reason: string }
   | { t: "error"; message: string };

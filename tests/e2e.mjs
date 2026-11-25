@@ -960,11 +960,9 @@ try {
   // Someone outside the class can't get into a student's room, even with its code.
   const outsider = await (await browser.newContext({ as: "Outsider" })).newPage();
   await outsider.goto(eveRoom);
-  // The room turns them away. (On the local dev server the "belongs to a class" message
-  // sometimes never arrives because the refused connection isn't closed; either way they
-  // must never get the room itself.)
-  await outsider.getByText(/This room belongs to a class/).waitFor({ timeout: 10000 }).catch(() => {});
-  ok((await outsider.getByTestId("project-bar").count()) === 0 && (await outsider.getByTestId("composer").count()) === 0, "people outside the class can't open its rooms, even with the room code");
+  // The room turns them away and says why (the "refused" message, not just the closed connection).
+  await outsider.getByText(/This room belongs to a class/).waitFor({ timeout: 15000 });
+  ok((await outsider.getByTestId("project-bar").count()) === 0 && (await outsider.getByTestId("composer").count()) === 0, "people outside the class can't open its rooms, even with the room code, and are told why");
   await outsider.close();
 
   // Work timeline: a large paste shows openly on the student's receipt.
@@ -1293,6 +1291,8 @@ try {
   await visitor.getByTestId("week-scrub").fill("2");
   ok((await visitor.getByTestId("week-day").innerText()) === "Wednesday", "dragging the week snaps from day to day");
   ok((await visitor.getByText("Your AI, your rules.").count()) === 0, "the landing page leads with Cairn's promise, not AI providers");
+  const oneRoom = await visitor.getByTestId("one-room").innerText();
+  ok(oneRoom.includes("One room, not four tabs.") && !/Google|ChatGPT|Claude|Gemini|Brisk|Turnitin/.test(oneRoom), "the landing page shows why one room beats four tabs, without naming other products");
   ok((await visitor.locator("#research a[href^=\"https://\"]").count()) >= 5, "every research figure on the landing page links to its source");
   await visitor.getByRole("radio", { name: "Dark" }).first().click();
   ok(await visitor.evaluate(() => document.documentElement.classList.contains("dark")), "the landing page has a dark mode switch");

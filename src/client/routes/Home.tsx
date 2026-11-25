@@ -7,6 +7,7 @@ import { formatCode, isValidCode, normalizeCode } from "../../shared/code";
 import { forgetRoom, getIdentity, recentRooms, setName } from "../lib/identity";
 import { Logo, ThemeToggle } from "../components/ui";
 import { GREEN, INK, MINT, PERI, RockFace, RockPerson, Spark, TEAL } from "../components/Rocks";
+import { Check } from "lucide-react";
 import "./home.css";
 
 const scrollToId = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -141,6 +142,7 @@ export default function Home() {
         <Students />
         <Teachers />
         <Groups />
+        <OneRoom />
         <Shown />
         <Founder />
         <Pilot />
@@ -1122,6 +1124,107 @@ function Groups() {
   );
 }
 
+/**
+ * Why Cairn and not a doc + a chatbot + a group chat: the work, the talk and the AI live in one
+ * place, so who did what can be counted. No product names; the claim stays true as they change.
+ */
+function OneRoom() {
+  const tabs = [
+    { label: "The doc", x: "4%", y: "6%", r: -6 },
+    { label: "An AI chatbot", x: "52%", y: "2%", r: 5 },
+    { label: "The group chat", x: "2%", y: "56%", r: 4 },
+    { label: "The class site", x: "54%", y: "58%", r: -4 },
+  ];
+  return (
+    <section className="oneroom" data-testid="one-room">
+      <div className="wrap">
+        <div className="sec-head">
+          <h2>One room, not four tabs.</h2>
+          <p>
+            Most group projects happen everywhere at once: a doc in one tab, an AI chatbot in another, the group chat on someone's phone, and the class site to turn it in. Nothing connects them, so
+            afterward nobody can say who did what, or what the AI did.
+          </p>
+        </div>
+        <div className="or-grid">
+          <figure className="or-card or-before">
+            <div className="or-stage" aria-hidden="true">
+              {tabs.map((t) => (
+                <div className="or-tab" key={t.label} style={{ left: t.x, top: t.y, transform: `rotate(${t.r}deg)` }}>
+                  <div className="or-bar">
+                    <i />
+                    <i />
+                    <i />
+                    <span>{t.label}</span>
+                  </div>
+                  <div className="or-lines">
+                    <b style={{ width: "82%" }} />
+                    <b style={{ width: "64%" }} />
+                  </div>
+                </div>
+              ))}
+              <svg className="or-rock" viewBox="0 0 100 100" style={{ overflow: "visible" }}>
+                <RockPerson body={PERI} pose="hold" />
+              </svg>
+              <span className="or-q">?</span>
+            </div>
+            <figcaption>
+              <h3>The usual way</h3>
+              <p>Four places that don't talk to each other. The teacher sees the final doc and has to guess the rest.</p>
+            </figcaption>
+          </figure>
+          <figure className="or-card or-cairn">
+            <div className="or-room" role="img" aria-label="Example Cairn room: the doc, the group chat with the AI tutor, and the task list in one place, each part credited to the person who did it.">
+              <div className="or-bar">
+                <i />
+                <i />
+                <i />
+                <span>WWI presentation · Group 2</span>
+                <em className="sample">Example</em>
+              </div>
+              <div className="or-panes">
+                <div className="or-doc">
+                  <b style={{ width: "90%", ["--who" as string]: PERI }} />
+                  <b style={{ width: "72%", ["--who" as string]: PERI }} />
+                  <b style={{ width: "84%", ["--who" as string]: TEAL }} />
+                  <b style={{ width: "58%", ["--who" as string]: GREEN }} />
+                  <span className="or-ai">AI wrote this line</span>
+                </div>
+                <div className="or-chat">
+                  <span className="me">Who's doing sources?</span>
+                  <span>Me! On it.</span>
+                  <span className="tutor">What's your strongest source so far?</span>
+                </div>
+              </div>
+              <div className="or-tasks">
+                <span>
+                  <Check /> Title slide · Ava
+                </span>
+                <span>
+                  <Check /> Timeline · Ben
+                </span>
+              </div>
+            </div>
+            <figcaption>
+              <h3>In Cairn</h3>
+              <ul>
+                <li>
+                  <Check /> Each person's writing counts as theirs.
+                </li>
+                <li>
+                  <Check /> What the AI wrote is marked as the AI's.
+                </li>
+                <li>
+                  <Check /> One receipt the group checks before turning it in.
+                </li>
+              </ul>
+            </figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Shown() {
   return (
     <section className="shown">
@@ -1146,7 +1249,7 @@ function Shown() {
           <div className="promise">
             <span className="num">13+</span>
             <h3>Built for school</h3>
-            <p>Students join with a class code and their name, no account needed. Teachers sign in with their school Google account.</p>
+            <p>Everyone signs in with their school Google account, and teachers choose exactly which students can join their class.</p>
           </div>
         </div>
       </div>

@@ -19,7 +19,7 @@ export interface RoomState {
   status: "connecting" | "open" | "reconnecting" | "closed";
   closeReason?: string;
   /** Why you were sent out, when it was the host: kicked (may rejoin), banned, or room deleted. */
-  closeKind?: "kick" | "ban" | "deleted";
+  closeKind?: "kick" | "ban" | "deleted" | "refused";
   /** Host only: who's banned. */
   bans: Ban[];
   you?: Member;
@@ -74,6 +74,8 @@ function reducer(s: RoomState, a: Action): RoomState {
       return { ...s, memory: m.facts };
     case "tasks":
       return { ...s, board: m.board };
+    case "refused":
+      return { ...s, status: "closed", closeKind: "refused", closeReason: m.reason };
     case "redirect":
       if (m.to.startsWith("/")) window.location.replace(m.to);
       return s;
@@ -160,6 +162,12 @@ export function useRoom(code: string, me: Identity) {
     });
     ws.addEventListener("message", async (e) => {
       const msg = JSON.parse(e.data) as ServerMsg;
+      if (msg.t === "refused") {
+        // Turned away: stop reconnecting and say why (the close itself may never arrive).
+        ws.close();
+        dispatch({ type: "server", msg });
+        return;
+      }
       if (msg.t === "local_request") {
         // We're the host and the room is in Local mode: run the model on this device.
         try {
