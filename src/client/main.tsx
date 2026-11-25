@@ -18,6 +18,9 @@ const Admin = lazy(() => import("./routes/Admin"));
 const ClassesPage = lazy(() => import("./routes/Classes").then((m) => ({ default: m.ClassesPage })));
 const ClassPage = lazy(() => import("./routes/Classes").then((m) => ({ default: m.ClassPage })));
 const Grading = lazy(() => import("./routes/Grading"));
+// The first-time welcome loads only for new accounts.
+const Welcome = lazy(() => import("./routes/Welcome"));
+import { TourHost } from "./components/Tour";
 import StudentClass from "./routes/StudentClass";
 import Dashboard from "./routes/Dashboard";
 import PublicForm from "./routes/PublicForm";
@@ -36,9 +39,11 @@ createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <RockDefs />
     <DialogHost />
+    <TourHost />
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Home />} />
+        <Route path="/welcome" element={<Suspense fallback={null}><Welcome /></Suspense>} />
         <Route path="/j/:code" element={<JoinRedirect />} />
         <Route path="/r/:code" element={<RoomPage />} />
         <Route path="/dashboard" element={<Dashboard />} />

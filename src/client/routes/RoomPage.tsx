@@ -18,7 +18,8 @@ import { usePasteGuard } from "../lib/pasteGuard";
 import { ArrowLeft, ArrowRight, Check, Cloud, Copy, Cpu, DoorOpen, Link2, Menu, MessageSquare, Settings, Trash2, X } from "lucide-react";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { SignInGate } from "../components/SignInGate";
-import { useAccount } from "../lib/account";
+import { useAccount, type Account } from "../lib/account";
+import { TourButton, useAutoTour } from "../components/Tour";
 
 /** "I'm 13 or older" checkbox, with the reason when it's left unchecked. */
 export function AgeCheck({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -73,7 +74,7 @@ export default function RoomPage() {
         providers={account.providers}
       />
     );
-  return <RoomEntry code={code} />;
+  return <RoomEntry code={code} user={account.user} />;
 }
 
 /**
@@ -119,7 +120,7 @@ function WorksheetBanner({ ws }: { ws: { classId: string; assignmentId: string; 
 }
 
 /** After sign-in: a name if we still need one, the 13+ check, then the room. */
-function RoomEntry({ code }: { code: string }) {
+function RoomEntry({ code, user }: { code: string; user: Account | null | undefined }) {
   const [me, setMe] = useState<Identity>(() => getIdentity());
   const [ageOk, setAgeOk] = useState(ageConfirmed);
   if (!me.name || !ageOk)
@@ -134,11 +135,13 @@ function RoomEntry({ code }: { code: string }) {
         }}
       />
     );
-  return <Room code={code} me={me} />;
+  return <Room code={code} me={me} user={user} />;
 }
 
-function Room({ code, me }: { code: string; me: Identity }) {
+function Room({ code, me, user }: { code: string; me: Identity; user: Account | null | undefined }) {
   const { state, send, localProgress, clearToast, showToast, dismissNotice } = useRoom(code, me);
+  // A student's first assignment room gets a short tour (not the teacher's, not plain rooms).
+  useAutoTour("student-room", !!state.settings?.project && !state.settings.worksheet && user?.role === "student", user?.tours ?? [], !!user);
   const project = state.settings?.project;
   usePasteGuard(!!project?.pasteGuard && project.ai !== "full" && !project.pasteExempt.includes(me.uid), () =>
     showToast("Pasting from outside Cairn is off for this project."),
@@ -252,11 +255,12 @@ function Room({ code, me }: { code: string; me: Identity }) {
   };
 
   const sidebar = (
-    <aside className="flex h-full w-[264px] shrink-0 flex-col bg-sidebar">
+    <aside className="flex h-full w-[264px] shrink-0 flex-col bg-sidebar" data-tour="room-files">
       <div className="flex h-12 items-center gap-2 px-3">
         <Link to="/" className="press flex items-center gap-2 rounded-lg px-1.5 py-1 text-[15px] font-semibold tracking-tight hover:bg-accent-soft" title="Cairn home">
           <Logo className="h-7 w-7" /> <span className="font-display text-[17px] font-extrabold tracking-tight">Cairn</span>
         </Link>
+        <TourButton className="ml-auto" />
         <button onClick={() => setShowSidebar(false)} className="press ml-auto rounded-lg p-1.5 text-fg-muted hover:bg-accent-soft md:hidden" aria-label="Close menu">
           <X className="h-4 w-4" />
         </button>

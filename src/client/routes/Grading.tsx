@@ -4,6 +4,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ChevronLeft, ChevronRight, KeyRound, Plus, RotateCcw, X } from "lucide-react";
 import { Markdown } from "../components/Markdown";
 import { useAccount } from "../lib/account";
+import { useAutoTour } from "../components/Tour";
 import { getIdentity } from "../lib/identity";
 import { FilePanel } from "../components/FilePanel";
 import { FileIcon } from "../components/FileIcon";
@@ -42,7 +43,7 @@ function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: (
     else onSaved();
   };
   return (
-    <section className="border-t border-line bg-surface px-4 py-4 sm:px-6" aria-label="Grade" data-testid="grader">
+    <section className="border-t border-line bg-surface px-4 py-4 sm:px-6" aria-label="Grade" data-testid="grader" data-tour="grade-save">
       <div className="flex flex-wrap items-center gap-3">
         <h2 className="text-base font-semibold">Rubric</h2>
         <span className="text-sm text-fg-muted tabular" data-testid="grade-total">
@@ -207,6 +208,7 @@ export default function Grading() {
   }, [account.user, id, aid, room]);
   const me = useMemo(() => getIdentity(), []);
   const back = { to: `/classes/${id}`, label: "Class" };
+  useAutoTour("teacher-grading", !!view && account.user?.role === "teacher", account.user?.tours, true);
   if (!account.user) return <TeacherShell back={back}><SignInFirst /></TeacherShell>;
   if (account.user.role === "student") return <TeacherShell back={back}><StudentOnly /></TeacherShell>;
   if (err) return <TeacherShell back={back}><p className="p-8 text-sm text-fg-muted">{err}</p></TeacherShell>;
@@ -281,7 +283,7 @@ export default function Grading() {
           <>
             {/* Fixed-height panes that scroll inside; the page itself scrolls on small screens. */}
             <div className="grid lg:h-[calc(100vh-15rem)] lg:min-h-[420px] lg:grid-cols-[minmax(0,1fr)_380px]">
-              <div className="flex h-[65vh] min-w-0 flex-col border-line lg:h-auto lg:min-h-0 lg:border-r">
+              <div className="flex h-[65vh] min-w-0 flex-col border-line lg:h-auto lg:min-h-0 lg:border-r" data-tour="grade-work">
                 <div className="flex gap-1 overflow-x-auto border-b border-line px-3 py-2" role="tablist" aria-label="Files">
                   {view.files.map((f) => (
                     <button
@@ -300,7 +302,7 @@ export default function Grading() {
                   {roomFile && <FilePanel key={roomFile.id} room={room} file={roomFile} me={me} onClose={() => setFileId(null)} onRename={() => {}} locked />}
                 </div>
               </div>
-              <aside className="flex h-[70vh] min-w-0 flex-col overflow-hidden border-t border-line lg:h-auto lg:min-h-0 lg:border-t-0">
+              <aside className="flex h-[70vh] min-w-0 flex-col overflow-hidden border-t border-line lg:h-auto lg:min-h-0 lg:border-t-0" data-tour="grade-record">
                 {view.answerKey && (
                   <div className="flex shrink-0 gap-1 border-b border-line px-3 py-2" role="tablist" aria-label="Beside the work">
                     {(

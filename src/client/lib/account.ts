@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getIdentity, setAvatar, setColor, setName } from "./identity";
+import type { Teach } from "../../shared/onboarding";
 
 export interface Account {
   id: string;
@@ -11,7 +12,16 @@ export interface Account {
   color?: string | null;
   /** Teacher or student, set once; null = not chosen yet. */
   role?: "teacher" | "student" | null;
+  /** Finished the first-time welcome. */
+  onboarded?: boolean;
+  /** What a teacher teaches. */
+  teach?: Teach | null;
+  /** Tours already seen or skipped ("*" = tips off). */
+  tours?: string[];
 }
+
+/** Where a signed-in account still needs the welcome before using this page. */
+export const needsWelcome = (u: Account | null | undefined) => !!u && !u.onboarded;
 
 /** Copy the account's profile onto this device's room identity (name, color, picture). */
 export function applyProfile(u: Account) {

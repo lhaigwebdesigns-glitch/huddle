@@ -8,6 +8,7 @@ import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { PERI, RockArt } from "../components/Rocks";
 import { HumanCheck, SignInGate } from "../components/SignInGate";
 import { normalizeCode } from "../../shared/code";
+import { TourButton, useAutoTour } from "../components/Tour";
 import { assignmentPath, type AssignmentMode, type StudentClassView } from "../../shared/classes";
 
 type AssignmentInfo = { className: string; title: string; mode: AssignmentMode; dueAt?: number };
@@ -35,6 +36,8 @@ export default function StudentClass() {
   const signedIn = !!account.user;
   const [human, setHuman] = useState("");
   const opened = useRef(false);
+  // The class page tour: once they're in and there's something to open.
+  useAutoTour("student-class", !aid && !!view?.joined && view.assignments.length > 0, account.user?.tours ?? [], signedIn);
 
   const load = () =>
     fetch(`/api/classes/join/${code}?uid=${encodeURIComponent(me.uid)}`)
@@ -193,8 +196,8 @@ export default function StudentClass() {
         )}
         <h2 className="mt-6 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Your assignments</h2>
         {view.assignments.length === 0 && <p className="mt-2 text-sm text-fg-muted">Nothing yet. Your teacher's assignments will show up here.</p>}
-        <ul className="mt-2 space-y-2">
-          {view.assignments.map((a) => (
+        <ul className="mt-2 space-y-2" data-tour="assignments">
+          {view.assignments.map((a, i) => (
             <li key={a.id} className="rounded-2xl border border-line px-4 py-3" data-testid="student-assignment">
               <div className="flex items-center gap-2">
                 <BookOpen className="h-4 w-4 shrink-0 text-fg-muted" />
@@ -209,6 +212,7 @@ export default function StudentClass() {
                 to={assignmentPath(code, a.id)}
                 className="press mt-2.5 inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover"
                 data-testid="open-group-room"
+                data-tour={i === 0 ? "open-work" : undefined}
               >
                 {a.mode === "solo" ? "Open your work" : "Open your group's room"} <ArrowRight className="h-4 w-4" />
               </Link>
@@ -226,6 +230,7 @@ export default function StudentClass() {
           <Logo className="h-7 w-7" /> <span className="font-display text-[17px] font-extrabold tracking-tight">Cairn</span>
         </Link>
         <span className="flex-1" />
+        <TourButton />
         <ThemeToggle />
       </header>
       <main className="flex flex-1 items-start justify-center px-4 pb-16 pt-[8vh]">

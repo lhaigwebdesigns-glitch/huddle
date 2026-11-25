@@ -213,6 +213,90 @@ input, textarea { caret-color: var(--fg); }
   .glass { backdrop-filter: none !important; background: var(--bg) !important; }
 }
 
+/* ---------- Pebble scenes (TourScene): gentle loops; still = the finished picture ---------- */
+.sc-bob, .sc-hop, .sc-scribble, .sc-press, .sc-burst, .sc-line, .sc-bar, .sc-check, .sc-dot, .sc-pop-in, .sc-flow, .sc-type {
+  transform-box: fill-box; transform-origin: 50% 100%;
+}
+@keyframes sc-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.sc-bob { animation: sc-bob 2.8s var(--ease-in-out) infinite; }
+@keyframes sc-hop { 0%, 62%, 100% { transform: translateY(0) scaleY(1); } 70% { transform: translateY(0) scaleY(0.93); } 80% { transform: translateY(-12px) scaleY(1.03); } 90% { transform: translateY(0) scaleY(0.97); } }
+.sc-hop { animation: sc-hop 2.4s var(--ease-out) infinite; }
+.sc-late { animation-delay: 0.16s; } .sc-later { animation-delay: 0.32s; }
+@keyframes sc-scribble { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-2deg); } 75% { transform: rotate(2deg); } }
+.sc-scribble { animation: sc-scribble 0.9s ease-in-out infinite; }
+@keyframes sc-press { 0%, 40%, 58%, 100% { transform: translateY(0); } 46% { transform: translateY(3px); } }
+.sc-press { animation: sc-press 2.6s var(--ease-out) infinite; }
+@keyframes sc-burst { 0%, 44% { transform: scale(1); } 50% { transform: scale(0.55); } 60% { transform: scale(1.18); } 72%, 100% { transform: scale(1); } }
+.sc-burst { transform-origin: 50% 50%; animation: sc-burst 2.6s var(--ease-out) infinite; }
+@keyframes sc-line { 0% { transform: scaleX(0); } 18%, 100% { transform: scaleX(1); } }
+.sc-line { transform-origin: 0 50%; animation: sc-line 3.6s var(--ease-out) infinite both; }
+@keyframes sc-bar { 0% { transform: scaleX(0); } 30%, 100% { transform: scaleX(1); } }
+.sc-bar { transform-origin: 0 50%; animation: sc-bar 3.2s var(--ease-out) infinite both; }
+@keyframes sc-check { 0%, 20% { stroke-dashoffset: 60; } 45%, 100% { stroke-dashoffset: 0; } }
+.sc-check { stroke-dasharray: 60; animation: sc-check 3s var(--ease-out) infinite both; }
+@keyframes sc-dot { 0%, 60%, 100% { transform: translateY(0); opacity: 0.5; } 30% { transform: translateY(-3px); opacity: 1; } }
+.sc-dot { transform-origin: 50% 50%; animation: sc-dot 1.2s ease-in-out infinite; }
+@keyframes sc-pop-in { from { transform: scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
+.sc-pop-in { transform-origin: 50% 100%; animation: sc-pop-in 420ms var(--ease-out) both; }
+@keyframes sc-flow { to { stroke-dashoffset: -20; } }
+.sc-flow { animation: sc-flow 0.9s linear infinite; }
+@keyframes sc-type { 0% { clip-path: inset(0 100% 0 0); } 40%, 100% { clip-path: inset(0 0 0 0); } }
+.sc-type { animation: sc-type 3.2s steps(7, end) infinite both; }
+
+/* ---------- Spotlight tours ---------- */
+.tour-hole {
+  position: fixed; border-radius: 16px; pointer-events: none;
+  box-shadow: 0 0 0 2px var(--mint, #a9fdac), 0 0 0 9999px rgb(10 16 13 / 0.58);
+  transition: top 380ms var(--ease-drawer), left 380ms var(--ease-drawer), width 380ms var(--ease-drawer), height 380ms var(--ease-drawer);
+}
+.tour-hole::after {
+  content: ""; position: absolute; inset: -2px; border-radius: inherit; border: 2px solid #a9fdac;
+  animation: tour-ring 2s var(--ease-out) infinite;
+}
+@keyframes tour-ring { 0% { opacity: 0.9; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.06); } }
+.tour-dim { position: fixed; inset: 0; background: rgb(10 16 13 / 0.58); }
+/* On the dark ground, dim harder so the lit part and the card still stand out. */
+.dark .tour-hole { box-shadow: 0 0 0 2px #a9fdac, 0 0 0 9999px rgb(0 0 0 / 0.74); }
+.dark .tour-dim { background: rgb(0 0 0 / 0.74); }
+.dark .tour-card { border-color: var(--line-strong); }
+@keyframes tour-in { from { opacity: 0; transform: translateY(var(--from-y, 8px)) scale(0.96); } to { opacity: 1; transform: none; } }
+.tour-card { animation: tour-in 320ms var(--ease-out) both; }
+
+/* ---------- Welcome (onboarding) ---------- */
+@keyframes wel-next { from { opacity: 0; transform: translateX(28px); } to { opacity: 1; transform: none; } }
+@keyframes wel-back { from { opacity: 0; transform: translateX(-28px); } to { opacity: 1; transform: none; } }
+.wel-next { animation: wel-next 360ms var(--ease-out) both; }
+.wel-back { animation: wel-back 360ms var(--ease-out) both; }
+/* Chunky pressable button with a ledge (the landing page's primary, Duolingo style). */
+.ledge-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  height: 52px; padding: 0 24px; border-radius: 14px; font-weight: 700; font-size: 1.0625rem;
+  background: #44cf6c; color: #0a100d; box-shadow: 0 4px 0 #2a9a4b;
+  transition: transform 140ms var(--ease-out), box-shadow 140ms var(--ease-out), background-color 150ms ease;
+}
+.ledge-btn:hover:not(:disabled) { background: #57d97c; }
+.ledge-btn:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 #2a9a4b; }
+.ledge-btn:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: 0 4px 0 #2a9a4b; }
+/* Big choice cards (teacher or student). */
+.choice-card {
+  border: 2px solid var(--line); border-radius: 22px; box-shadow: 0 4px 0 var(--line);
+  transition: transform 140ms var(--ease-out), box-shadow 140ms var(--ease-out), border-color 150ms ease, background-color 150ms ease;
+}
+.choice-card:hover { border-color: var(--line-strong); box-shadow: 0 4px 0 var(--line-strong); }
+.choice-card:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--line-strong); }
+.choice-card[aria-pressed="true"], .choice-card[aria-checked="true"] { border-color: var(--fg); box-shadow: 0 4px 0 var(--fg); }
+.chip-pick { border: 2px solid var(--line-strong); border-radius: 999px; padding: 8px 14px; font-weight: 600; font-size: 14px; transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease, transform 140ms var(--ease-out); }
+.chip-pick:active { transform: scale(0.97); }
+.chip-pick[aria-checked="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .sc-bob, .sc-hop, .sc-scribble, .sc-press, .sc-burst, .sc-line, .sc-bar, .sc-check, .sc-dot, .sc-pop-in, .sc-flow, .sc-type,
+  .tour-hole::after { animation: none !important; }
+  .sc-check { stroke-dashoffset: 0; }
+  .tour-card, .wel-next, .wel-back { animation: fade-in 150ms ease both !important; }
+  .tour-hole { transition: none; }
+}
+
 /* Tiptap editor */
 .tiptap { outline: none; min-height: 60vh; }
 .tiptap p.is-editor-empty:first-child::before {

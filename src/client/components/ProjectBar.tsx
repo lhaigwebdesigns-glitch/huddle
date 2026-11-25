@@ -91,6 +91,7 @@ export function ProjectBar({
             aria-expanded={tasksOpen}
             className="press flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-fg-muted hover:bg-surface-2 hover:text-fg"
             data-testid="tasks-toggle"
+            data-tour="room-tasks"
           >
             <ListChecks className="h-3.5 w-3.5" aria-hidden />
             Tasks {tasks.length > 0 && <span className="tabular">{tasks.filter((t) => t.done).length}/{tasks.length}</span>}
@@ -149,6 +150,7 @@ export function ProjectBar({
             onClick={() => onReceipt("turnin")}
             className="press flex items-center gap-1 rounded-lg bg-primary px-3 py-1 text-xs font-semibold text-primary-fg hover:bg-primary-hover"
             data-testid="turn-in"
+            data-tour="room-turnin"
           >
             <Send className="h-3.5 w-3.5" /> Turn in
           </button>

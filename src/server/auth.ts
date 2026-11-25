@@ -1,6 +1,7 @@
 import { Hono, type Context } from "hono";
 import type { Env } from "./env";
 import { turnstileOn } from "./turnstile";
+import { addTour, ALL_TOURS, checkOnboarding, cleanTeach, parseTours, type Teach } from "../shared/onboarding";
 
 /**
  * Sign-in. Everyone signs in (Google) to use rooms and classes whenever a sign-in method is set
@@ -26,6 +27,12 @@ export interface User {
    * get teacher tools. null = not chosen yet.
    */
   role?: "teacher" | "student" | null;
+  /** Finished the first-time welcome. */
+  onboarded?: boolean;
+  /** What a teacher teaches (orders the assignment templates). */
+  teach?: Teach | null;
+  /** Tours already seen or skipped. */
+  tours?: string[];
 }
 
 export type Role = "teacher" | "student";
@@ -129,10 +136,24 @@ export function ensureAuthTables(db: D1Database) {
           `ALTER TABLE users ADD COLUMN custom_avatar INTEGER`,
           // Added in Build 14: teacher or student.
           `ALTER TABLE users ADD COLUMN role TEXT`,
+          // Added with onboarding: what a teacher teaches, and the tours seen.
+          `ALTER TABLE users ADD COLUMN teach TEXT`,
+          `ALTER TABLE users ADD COLUMN tours TEXT`,
         ].map((q) =>
           db.prepare(q).run().catch(() => {}),
         ),
       ),
+    )
+    // Added with onboarding. Everyone who already had an account when it shipped counts as
+    // welcomed: the column is added exactly once, and only that run marks them.
+    .then(() =>
+      db
+        .prepare(`ALTER TABLE users ADD COLUMN onboarded INTEGER`)
+        .run()
+        .then(
+          () => db.prepare(`UPDATE users SET onboarded = 1`).run(),
+          () => {},
+        ),
     )
     .then(() => undefined)
     .catch((e) => {
@@ -147,11 +168,18 @@ export async function currentUser(env: Env, req: Request): Promise<User | null> 
   if (!token || !env.DB) return null;
   await ensureAuthTables(env.DB);
   const row = await env.DB.prepare(
-    `SELECT u.id, u.uid, u.name, u.email, u.avatar, u.provider, u.color, u.role FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?1 AND s.expires_at > ?2`,
+    `SELECT u.id, u.uid, u.name, u.email, u.avatar, u.provider, u.color, u.role, u.onboarded, u.teach, u.tours FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?1 AND s.expires_at > ?2`,
   )
     .bind(await sha256(token), Date.now())
-    .first<User>();
-  return row ?? null;
+    .first<Omit<User, "onboarded" | "teach" | "tours"> & { onboarded: number | null; teach: string | null; tours: string | null }>();
+  if (!row) return null;
+  let teach: Teach | null = null;
+  try {
+    teach = row.teach ? cleanTeach(JSON.parse(row.teach)) : null;
+  } catch {
+    /* ignore */
+  }
+  return { ...row, onboarded: row.onboarded === 1, teach, tours: parseTours(row.tours) };
 }
 
 async function upsertUser(db: D1Database, provider: string, p: { id: string; name: string; email: string | null; avatar: string | null }, guestUid: string) {
@@ -238,6 +266,34 @@ auth.post("/role", async (c) => {
   return c.json({ ok: true, role });
 });
 
+/**
+ * Finish the first-time welcome: teacher or student (once; a student account stays a student),
+ * the name people see, and what a teacher teaches.
+ */
+auth.post("/onboarding", async (c) => {
+  const user = await currentUser(c.env, c.req.raw);
+  if (!user || !c.env.DB) return c.json({ error: "Sign in first." }, 401);
+  const check = checkOnboarding(await c.req.json().catch(() => null), !!user.role);
+  if (!check.ok) return c.json({ error: check.error }, 400);
+  const b = check.value;
+  const role = await claimRole(c.env, user, b.role);
+  if (role !== b.role) return c.json({ error: role === "student" ? "This is a student account, so it can't use teacher tools." : "This is already a teacher account.", role }, 409);
+  if (b.name) await c.env.DB.prepare(`UPDATE users SET name = ?1, custom_name = 1 WHERE id = ?2`).bind(b.name, user.id).run();
+  if (b.teach) await c.env.DB.prepare(`UPDATE users SET teach = ?1 WHERE id = ?2`).bind(JSON.stringify(b.teach), user.id).run();
+  await c.env.DB.prepare(`UPDATE users SET onboarded = 1 WHERE id = ?1`).bind(user.id).run();
+  return c.json({ user: await currentUser(c.env, c.req.raw) });
+});
+
+/** A tour was finished or skipped (`id: "*"` turns tips off, `reset` shows them all again). */
+auth.post("/tours", async (c) => {
+  const user = await currentUser(c.env, c.req.raw);
+  if (!user || !c.env.DB) return c.json({ error: "Sign in first." }, 401);
+  const b = await c.req.json<{ id?: unknown; reset?: unknown }>().catch(() => ({}) as { id?: unknown; reset?: unknown });
+  const list = b.reset === true ? [] : addTour(user.tours ?? [], typeof b.id === "string" ? b.id : "");
+  await c.env.DB.prepare(`UPDATE users SET tours = ?1 WHERE id = ?2`).bind(JSON.stringify(list), user.id).run();
+  return c.json({ tours: list });
+});
+
 auth.get("/me", async (c) => {
   const user = await currentUser(c.env, c.req.raw);
   return c.json({ user, isAdmin: isAdminUser(c.env, user) });
@@ -261,6 +317,9 @@ auth.get("/login/:provider", async (c) => {
       { id: key || display.toLowerCase(), name: display, email: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null, avatar: null },
       guestUid,
     );
+    // Tests can skip the welcome and the tours.
+    if (c.req.query("onboarded") === "1") await c.env.DB.prepare(`UPDATE users SET onboarded = 1 WHERE id = ?1`).bind(userId).run();
+    if (c.req.query("tours") === "off") await c.env.DB.prepare(`UPDATE users SET tours = ?1 WHERE id = ?2`).bind(JSON.stringify([ALL_TOURS]), userId).run();
     return startSession(c, userId, to);
   }
   const p = PROVIDERS[name];
