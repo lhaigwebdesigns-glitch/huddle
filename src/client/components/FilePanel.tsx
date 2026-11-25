@@ -2,7 +2,7 @@ import { confirmDialog } from "./Dialogs";
 import { lazy, memo, Suspense, useEffect, useState, type ComponentType } from "react";
 import type { FileVersion, RoomFile } from "../../shared/protocol";
 import { FILE_INFO, type FileKind } from "../../shared/files";
-import { History as HistoryIcon, Lock, X } from "lucide-react";
+import { History as HistoryIcon, Lock, Play, X } from "lucide-react";
 import { FileIcon } from "./FileIcon";
 import type { Identity } from "../lib/identity";
 import { useYDoc, type YConn } from "../lib/useYDoc";
@@ -16,6 +16,9 @@ export interface EditorProps extends YConn {
   /** The project was turned in: show the file but don't allow edits. */
   readOnly?: boolean;
 }
+
+// The writing replay loads only when someone opens it.
+const ReplayView = lazy(() => import("./ReplayView"));
 
 // Every editor loads on first use (see src/client/editors.ts) so the chat stays fast.
 const EDITORS: Partial<Record<FileKind, ComponentType<EditorProps>>> = {};
@@ -122,8 +125,12 @@ export const FilePanel = memo(function FilePanel({
 }) {
   const [title, setTitle] = useState(file.title);
   const [history, setHistory] = useState(false);
+  const [replay, setReplay] = useState(false);
   useEffect(() => setTitle(file.title), [file.title]);
-  useEffect(() => setHistory(false), [file.id]);
+  useEffect(() => {
+    setHistory(false);
+    setReplay(false);
+  }, [file.id]);
   return (
     <div className="panel-in flex h-full min-h-0 flex-col bg-bg" data-testid="file-panel" data-kind={file.kind}>
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
@@ -137,6 +144,17 @@ export const FilePanel = memo(function FilePanel({
           onBlur={() => title.trim() && title !== file.title && onRename(title.trim())}
           onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
         />
+        {file.kind === "doc" && (
+          <button
+            onClick={() => setReplay((r) => !r)}
+            className={`press inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-fg-muted hover:bg-surface-2 hover:text-fg ${replay ? "bg-surface-2 text-fg" : ""}`}
+            title="Writing replay: watch how this doc was written"
+            aria-pressed={replay}
+            data-testid="replay-open"
+          >
+            <Play className="h-3.5 w-3.5" /> Replay
+          </button>
+        )}
         <button
           onClick={() => setHistory((h) => !h)}
           className={`press rounded-lg p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg ${history ? "bg-surface-2 text-fg" : ""}`}
@@ -157,7 +175,13 @@ export const FilePanel = memo(function FilePanel({
           {lockedNote ?? "This project was turned in, so this file is read-only. Ask your teacher to reopen it to make changes."}
         </div>
       )}
-      <Body key={file.id} room={room} file={file} me={me} locked={locked} />
+      {replay ? (
+        <Suspense fallback={<div className="p-6 text-sm text-fg-subtle">Loading the replay…</div>}>
+          <ReplayView room={room} file={file} onClose={() => setReplay(false)} />
+        </Suspense>
+      ) : (
+        <Body key={file.id} room={room} file={file} me={me} locked={locked} />
+      )}
     </div>
   );
 });

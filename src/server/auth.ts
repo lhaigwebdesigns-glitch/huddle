@@ -6,7 +6,7 @@ import { turnstileOn } from "./turnstile";
  * Sign-in. Everyone signs in (Google) to use rooms and classes whenever a sign-in method is set
  * up, unless REQUIRE_SIGNIN=0. The account is who you are everywhere: rooms, classes, rosters.
  *
- * Minimal OAuth 2.0 (GitHub, Google) with no extra dependencies. Sessions are random tokens
+ * Minimal OAuth 2.0 (Google) with no extra dependencies. Sessions are random tokens
  * in an HttpOnly cookie; only their SHA-256 hash is stored in D1.
  */
 
@@ -52,24 +52,8 @@ type Provider = {
   profile: (token: string) => Promise<{ id: string; name: string; email: string | null; avatar: string | null }>;
 };
 
+// Google only: schools run on Google accounts, and students use their school one.
 const PROVIDERS: Record<string, Provider> = {
-  github: {
-    authorize: "https://github.com/login/oauth/authorize",
-    token: "https://github.com/login/oauth/access_token",
-    scope: "read:user user:email",
-    clientId: (e) => e.GITHUB_CLIENT_ID,
-    clientSecret: (e) => e.GITHUB_CLIENT_SECRET,
-    async profile(token) {
-      const h = { authorization: `Bearer ${token}`, "user-agent": "Cairn", accept: "application/vnd.github+json" };
-      const u: any = await (await fetch("https://api.github.com/user", { headers: h })).json();
-      let email: string | null = u.email ?? null;
-      if (!email) {
-        const emails = (await (await fetch("https://api.github.com/user/emails", { headers: h })).json().catch(() => [])) as any[];
-        email = emails.find?.((x) => x.primary && x.verified)?.email ?? null;
-      }
-      return { id: String(u.id), name: u.name || u.login, email, avatar: u.avatar_url ?? null };
-    },
-  },
   google: {
     authorize: "https://accounts.google.com/o/oauth2/v2/auth",
     token: "https://oauth2.googleapis.com/token",
@@ -85,8 +69,7 @@ const PROVIDERS: Record<string, Provider> = {
 };
 
 export function enabledProviders(env: Env): string[] {
-  // Google first: schools run on Google accounts, so it's the main way in.
-  const out = ["google", ...Object.keys(PROVIDERS).filter((p) => p !== "google")].filter(
+  const out = Object.keys(PROVIDERS).filter(
     (p) => PROVIDERS[p] && PROVIDERS[p].clientId(env) && PROVIDERS[p].clientSecret(env),
   );
   if (env.DEV_AUTH === "1") out.push("dev");
@@ -175,7 +158,7 @@ async function upsertUser(db: D1Database, provider: string, p: { id: string; nam
   await ensureAuthTables(db);
   const existing = await db.prepare(`SELECT id, uid FROM users WHERE provider = ?1 AND provider_id = ?2`).bind(provider, p.id).first<{ id: string; uid: string }>();
   if (existing) {
-    // Keep a name or picture you set yourself; otherwise refresh them from Google/GitHub.
+    // Keep a name or picture you set yourself; otherwise refresh them from Google.
     await db
       .prepare(
         `UPDATE users SET email = ?2,

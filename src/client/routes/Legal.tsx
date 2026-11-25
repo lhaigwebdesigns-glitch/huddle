@@ -41,7 +41,7 @@ export function Privacy() {
         <ul>
           <li><b>Room content:</b> messages, files (docs, sheets, slides, whiteboards, forms, mini-apps), uploads, tasks and room memory, so everyone in the room sees the same thing.</li>
           <li><b>Your display name</b> as you type it when joining a room or class.</li>
-          <li><b>If you sign in with Google or GitHub:</b> your name, email address and profile picture from that account, and the rooms you've joined. We never receive your password.</li>
+          <li><b>When you sign in with Google:</b> your name, email address and profile picture from that account, and the rooms you've joined. We never receive your password.</li>
           <li><b>For school projects:</b> who wrote what in the project's files (to build the contribution receipt), who turned it in, task lists, notes students add to their receipt, and grades the teacher gives.</li>
           <li><b>Your IP address</b>, briefly, to limit abuse (for example how many rooms one address can create per hour).</li>
           <li><b>Feedback</b> you send, and daily counts of AI usage (no message content).</li>
@@ -70,7 +70,7 @@ export function Privacy() {
           <li><b>Cloudflare</b> hosts Cairn and stores the data above.</li>
           <li><b>AI providers</b> (such as Groq, NVIDIA, OpenRouter and Cloudflare Workers AI) receive the conversation and file contents needed to write a reply.</li>
           <li><b>Search providers</b> (such as Tavily) receive the search terms when the AI searches the web.</li>
-          <li><b>Google or GitHub</b>, only if you choose to sign in with them.</li>
+          <li><b>Google</b>, which you sign in with.</li>
           <li><b>Google Classroom</b>, only when a teacher uses "Share to Classroom", which opens Classroom with a link. Cairn doesn't read Classroom data today.</li>
         </ul>
         <p className="mt-2">We don't sell your data, show ads, or use it for anything other than running Cairn.</p>

@@ -9,6 +9,10 @@ import { applySlideOps, deckOutline, slidesOf, type SlideOp } from "../shared/sl
 import { boardSummary, queueDrawing } from "../shared/whiteboard-model";
 import { addVersion, latestHtml } from "../shared/artifact-model";
 import { AI_AUTHOR, dayKey, insertedChars, PASTE_CHARS, sharesOf, type Author } from "../shared/contrib";
+import { charsInUpdate, mergeSteps, replayToJson, type ReplayEntry, type ReplayJson } from "../shared/replay";
+
+/** A doc's replay stops recording past this much (the doc itself keeps working). */
+const MAX_REPLAY_BYTES = 3_000_000;
 
 /** What one person typed in a file on one day: characters, and large pastes (time, size). */
 interface Typing {
@@ -57,9 +61,21 @@ export class Doc extends YServer<Env> {
   /** Who server-side changes count for: the AI by default; null = nobody (restores, copies, starter content). */
   private actor: Author | null = AI_AUTHOR;
 
+  // ---------- writing replay (docs only) ----------
+
+  /** Steps not stored yet (they're stored with the doc, every few seconds). */
+  private replayPending: ReplayEntry[] = [];
+  /** How many stored chunks of steps there are, their size, and whether recording stopped. */
+  private replayMeta: { n: number; bytes: number; truncated: boolean } | null = null;
+  /** The doc as it was when recording began (stored with the first steps). */
+  private replayBase: Uint8Array | null = null;
+
   async onStart() {
     await super.onStart();
     this.document.on("afterTransaction", (tr: Y.Transaction) => this.attribute(tr));
+    // Recording starts from the doc as it is now (older docs replay from today on).
+    if (!this.replayMeta) this.replayBase = Y.encodeStateAsUpdate(this.document);
+    this.document.on("update", (update: Uint8Array, origin: unknown) => this.recordStep(update, origin));
     // People announce themselves (uid, name) in awareness, keyed by the same client id.
     this.document.awareness.on("change", () => this.learnAuthors());
   }
@@ -104,6 +120,62 @@ export class Doc extends YServer<Env> {
       }
     }
     if (learned) this.ctx.waitUntil(this.ctx.storage.put("authors", [...this.authors]));
+  }
+
+  /** One change to a doc, for the replay: when, who, and how much text it added. */
+  private recordStep(update: Uint8Array, origin: unknown) {
+    if (!this.document.share.has("default") || this.replayMeta?.truncated) return;
+    const fromPerson = !!origin && typeof (origin as { send?: unknown }).send === "function";
+    let by: string | null;
+    if (fromPerson) {
+      const client = Y.decodeUpdate(update).structs[0]?.id.client;
+      by = client === undefined ? null : (this.authors.get(client)?.uid ?? `c:${client}`);
+    } else by = this.actor?.uid ?? null;
+    this.replayPending.push({ at: Date.now(), by, chars: charsInUpdate(update), u: update });
+  }
+
+  private async flushReplay() {
+    if (!this.replayPending.length) return;
+    const steps = mergeSteps(this.replayPending);
+    this.replayPending = [];
+    const meta = this.replayMeta ?? { n: 0, bytes: 0, truncated: false };
+    if (meta.truncated) return;
+    if (!this.replayMeta) await this.writeState("replay:base", this.replayBase ?? new Uint8Array());
+    const size = steps.reduce((n, e) => n + e.u.length, 0);
+    if (meta.bytes + size > MAX_REPLAY_BYTES) meta.truncated = true;
+    else {
+      await this.ctx.storage.put(`replay:${meta.n}`, steps);
+      meta.n++;
+      meta.bytes += size;
+    }
+    this.replayMeta = meta;
+    await this.ctx.storage.put("replay:meta", meta);
+  }
+
+  /** The whole replay of this doc (null for other kinds of files). */
+  async replayLog(): Promise<ReplayJson | null> {
+    if (!this.document.share.has("default")) return null;
+    await this.flushReplay();
+    this.learnAuthors();
+    const names: Record<string, string> = { [AI_AUTHOR.uid]: AI_AUTHOR.name };
+    for (const a of this.authors.values()) names[a.uid] = a.name;
+    const meta = this.replayMeta;
+    if (!meta) return replayToJson({ base: Y.encodeStateAsUpdate(this.document), entries: [], truncated: false, names });
+    const base = (await this.readState("replay:base")) ?? new Uint8Array();
+    const entries: ReplayEntry[] = [];
+    const keys = Array.from({ length: meta.n }, (_, i) => `replay:${i}`);
+    for (let i = 0; i < keys.length; i += 100) {
+      const got = await this.ctx.storage.get<ReplayEntry[]>(keys.slice(i, i + 100));
+      for (const k of keys.slice(i, i + 100)) entries.push(...(got.get(k) ?? []));
+    }
+    // Steps from before we knew someone's name are credited to them now.
+    const resolve = (by: string | null) => (by?.startsWith("c:") ? (this.authors.get(Number(by.slice(2)))?.uid ?? null) : by);
+    return replayToJson({
+      base: new Uint8Array(base),
+      entries: entries.map((e) => ({ at: e.at, by: resolve(e.by), chars: e.chars, u: new Uint8Array(e.u) })),
+      truncated: meta.truncated,
+      names,
+    });
   }
 
   /** Edits that arrived before the person's name did get credited once they show up. */
@@ -176,6 +248,7 @@ export class Doc extends YServer<Env> {
     this.authors = new Map((await this.ctx.storage.get<[number, Author][]>("authors")) ?? []);
     this.activity = (await this.ctx.storage.get<Record<string, Record<string, number>>>("activity")) ?? {};
     this.typing = (await this.ctx.storage.get<Record<string, Record<string, Typing>>>("typing")) ?? {};
+    this.replayMeta = (await this.ctx.storage.get<{ n: number; bytes: number; truncated: boolean }>("replay:meta")) ?? null;
     const state = await this.readState("ydoc");
     if (state) return docFromState(state);
   }
@@ -185,6 +258,7 @@ export class Doc extends YServer<Env> {
     await this.writeState("ydoc", state);
     await this.ctx.storage.put("activity", this.activity);
     await this.ctx.storage.put("typing", this.typing);
+    await this.flushReplay();
     // Version history: snapshot periodically while the file is being edited.
     const versions = (await this.ctx.storage.get<FileVersion[]>("versions")) ?? [];
     const lastAt = versions[versions.length - 1]?.at ?? 0;

@@ -923,6 +923,18 @@ try {
     document.querySelector('[data-testid="doc-editor"]').editor.chain().focus("end").insertContent(`<p>${"Reading responses help me think about the story. ".repeat(10)}</p>`).run(),
   );
   await ben.waitForTimeout(2500);
+  // Writing replay: Ben can watch his own doc being written, with the paste marked.
+  await ben.getByTestId("replay-open").click();
+  await ben.getByTestId("replay-summary").getByText(/1 large paste/).waitFor({ timeout: 15000 });
+  await ben.getByTestId("replay-scrub").fill(String(await ben.getByTestId("replay-scrub").getAttribute("max")));
+  await ben.getByTestId("replay-step").getByText(/pasted about \d+ words/).waitFor();
+  await ben.getByTestId("replay-doc").getByText(/Reading responses help me think/).first().waitFor();
+  await ben.getByTestId("replay-scrub").fill("0");
+  ok((await ben.getByTestId("replay-doc").getByText(/Reading responses help me think/).count()) === 0, "a student can replay how their doc was written, with large pastes marked");
+  await ben.getByTestId("replay-play").click();
+  await ben.getByTestId("replay-doc").getByText(/Reading responses help me think/).first().waitFor({ timeout: 20000 });
+  ok(true, "the replay plays forward by itself");
+  await ben.getByTestId("replay-close").click();
   await ben.getByTestId("turn-in").click();
   await ben.getByTestId("timeline-paste").first().waitFor({ timeout: 20000 });
   ok(true, "a large paste shows on the work timeline");
@@ -1019,6 +1031,16 @@ try {
   await park.getByTestId("answer-key-tab").click();
   await park.getByTestId("answer-key").getByText("The nucleus holds the cell's DNA.").waitFor({ timeout: 15000 });
   ok(true, "the answer key shows next to the student's work when grading");
+  // The teacher can replay the student's doc while grading; people outside the room can't.
+  await park.getByRole("tab", { name: /Cell worksheet/ }).click();
+  await park.getByTestId("replay-open").click();
+  await park.getByTestId("replay-summary").waitFor({ timeout: 15000 });
+  await park.getByTestId("replay-scrub").fill(String(await park.getByTestId("replay-scrub").getAttribute("max")));
+  await park.getByTestId("replay-doc").locator("h1", { hasText: "Cell Worksheet" }).waitFor();
+  ok(true, "the teacher can replay a student's doc from the grading screen");
+  const replayRefused = await kids[3].evaluate(async (p) => (await fetch(p)).status, `/api/rooms/${caraRoom}/files/x1/replay`);
+  const replayKey = await cara.evaluate(async (p) => (await fetch(p)).status, `/api/rooms/${wsRoom}/files/${keyId}/replay`);
+  ok(replayRefused === 403 && replayKey === 403, "only people in the room (and its teacher) can replay its docs");
 
   // ---------- Timed assignments: closed outside the set times, more time on request ----------
   const classId = classUrl.split("/classes/")[1];

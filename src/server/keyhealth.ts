@@ -111,12 +111,6 @@ export async function checkKeys(env: Env, origin: string): Promise<KeyCheck[]> {
       },
     ],
     [
-      "GITHUB_CLIENT_ID / SECRET",
-      "Sign in with GitHub",
-      env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET,
-      () => oauthCheck("https://github.com/login/oauth/access_token", env.GITHUB_CLIENT_ID!, env.GITHUB_CLIENT_SECRET!, origin, "github"),
-    ],
-    [
       "GOOGLE_CLIENT_ID / SECRET",
       "Sign in with Google",
       env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET,
