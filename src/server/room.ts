@@ -357,26 +357,26 @@ export class Room extends Server<Env> {
       ? url.searchParams.get("color")!
       : "#6366f1";
 
-    if (!this.settings) return conn.close(4004, "Room not found");
-    if (!uid) return conn.close(4000, "Missing user id");
+    if (!this.settings) return this.refuse(conn, 4004, "Room not found");
+    if (!uid) return this.refuse(conn, 4000, "Missing user id");
     // A teacher never sits in a class group's room (they never see its chat): send them to grading.
     const link = this.settings.classLink;
     if (link && uid === this.settings.hostId) {
       this.send(conn, { t: "redirect", to: `/classes/${link.classId}/a/${link.assignmentId}/${this.name}` });
       return conn.close(4010, "Teachers grade from the class page");
     }
-    if (this.settings.worksheet && uid !== this.settings.hostId) return conn.close(4003, "This is a teacher's worksheet. Open your assignment link to get your own copy.");
-    if ((await this.bans()).some((b) => b.uid === uid)) return conn.close(4003, "The host banned you from this room.");
+    if (this.settings.worksheet && uid !== this.settings.hostId) return this.refuse(conn, 4003, "This is a teacher's worksheet. Open your assignment link to get your own copy.");
+    if ((await this.bans()).some((b) => b.uid === uid)) return this.refuse(conn, 4003, "The host banned you from this room.");
     const known = (await this.ctx.storage.get<string[]>("members")) ?? [];
     // A class room is only for the students the class placed in it (via the assignment link).
     if (link && uid !== this.settings.hostId && !known.includes(uid)) {
       const allowed = (await this.ctx.storage.get<string[]>("allowed")) ?? [];
-      if (!allowed.includes(uid)) return conn.close(4003, "This room belongs to a class. Open it from your assignment link.");
+      if (!allowed.includes(uid)) return this.refuse(conn, 4003, "This room belongs to a class. Open it from your assignment link.");
     }
     if (this.settings.locked && uid !== this.settings.hostId && !known.includes(uid))
-      return conn.close(4003, "This room is locked");
+      return this.refuse(conn, 4003, "This room is locked");
     if (this.members().filter((m) => m.uid !== uid).length >= MAX_ROOM_SIZE)
-      return conn.close(4001, "Room is full");
+      return this.refuse(conn, 4001, "Room is full");
     if (!known.includes(uid)) await this.ctx.storage.put("members", [...known, uid].slice(-500));
     await this.rememberPerson(uid, name, color);
 
@@ -1748,6 +1748,12 @@ export class Room extends Server<Env> {
 
   private broadcastMsg(m: ServerMsg) {
     this.broadcast(JSON.stringify(m));
+  }
+
+  /** Turns someone away: says why first (that always arrives), then closes the connection. */
+  private refuse(c: Connection, code: number, reason: string) {
+    this.send(c, { t: "refused", reason });
+    c.close(code, reason);
   }
 
   private send(c: Connection, m: ServerMsg) {
