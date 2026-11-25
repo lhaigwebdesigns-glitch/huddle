@@ -715,7 +715,7 @@ export function Chat({
               {uploadErr && <span className="text-red-600 dark:text-red-400" role="alert">{uploadErr}</span>}
             </div>
           )}
-          <div className="rounded-[24px] border border-line-strong bg-surface p-2 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.12)] transition-[border-color,box-shadow] duration-200 focus-within:border-fg/40 focus-within:shadow-[0_10px_30px_-12px_rgba(0,0,0,0.2)]">
+          <div className="rounded-[24px] border border-line-strong bg-surface p-2 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.12)] transition-[border-color,box-shadow] duration-200 focus-within:border-fg/40 focus-within:shadow-[0_10px_30px_-12px_rgba(0,0,0,0.2)]" data-tour="room-chat">
             <input
               ref={fileRef}
               type="file"

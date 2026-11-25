@@ -15,7 +15,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import { useAccount, signInUrl } from "../lib/account";
+import { needsWelcome, useAccount, signInUrl } from "../lib/account";
 import { AccountMenu } from "../components/AccountMenu";
 import { ProfilePanel } from "../components/ProfilePanel";
 import { NewProjectDialog } from "../components/NewProjectDialog";
@@ -66,6 +66,8 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
 
   useEffect(() => {
     if (account.user === null) nav("/", { replace: true });
+    // New accounts get the welcome first.
+    if (needsWelcome(account.user)) return nav("/welcome", { replace: true });
     if (account.user) {
       document.title = view === "profile" ? "Profile · Cairn" : "Your rooms · Cairn";
       load();

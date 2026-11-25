@@ -5,7 +5,9 @@ import { ArrowLeft, ArrowRight, CalendarClock, Check, CircleCheck, Clock, Copy, 
 import { OFFICE_ACCEPT, officeKind } from "../lib/officeFiles";
 import { getIdentity } from "../lib/identity";
 import type { Report } from "../../shared/protocol";
-import { PROVIDER_LABEL, useAccount, signInUrl } from "../lib/account";
+import { needsWelcome, PROVIDER_LABEL, useAccount, signInUrl } from "../lib/account";
+import { TourButton, useAutoTour } from "../components/Tour";
+import { exampleTitle, orderTemplates, type Teach } from "../../shared/onboarding";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { formatCode } from "../../shared/code";
 import { timeAgo } from "../components/PartyLists";
@@ -48,6 +50,7 @@ function TeacherShell({ children, back }: { children: React.ReactNode; back?: { 
           </Link>
         )}
         <span className="flex-1" />
+        <TourButton />
         <Link to="/classes" className="hidden text-sm font-medium text-fg-muted hover:text-fg sm:inline" data-testid="nav-today">
           Today
         </Link>
@@ -141,6 +144,12 @@ export function ClassesPage() {
     api<{ classes: ClassInfo[] }>("/api/classes").then((d) => setList(d.classes ?? []));
     api<TodayView>("/api/classes/today").then((d) => !d.error && setToday(d));
   }, [account.user]);
+  // New accounts get the welcome first.
+  useEffect(() => {
+    if (needsWelcome(account.user)) nav("/welcome", { replace: true });
+  }, [account.user]);
+  useAutoTour("teacher-today", !!today && account.user?.role === "teacher", account.user?.tours, true);
+  if (needsWelcome(account.user)) return null;
   if (!account.user) return <TeacherShell><SignInFirst /></TeacherShell>;
   if (account.user.role === "student") return <TeacherShell><StudentOnly /></TeacherShell>;
   if (!account.user.role) return <TeacherShell><TeacherOrStudent onTeacher={() => location.reload()} /></TeacherShell>;
@@ -154,12 +163,14 @@ export function ClassesPage() {
   return (
     <TeacherShell>
       <div className="mx-auto max-w-3xl px-4 pb-16 pt-8 sm:px-8">
-        <h1 className="rise text-3xl font-extrabold tracking-tight">Today</h1>
-        <p className="rise rise-1 mt-1 text-fg-muted">What needs you, across all your classes.</p>
+        <div className="w-fit" data-tour="today">
+          <h1 className="rise text-3xl font-extrabold tracking-tight">Today</h1>
+          <p className="rise rise-1 mt-1 text-fg-muted">What needs you, across all your classes.</p>
+        </div>
         {today && <GettingStarted setup={today.setup} />}
         {today && <TodayPanel today={today} />}
         <h2 className="mt-10 text-sm font-semibold uppercase tracking-wide text-fg-subtle">Your classes</h2>
-        <form onSubmit={create} className="mt-3 flex gap-2 rounded-2xl border border-line bg-surface p-2 shadow-sm">
+        <form onSubmit={create} className="mt-3 flex gap-2 rounded-2xl border border-line bg-surface p-2 shadow-sm" data-tour="new-class">
           <Input id="new-class-name" aria-label="Class name" placeholder="New class name (e.g. Period 3 History)" value={name} onChange={(e) => setName(e.target.value)} className="border-0 bg-transparent shadow-none" />
           <Button type="submit" data-testid="create-class">
             <Plus className="h-4 w-4" /> New class
@@ -458,7 +469,8 @@ const WIZARD_STEPS = ["What is it?", "How do students work?", "Share it"] as con
  * New assignment, one step at a time: what it is, how students work on it, then share the link.
  * Every choice has a sensible default, so a teacher can fill in a title, click Next twice and be done.
  */
-function NewAssignmentDialog({ classId, classCode, students, onDone, onClose }: { classId: string; classCode: string; students: number; onDone: () => void; onClose: () => void }) {
+function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onClose }: { classId: string; classCode: string; students: number; teach?: Teach | null; onDone: () => void; onClose: () => void }) {
+  const templates = useMemo(() => orderTemplates(PROJECT_TEMPLATES, teach), [teach]);
   const [step, setStep] = useState(0);
   const [title, setTitle] = useState("");
   const [templateId, setTemplateId] = useState("");
@@ -562,14 +574,14 @@ function NewAssignmentDialog({ classId, classCode, students, onDone, onClose }: 
           <div className="mt-5 space-y-4">
             <label className="block">
               <span className="text-sm font-medium">Title</span>
-              <Input autoFocus aria-label="Assignment title" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Causes of World War I" className="mt-1" />
+              <Input autoFocus aria-label="Assignment title" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={exampleTitle(teach)} className="mt-1" />
             </label>
             <fieldset>
               <legend className="text-sm font-medium">
                 Start from a template <span className="font-normal text-fg-subtle">(optional)</span>
               </legend>
               <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Template">
-                {[{ id: "", label: "Blank" }, ...PROJECT_TEMPLATES].map((t) => (
+                {[{ id: "", label: "Blank" }, ...templates].map((t) => (
                   <button
                     key={t.id || "blank"}
                     type="button"
@@ -905,7 +917,7 @@ function ClassListSection({ view, onChange }: { view: ClassView; onChange: () =>
   };
   const joined = view.roster.filter((r) => r.joined).length;
   return (
-    <section className="mt-10" data-testid="class-list">
+    <section className="mt-10" data-testid="class-list" data-tour="class-list">
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-subtle">Class list</h2>
@@ -1128,6 +1140,7 @@ export function ClassPage() {
     return () => clearInterval(t);
   }, [account.user, load]);
   const link = useMemo(() => (view ? `${location.origin}/c/${view.class.code}` : ""), [view]);
+  useAutoTour("teacher-class", !!view && account.user?.role === "teacher", account.user?.tours, true);
   if (!account.user) return <TeacherShell><SignInFirst /></TeacherShell>;
   if (account.user.role === "student") return <TeacherShell><StudentOnly /></TeacherShell>;
   if (err) return <TeacherShell back={{ to: "/classes", label: "Today" }}><p className="p-8 text-sm text-fg-muted">{err}</p></TeacherShell>;
@@ -1140,7 +1153,7 @@ export function ClassPage() {
             <h1 className="text-3xl font-extrabold tracking-tight" data-testid="class-name">{view.class.name}</h1>
             <p className="mt-1 text-sm text-fg-muted">{view.students.length} student{view.students.length === 1 ? "" : "s"} joined</p>
           </div>
-          <div className="rounded-2xl border border-line px-4 py-2.5">
+          <div className="rounded-2xl border border-line px-4 py-2.5" data-tour="class-code">
             <div className="text-[11px] font-medium uppercase tracking-wide text-fg-subtle">Class code</div>
             <div className="flex items-center gap-2">
               <span className="font-mono text-lg font-semibold tracking-[0.14em]" data-testid="class-code">{formatCode(view.class.code)}</span>
@@ -1178,7 +1191,7 @@ export function ClassPage() {
           <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-subtle">Assignments</h2>
           <span className="flex-1" />
           {view.assignments.length > 0 && (
-            <Button onClick={() => setNewA(true)} data-testid="new-assignment-btn">
+            <Button onClick={() => setNewA(true)} data-testid="new-assignment-btn" data-tour="new-assignment">
               <Plus className="h-4 w-4" /> New assignment
             </Button>
           )}
@@ -1188,7 +1201,7 @@ export function ClassPage() {
             <RockArt className="mx-auto mb-3 h-20 w-20" body={TEAL} pose="carry" prop="pencil" />
             <p className="font-display text-lg font-bold">No assignments yet</p>
             <p className="mx-auto mt-1 max-w-sm text-sm text-fg-muted">Make one, post its link in Google Classroom, and students join the class just by opening it.</p>
-            <Button className="mt-4" onClick={() => setNewA(true)} data-testid="new-assignment-btn">
+            <Button className="mt-4" onClick={() => setNewA(true)} data-testid="new-assignment-btn" data-tour="new-assignment">
               <Plus className="h-4 w-4" /> Make your first assignment
             </Button>
           </div>
@@ -1261,6 +1274,7 @@ export function ClassPage() {
           classId={view.class.id}
           classCode={view.class.code}
           students={view.students.length}
+          teach={account.user.teach}
           onClose={() => setNewA(false)}
           onDone={() => {
             setNewA(false);
@@ -1295,7 +1309,7 @@ function GettingStarted({ setup }: { setup: TodayView["setup"] }) {
   ];
   const current = steps.findIndex((x) => !x.done);
   return (
-    <section className="rise rise-2 mt-6 rounded-[20px] border border-line bg-surface p-5" data-testid="getting-started">
+    <section className="rise rise-2 mt-6 rounded-[20px] border border-line bg-surface p-5" data-testid="getting-started" data-tour="getting-started">
       <div className="flex items-center gap-2">
         <RockArt className="h-9 w-9 -my-2" body={PERI} pose="cheer" />
         <h2 className="font-semibold">Getting started</h2>
