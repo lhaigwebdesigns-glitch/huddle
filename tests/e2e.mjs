@@ -831,7 +831,7 @@ try {
   await kids[0].goto(classLink);
   await kids[0].getByText("You're in this class").waitFor();
   await park.reload();
-  await park.getByTestId("roster").getByText("Dee").waitFor();
+  await park.getByTestId("roster").getByText("Dee", { exact: true }).waitFor();
   ok(true, "students join with the class link, and the teacher sees the roster");
   // Every page sits in the app: a student gets back to their class without the code.
   await kids[1].goto(`${BASE}/dashboard`);
@@ -929,7 +929,9 @@ try {
   await first.getByTestId("unsubmit").waitFor({ state: "detached", timeout: 10000 });
   ok((await first.getByTestId("turned-in").count()) === 1, "once it's graded, the student can't unsubmit it any more");
   await park.goto(classUrl);
+  await park.getByTestId("assignment-more").first().click();
   const href = await park.getByTestId("export-csv").getAttribute("href");
+  await park.keyboard.press("Escape");
   const text = await park.evaluate(async (u) => (await fetch(u)).text(), href);
   const lines = text.trim().split(/\r\n/);
   ok(lines.length === 5 && lines.some((l) => /,90,100,Great sources\.$/.test(l)) && lines.some((l) => /,100,100,100,Great sources\.$/.test(l)), "the grades CSV has every student, with per-student grades");
@@ -1227,7 +1229,7 @@ try {
   // Removing a student: off the roster and out of the group rooms.
   await park.getByLabel("Remove Dee").click();
   await park.getByTestId("dialog-confirm").click();
-  await park.getByTestId("roster").getByText("Dee").waitFor({ state: "detached" });
+  await park.getByTestId("roster").getByText("Dee", { exact: true }).waitFor({ state: "detached" });
   ok(true, "the teacher can remove a student from the class");
   const dee = kids[3];
   // They're sent out of the room right away…
