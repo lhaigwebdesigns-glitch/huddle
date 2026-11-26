@@ -11,6 +11,7 @@ import { AppShell, refreshMyClasses, tint } from "../components/AppShell";
 import { Field, Modal } from "../components/Modal";
 import { pickFromDrive, useDrive } from "../lib/googleDrive";
 import { DriveMark } from "../components/DriveMark";
+import { EmailPills } from "../components/EmailPills";
 import { exampleTitle, orderTemplates, type Teach } from "../../shared/onboarding";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { formatCode } from "../../shared/code";
@@ -910,7 +911,10 @@ function WaitingSection({ view, onChange }: { view: ClassView; onChange: () => v
  * waits for the teacher. A teacher can open the class to anyone with the code instead.
  */
 function ClassListSection({ view, onChange }: { view: ClassView; onChange: () => void }) {
+  const [pills, setPills] = useState<string[]>([]);
   const [text, setText] = useState("");
+  // What "Add" will send: the pills, plus a valid email still being typed.
+  const toAdd = [...new Set([...pills, ...parseEmails(text)])].filter((e) => !view.roster.some((r) => r.email === e));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(null);
   const [open, setOpen] = useState(false);
@@ -919,9 +923,11 @@ function ClassListSection({ view, onChange }: { view: ClassView; onChange: () =>
     e.preventDefault();
     setBusy(true);
     setMsg(null);
-    const d = await api<{ added?: number }>(`/api/classes/${view.class.id}/roster`, { method: "POST", body: JSON.stringify({ emails: text }) });
+    if (!toAdd.length) return setBusy(false);
+    const d = await api<{ added?: number }>(`/api/classes/${view.class.id}/roster`, { method: "POST", body: JSON.stringify({ emails: toAdd.join("\n") }) });
     setBusy(false);
     if (d.error) return setMsg({ text: d.error, err: true });
+    setPills([]);
     setText("");
     setMsg({ text: `Added ${d.added} email${d.added === 1 ? "" : "s"}.` });
     onChange();
@@ -966,22 +972,15 @@ function ClassListSection({ view, onChange }: { view: ClassView; onChange: () =>
         </div>
       </div>
       {listOnly && (
-        <form onSubmit={add} className="mt-3 rounded-[20px] border border-line bg-surface p-3">
-          <label className="block text-sm font-medium" htmlFor="roster-emails">
+        <form onSubmit={add} className="mt-4 rounded-[20px] border border-line bg-surface p-4 sm:p-5">
+          <label className="block text-[15px] font-semibold" htmlFor="roster-emails">
             Add students
           </label>
-          <textarea
-            id="roster-emails"
-            rows={3}
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            placeholder={"Paste school emails, one per line or separated by commas\nava@school.org, ben@school.org"}
-            className="mt-1 w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-fg/40"
-            data-testid="roster-input"
-          />
-          <div className="mt-2 flex flex-wrap items-center gap-3">
-            <Button type="submit" size="sm" disabled={busy || !text.trim()} data-testid="roster-add">
-              {busy ? "Adding…" : "Add to class list"}
+          <p className="mb-2.5 mt-0.5 text-sm text-fg-muted">Type a school email and press Enter. Pasting a whole list works too.</p>
+          <EmailPills emails={pills} onChange={setPills} draft={text} onDraft={setText} known={view.roster.map((r) => r.email)} />
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+            <Button type="submit" disabled={busy || !toAdd.length} data-testid="roster-add">
+              {busy ? "Adding…" : toAdd.length > 1 ? `Add ${toAdd.length} students` : "Add to class list"}
             </Button>
             {/* A spreadsheet of the class (saved as CSV) or any text file: the emails are picked out of it. */}
             <label className="press inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2">
@@ -998,7 +997,7 @@ function ClassListSection({ view, onChange }: { view: ClassView; onChange: () =>
                   if (file.size > 2_000_000) return setMsg({ text: "That file is too big. Save just the email column as CSV.", err: true });
                   const found = parseEmails(await file.text());
                   if (!found.length) return setMsg({ text: `No emails found in ${file.name}.`, err: true });
-                  setText((t) => [t.trim(), ...found].filter(Boolean).join("\n"));
+                  setPills((p) => [...new Set([...p, ...found.filter((x) => !view.roster.some((r) => r.email === x))])]);
                   setMsg({ text: `Found ${found.length} email${found.length === 1 ? "" : "s"} in ${file.name}. Check them, then add them.` });
                 }}
               />

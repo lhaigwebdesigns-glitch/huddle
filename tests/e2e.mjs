@@ -787,7 +787,21 @@ try {
   ok(share.origin === "https://classroom.google.com" && share.searchParams.get("url") === classLink, "Share to Google Classroom posts the class link");
   const RUN = Date.now() % 1000000;
   const emailOf = (n) => `${n.toLowerCase()}.${RUN}@school.test`;
-  await park.getByTestId("roster-input").fill(`${emailOf("Ava")}, ${emailOf("Ben")}\n${emailOf("Cam")}`);
+  // Emails become pills: Enter makes one, a typed list makes several, a typo stays with a note.
+  const rosterBox = park.getByTestId("roster-input");
+  await rosterBox.fill(emailOf("Ava"));
+  await rosterBox.press("Enter");
+  await rosterBox.fill(`${emailOf("Ben")}, ${emailOf("Cam")}`);
+  await rosterBox.press("Enter");
+  await rosterBox.fill("not-an-email");
+  await rosterBox.press("Enter");
+  await park.getByTestId("roster-note").getByText(/isn't an email address/).waitFor();
+  ok((await park.getByTestId("roster-pill").count()) === 3 && (await rosterBox.inputValue()) === "not-an-email", "typed emails become pills, and something that isn't an email stays in the box with a note");
+  await rosterBox.fill("");
+  await park.getByTestId("roster-pill").filter({ hasText: emailOf("Cam") }).getByRole("button").click();
+  await rosterBox.fill(emailOf("Cam"));
+  await rosterBox.press("Enter");
+  ok((await park.getByTestId("roster-pill").count()) === 3, "a pill can be removed with its x");
   await park.getByTestId("roster-add").click();
   await park.getByTestId("class-list").getByText("Added 3 emails.").waitFor();
   ok(true, "a teacher pastes school emails into the class list");
