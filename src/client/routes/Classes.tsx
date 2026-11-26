@@ -1,7 +1,7 @@
 import { alertDialog, confirmDialog, promptDialog } from "../components/Dialogs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, CalendarClock, Check, CircleCheck, Clock, Copy, Download, FileText, Flag, GraduationCap, KeyRound, Plus, Upload, Users, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarClock, ChevronDown, Check, CircleCheck, Clock, Copy, Download, FileText, Flag, GraduationCap, KeyRound, Plus, Upload, Users, X } from "lucide-react";
 import { OFFICE_ACCEPT, officeKind } from "../lib/officeFiles";
 import { getIdentity } from "../lib/identity";
 import type { Report } from "../../shared/protocol";
@@ -22,7 +22,7 @@ import { PROJECT_TEMPLATES } from "../../shared/templates";
 import { FILE_INFO } from "../../shared/files";
 import { MINT, PERI, RockArt, TEAL } from "../components/Rocks";
 import { DateTimeField } from "../components/DateTimePicker";
-import { assignmentPath, classroomShareUrl, gradeTotal, isPending, parseEmails, rubricMax, type Assignment, type ClassInfo, type ClassView, type GroupInfo, type TodayView } from "../../shared/classes";
+import { assignmentPath, classroomShareUrl, gradeTotal, isPending, parseEmails, rubricMax, type Assignment, type ClassInfo, type ClassStudent, type ClassView, type GroupInfo, type TodayView } from "../../shared/classes";
 
 async function api<T>(url: string, init?: RequestInit): Promise<T & { error?: string }> {
   const r = await fetch(url, init?.body ? { ...init, headers: { "content-type": "application/json", ...init.headers } } : init);
@@ -250,6 +250,46 @@ function GroupCard({ g, names, gradeUrl, timeUrl, onChanged }: { g: GroupInfo; n
   );
 }
 
+/** The assignment's less-used actions, in one small menu. */
+function AssignmentMore({ csv, onEditTimes, onMove }: { csv: string; onEditTimes: () => void; onMove?: () => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+  const item = "press flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-2";
+  return (
+    <span className="relative" ref={ref}>
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu" className="press inline-flex items-center gap-1 rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2" data-testid="assignment-more">
+        More <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+      </button>
+      {open && (
+        <span className="pop absolute left-0 top-full z-20 mt-1 block w-64 rounded-xl border border-line bg-surface p-1 shadow-lg" role="menu" style={{ ["--origin" as string]: "top left" }}>
+          <button role="menuitem" className={item} onClick={() => (setOpen(false), onEditTimes())} data-testid="edit-times">
+            <CalendarClock className="h-4 w-4 text-fg-muted" /> Change due date and times
+          </button>
+          <a role="menuitem" href={csv} className={item} onClick={() => setOpen(false)} data-testid="export-csv">
+            <Download className="h-4 w-4 text-fg-muted" /> Download grades (CSV)
+          </a>
+          {onMove && (
+            <button role="menuitem" className={item} onClick={() => (setOpen(false), onMove())} data-testid="move-students">
+              <Users className="h-4 w-4 text-fg-muted" /> Move students between groups
+            </button>
+          )}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView; reload: () => void }) {
   const nav = useNavigate();
   const names = Object.fromEntries(view.students.map((s) => [s.uid, s.name]));
@@ -309,16 +349,16 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
         >
           {copied ? <Check className="mr-1 inline h-3.5 w-3.5" /> : <Copy className="mr-1 inline h-3.5 w-3.5" />} {copied ? "Copied" : "Copy link"}
         </button>
-        <button onClick={() => setEditTimes(true)} className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2" data-testid="edit-times">
-          Edit times
-        </button>
-        <a href={`/api/classes/${view.class.id}/assignments/${a.id}/grades.csv`} className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2" data-testid="export-csv">
-          <Download className="mr-1 inline h-3.5 w-3.5" /> Download grades
-        </a>
-        {!solo && (
-          <button onClick={() => setManage((m) => !m)} aria-pressed={manage} className="press rounded-lg px-2.5 py-1 text-xs text-fg-muted hover:bg-surface-2 hover:text-fg">
-            <Users className="mr-1 inline h-3.5 w-3.5" /> {manage ? "Done" : "Move students"}
+        {manage ? (
+          <button onClick={() => setManage(false)} className="press rounded-lg bg-fg px-2.5 py-1 text-xs font-semibold text-bg" data-testid="move-done">
+            Done moving
           </button>
+        ) : (
+          <AssignmentMore
+            csv={`/api/classes/${view.class.id}/assignments/${a.id}/grades.csv`}
+            onEditTimes={() => setEditTimes(true)}
+            onMove={solo ? undefined : () => setManage(true)}
+          />
         )}
       </div>
 
@@ -885,15 +925,15 @@ function WaitingSection({ view, onChange }: { view: ClassView; onChange: () => v
   };
   return (
     <section id="waiting" className="mt-6 scroll-mt-6 rounded-[20px] border border-line bg-surface p-4" data-testid="waiting-list">
-      <h2 className="text-sm font-semibold">
-        Needs your answer: {view.waiting.length} student{view.waiting.length === 1 ? "" : "s"} waiting to join
+      <h2 className="text-[15px] font-semibold">
+        Waiting to join ({view.waiting.length})
       </h2>
       <p className="mt-0.5 text-xs text-fg-subtle">Their email isn't on your class list. Letting someone in adds them to it.</p>
       <ul className="mt-3 space-y-2">
         {view.waiting.map((w) => (
           <li key={w.uid} className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl border border-line px-3.5 py-2.5 text-sm" data-testid="waiting-student">
-            <span className="min-w-0 flex-1">
-              <b>{w.name}</b> <span className="text-fg-subtle">{w.email ?? "no email"} · {timeAgo(w.at)}</span>
+            <span className="min-w-0 basis-full sm:basis-auto sm:flex-1">
+              <b>{w.name}</b> <span className="break-all text-fg-subtle">{w.email ?? "no email"}</span> <span className="text-fg-subtle">· {timeAgo(w.at)}</span>
             </span>
             <Button size="sm" onClick={() => answer(w.uid, true)} data-testid="admit-student">
               Let in
@@ -909,8 +949,8 @@ function WaitingSection({ view, onChange }: { view: ClassView; onChange: () => v
 }
 
 /**
- * The class list: the school emails allowed in. Students on it get straight in; anyone else
- * waits for the teacher. A teacher can open the class to anyone with the code instead.
+ * Students: everyone in the class and everyone invited, in one list, plus how people get in
+ * (only the emails on the list, or anyone with the code).
  */
 function ClassListSection({ view, onChange }: { view: ClassView; onChange: () => void }) {
   const [pills, setPills] = useState<string[]>([]);
@@ -919,7 +959,6 @@ function ClassListSection({ view, onChange }: { view: ClassView; onChange: () =>
   const toAdd = [...new Set([...pills, ...parseEmails(text)])].filter((e) => !view.roster.some((r) => r.email === e));
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ text: string; err?: boolean } | null>(null);
-  const [open, setOpen] = useState(false);
   const listOnly = view.access === "list";
   const add = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -938,18 +977,32 @@ function ClassListSection({ view, onChange }: { view: ClassView; onChange: () =>
     await api(`/api/classes/${view.class.id}`, { method: "PATCH", body: JSON.stringify({ access }) });
     onChange();
   };
-  const joined = view.roster.filter((r) => r.joined).length;
+  const removeStudent = async (s: ClassStudent) => {
+    if (
+      !(await confirmDialog({
+        title: `Remove ${s.name}?`,
+        message: "They'll be taken out of their groups and off the class list, and won't be able to open this class's work.",
+        confirmLabel: "Remove",
+        danger: true,
+      }))
+    )
+      return;
+    await api(`/api/classes/${view.class.id}/students/${encodeURIComponent(s.uid)}`, { method: "DELETE" });
+    onChange();
+  };
+  const removeEmail = async (email: string) => {
+    await api(`/api/classes/${view.class.id}/roster/${encodeURIComponent(email)}`, { method: "DELETE" });
+    onChange();
+  };
+  const invited = view.roster.filter((r) => !r.joined);
   return (
-    <section className="mt-10" data-testid="class-list" data-tour="class-list">
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="min-w-0 flex-1">
-          <h2 className="font-display text-xl font-bold tracking-[-0.01em]">Class list</h2>
+    <section className="mt-12" data-testid="class-list" data-tour="class-list">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-[14rem] flex-1">
+          <h2 className="font-display text-xl font-bold tracking-[-0.01em]">Students</h2>
           <p className="mt-1 text-sm text-fg-muted">
-            {listOnly
-              ? view.roster.length
-                ? `${view.roster.length} student email${view.roster.length === 1 ? "" : "s"} · ${joined} joined. Anyone else who opens your link waits for you to let them in.`
-                : "Add your students' school emails. They'll get straight in; anyone else waits for you to let them in."
-              : "Anyone who signs in and has the class code or link can join."}
+            {view.students.length} joined{invited.length ? ` · ${invited.length} invited, not joined yet` : ""}.{" "}
+            {listOnly ? "Only emails on this list get straight in; anyone else waits for you to let them in." : "Anyone who signs in and has the class code or link can join."}
           </p>
         </div>
         <div className="flex rounded-full border border-line p-0.5 text-xs font-semibold" role="radiogroup" aria-label="Who can join">
@@ -957,16 +1010,16 @@ function ClassListSection({ view, onChange }: { view: ClassView; onChange: () =>
             role="radio"
             aria-checked={listOnly}
             onClick={() => setAccess("list")}
-            className={`press rounded-full px-3 py-1.5 ${listOnly ? "bg-surface-2 text-fg" : "text-fg-subtle hover:text-fg"}`}
+            className={`press rounded-full px-3 py-1.5 ${listOnly ? "bg-fg text-bg" : "text-fg-subtle hover:text-fg"}`}
             data-testid="access-list"
           >
-            Class list only
+            Only my list
           </button>
           <button
             role="radio"
             aria-checked={!listOnly}
             onClick={() => setAccess("code")}
-            className={`press rounded-full px-3 py-1.5 ${!listOnly ? "bg-surface-2 text-fg" : "text-fg-subtle hover:text-fg"}`}
+            className={`press rounded-full px-3 py-1.5 ${!listOnly ? "bg-fg text-bg" : "text-fg-subtle hover:text-fg"}`}
             data-testid="access-code"
           >
             Anyone with the code
@@ -1009,36 +1062,33 @@ function ClassListSection({ view, onChange }: { view: ClassView; onChange: () =>
                 {msg.text}
               </span>
             )}
-            {view.roster.length > 0 && (
-              <button type="button" onClick={() => setOpen((o) => !o)} className="ml-auto text-sm text-fg-muted underline-offset-2 hover:text-fg hover:underline" data-testid="roster-toggle">
-                {open ? "Hide the list" : `See all ${view.roster.length}`}
-              </button>
-            )}
           </div>
-          {open && (
-            <ul className="mt-3 max-h-72 divide-y divide-line overflow-y-auto rounded-xl border border-line" data-testid="class-list-rows">
-              {view.roster.map((r) => (
-                <li key={r.email} className="flex items-center gap-2 px-3 py-2 text-sm" data-testid="roster-row">
-                  <span className="min-w-0 flex-1 truncate">{r.email}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${r.joined ? "bg-mint text-ink dark:bg-mint/15 dark:text-mint" : "bg-surface-2 text-fg-subtle"}`}>
-                    {r.joined ? "Joined" : "Not yet"}
-                  </span>
-                  <button
-                    onClick={async () => {
-                      await api(`/api/classes/${view.class.id}/roster/${encodeURIComponent(r.email)}`, { method: "DELETE" });
-                      onChange();
-                    }}
-                    className="press rounded-full p-1 text-fg-subtle hover:bg-surface-2 hover:text-fg"
-                    aria-label={`Remove ${r.email} from the class list`}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
         </form>
       )}
+      <ul className="mt-4 divide-y divide-line overflow-hidden rounded-[20px] border border-line bg-surface" data-testid="roster">
+        {view.students.map((st) => (
+          <li key={st.uid} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm" data-testid="roster-row">
+            <span className="min-w-[8rem] flex-1">
+              <span className="font-medium">{st.name}</span>
+              {st.email && <span className="ml-2 text-xs text-fg-subtle">{st.email}</span>}
+            </span>
+            <span className="rounded-full bg-mint px-2 py-0.5 text-[11px] font-semibold text-ink dark:bg-mint/15 dark:text-mint">Joined</span>
+            <button onClick={() => void removeStudent(st)} className="press rounded-full p-1.5 text-fg-subtle hover:bg-surface-2 hover:text-fg" aria-label={`Remove ${st.name}`} data-testid="remove-student">
+              <X className="h-4 w-4" />
+            </button>
+          </li>
+        ))}
+        {invited.map((r) => (
+          <li key={r.email} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 text-sm" data-testid="roster-row">
+            <span className="min-w-[8rem] flex-1 text-fg-muted">{r.email}</span>
+            <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-fg-subtle">Not joined yet</span>
+            <button onClick={() => void removeEmail(r.email)} className="press rounded-full p-1.5 text-fg-subtle hover:bg-surface-2 hover:text-fg" aria-label={`Remove ${r.email} from the class list`}>
+              <X className="h-4 w-4" />
+            </button>
+          </li>
+        ))}
+        {!view.students.length && !invited.length && <li className="px-4 py-3 text-sm text-fg-subtle">Nobody yet. Add emails above, or share the class code.</li>}
+      </ul>
     </section>
   );
 }
@@ -1061,7 +1111,7 @@ function TimeRequestsSection({ classId, onChange }: { classId: string; onChange:
   };
   return (
     <section id="time-requests" className="mt-6 scroll-mt-6 rounded-[20px] border border-line bg-surface p-4" data-testid="time-requests">
-      <h2 className="text-sm font-semibold">Needs your answer: {list.length} request{list.length === 1 ? "" : "s"} for more time</h2>
+      <h2 className="text-[15px] font-semibold">Asking for more time ({list.length})</h2>
       <ul className="mt-3 space-y-2">
         {list.map((r) => (
           <li key={r.room + r.id} className="rounded-xl border border-line px-3.5 py-2.5 text-sm" data-testid="time-request">
@@ -1107,18 +1157,19 @@ function ReportsSection({ classId }: { classId: string }) {
   if (!reports.length) return null;
   return (
     <section id="reports" className="mt-6 scroll-mt-6 rounded-[20px] border border-amber-300 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20" data-testid="reports">
-      <h2 className="flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
-        <Flag className="h-4 w-4" /> {reports.length} reported message{reports.length === 1 ? "" : "s"}
+      <h2 className="flex items-center gap-2 text-[15px] font-semibold text-amber-900 dark:text-amber-200">
+        <Flag className="h-4 w-4" /> Reported message{reports.length === 1 ? "" : "s"} ({reports.length})
       </h2>
-      <p className="mt-0.5 text-xs text-amber-900/80 dark:text-amber-200/80">A student sent you these from their group's chat. You only see the message they reported.</p>
+      <p className="mt-0.5 text-xs text-amber-900/80 dark:text-amber-200/80">A student sent you these from their room's chat. You only see the message they reported, never the rest of the chat.</p>
       <ul className="mt-3 space-y-2">
         {reports.map((r) => (
           <li key={r.room + r.id} className="rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm" data-testid="report">
             <div className="text-xs text-fg-subtle">
-              {r.assignment} · {r.group} · reported by {r.byName}, {timeAgo(r.at)}
+              {r.assignment}
+              {r.group !== r.byName ? ` · ${r.group}` : ""} · reported by {r.byName}, {timeAgo(r.at)}
             </div>
             <blockquote className="mt-1.5 border-l-2 border-line-strong pl-3">
-              <span className="font-medium">{r.message.authorName}{r.message.fromAi ? " (Cairn AI)" : ""}:</span> {r.message.content}
+              <span className="font-medium">{r.message.fromAi ? "Cairn AI" : r.message.authorName}:</span> {r.message.content}
             </blockquote>
             {r.reason && <p className="mt-1.5 text-xs text-fg-muted">Why: {r.reason}</p>}
             <button
@@ -1179,8 +1230,8 @@ export function ClassPage() {
     <TeacherShell back={{ to: "/classes", label: "Today" }}>
       <div className="mx-auto max-w-4xl px-4 pb-16 pt-8 sm:px-8">
         <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-0 flex-1">
-            <h1 className="font-display text-[2rem] font-extrabold leading-tight tracking-[-0.03em]" data-testid="class-name">{view.class.name}</h1>
+          <div className="min-w-[15rem] flex-1">
+            <h1 className="font-display text-[2rem] font-extrabold leading-tight tracking-[-0.03em] [overflow-wrap:anywhere]" data-testid="class-name">{view.class.name}</h1>
             <p className="mt-1 text-sm text-fg-muted">{view.students.length} student{view.students.length === 1 ? "" : "s"} joined</p>
           </div>
           <div className="rounded-2xl border border-line px-4 py-2.5" data-tour="class-code">
@@ -1243,36 +1294,6 @@ export function ClassPage() {
         </div>
 
         <ClassListSection view={view} onChange={load} />
-
-        <h2 className="mt-12 font-display text-xl font-bold tracking-[-0.01em]">Students</h2>
-        <ul className="mt-2 flex flex-wrap gap-1.5" data-testid="roster">
-          {view.students.map((s) => (
-            <li key={s.uid} className="flex items-center gap-1 rounded-full border border-line py-1 pl-3 pr-1 text-sm">
-              {s.name}
-              <button
-                onClick={async () => {
-                  if (
-                    !(await confirmDialog({
-                      title: `Remove ${s.name}?`,
-                      message: "They'll be taken out of their groups and won't be able to open this class's work.",
-                      confirmLabel: "Remove",
-                      danger: true,
-                    }))
-                  )
-                    return;
-                  await api(`/api/classes/${view.class.id}/students/${encodeURIComponent(s.uid)}`, { method: "DELETE" });
-                  load();
-                }}
-                className="press rounded-full p-0.5 text-fg-subtle hover:bg-surface-2 hover:text-fg"
-                aria-label={`Remove ${s.name}`}
-                data-testid="remove-student"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </li>
-          ))}
-          {!view.students.length && <li className="text-sm text-fg-subtle">Nobody yet.</li>}
-        </ul>
 
         <section className="mt-12 rounded-[20px] border border-line p-4">
           <h2 className="text-sm font-semibold">Erase this class</h2>
