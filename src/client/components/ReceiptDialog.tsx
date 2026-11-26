@@ -32,7 +32,8 @@ function printReceipt(r: Receipt) {
     .map(
       (p) => `<section><h3>${esc(p.name)}${p.role ? ` <span class="muted">(${esc(p.role)})</span>` : ""}</h3><p>${esc(workLine(p))}</p>
       ${p.tasks?.length ? `<p>Tasks: ${p.tasks.filter((t) => t.done).length} of ${p.tasks.length} done (${p.tasks.map((t) => esc((t.done ? "✓ " : "") + t.title)).join(", ")})</p>` : ""}
-      <p class="muted">${plural(p.filesCreated, "file", "files")} created · ${plural(p.messages, "chat message", "chat messages")} · active ${plural(p.daysActive, "day", "days")}${p.aiAsks ? ` · asked the AI to make or change files ${plural(p.aiAsks, "time", "times")}` : ""}</p>
+      <p class="muted">${plural(p.filesCreated, "file", "files")} created · ${plural(p.messages, "chat message", "chat messages")} · active ${plural(p.daysActive, "day", "days")}${p.aiAsks ? ` · asked the AI to make or change files ${plural(p.aiAsks, "time", "times")}` : ""}${p.tutorQuestions ? ` · asked the tutor ${plural(p.tutorQuestions, "question", "questions")}` : ""}</p>
+      ${p.stuck?.length ? `<p><b>Where they got stuck:</b> ${p.stuck.map(esc).join("; ")}</p>` : ""}
       ${p.note ? `<blockquote>${esc(p.note)}</blockquote>` : ""}</section>`,
     )
     .join("");
@@ -203,8 +204,7 @@ export function ReceiptDialog({
             <div className="flex items-start gap-2.5 rounded-xl border border-line bg-sidebar px-3.5 py-2.5 text-[13px] text-fg-muted">
               <Eye className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <div className="flex-1">
-                <b className="font-medium text-fg">This is exactly what your teacher sees</b> once you turn it in. It counts what's in the files and who wrote it. Your chat is never shown,
-                only how many messages each person sent.
+                <b className="font-medium text-fg">This is exactly what your teacher sees</b> once you turn it in. It counts what's in the files and who wrote it. Your chat is never shown, only how many messages each person sent. When you turn it in, Cairn also writes a few short points about what you asked the tutor, so your teacher knows where you needed help. You'll see them here too.
               </div>
               <button
                 onClick={() => setPreview((p) => !p)}
@@ -239,7 +239,19 @@ export function ReceiptDialog({
                       <p className="mt-0.5 text-xs text-fg-subtle tabular">
                         {plural(p.filesCreated, "file", "files")} created · {plural(p.messages, "chat message", "chat messages")} · active {plural(p.daysActive, "day", "days")}
                         {p.aiAsks > 0 && <> · asked the AI to make or change files {plural(p.aiAsks, "time", "times")}</>}
+                        {(p.tutorQuestions ?? 0) > 0 && <> · asked the tutor {plural(p.tutorQuestions!, "question", "questions")}</>}
                       </p>
+                      {p.stuck && p.stuck.length > 0 && (
+                        <div className="mt-2.5 rounded-xl bg-surface-2 px-3.5 py-2.5" data-testid="receipt-stuck">
+                          <div className="text-xs font-semibold text-fg">Where {p.uid === meUid ? "you" : "they"} got stuck</div>
+                          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-sm text-fg-muted">
+                            {p.stuck.map((x, i) => (
+                              <li key={i}>{x}</li>
+                            ))}
+                          </ul>
+                          <p className="mt-1.5 text-[11px] text-fg-subtle">Written by Cairn from the questions asked to the tutor. The student and the teacher see the same thing.</p>
+                        </div>
+                      )}
                       {p.tasks && p.tasks.length > 0 && (
                         <p className="mt-1 text-xs text-fg-muted" data-testid="receipt-tasks">
                           Tasks: {p.tasks.filter((t) => t.done).length} of {p.tasks.length} done ({p.tasks.map((t) => `${t.done ? "✓ " : ""}${t.title}`).join(", ")})
