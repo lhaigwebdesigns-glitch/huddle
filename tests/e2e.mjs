@@ -900,6 +900,7 @@ try {
   // The teacher grades it.
   await park.getByTestId("grade-group").click();
   await park.getByTestId("grader").waitFor();
+  await park.getByRole("region", { name: "Contribution receipt" }).waitFor({ timeout: 10000 }).catch(() => {});
   ok((await park.getByRole("region", { name: "Contribution receipt" }).count()) === 1, "the grading screen shows the frozen receipt");
   await park.getByTestId("receipt-stuck").getByText(/cite a website/).waitFor({ timeout: 15000 });
   ok(!(await park.getByRole("region", { name: "Contribution receipt" }).innerText()).includes("how do I cite a website?"), "grading shows where a student got stuck with the tutor, as a summary, not their chat");
