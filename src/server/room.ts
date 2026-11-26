@@ -1000,6 +1000,7 @@ export class Room extends Server<Env> {
       }
     }
     for (const p of final.people) if (stuck[p.uid]) p.stuck = stuck[p.uid];
+    final.tutorSummaryDone = true;
     // Only if it's still the same turn-in (not unsubmitted or reopened meanwhile).
     if (this.settings?.project?.turnedInAt !== turnedInAt) return;
     await this.ctx.storage.put("receipt:final", final);

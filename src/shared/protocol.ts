@@ -287,6 +287,8 @@ export interface Receipt {
   /** Words written by Cairn AI that are still in the files. */
   aiWords: number;
   aiUnits: number;
+  /** Set once Cairn has tried to write "what they asked the tutor about" (after turn-in). */
+  tutorSummaryDone?: boolean;
 }
 
 export type ClientMsg =
