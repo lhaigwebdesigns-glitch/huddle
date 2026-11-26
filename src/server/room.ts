@@ -709,6 +709,17 @@ export class Room extends Server<Env> {
         await this.reopen(me.name);
         return;
       }
+      case "unsubmit": {
+        // Like Classroom's Unsubmit: the group can take it back to fix something, until it's
+        // graded, and only while the work is open (so a deadline can't be dodged this way).
+        const p = this.settings.project;
+        if (!p?.turnedInAt) return;
+        if (p.gradedAt) return this.send(conn, { t: "error", message: "Your teacher already graded this, so it can't be taken back. Ask them to reopen it." });
+        if (p.status?.open === false)
+          return this.send(conn, { t: "error", message: "This assignment is closed now, so it can't be taken back. Use More time to ask your teacher." });
+        await this.reopen(me.name, "unsubmit");
+        return;
+      }
       case "new_file": {
         const kind = isFileKind(msg.kind) && msg.kind !== "artifact" ? msg.kind : "doc";
         if (this.files().length >= MAX_FILES)
@@ -966,18 +977,29 @@ export class Room extends Server<Env> {
     await this.ctx.storage.put("aiAsks", asks);
   }
 
-  private async reopen(byName: string) {
+  private async reopen(byName: string, how: "reopen" | "unsubmit" = "reopen") {
     const p = this.settings?.project;
     if (!p?.turnedInAt) return false;
     delete p.turnedInAt;
     delete p.turnedInBy;
+    // A teacher's reopen starts a new round: it can be turned in and graded again.
+    if (how === "reopen") delete p.gradedAt;
     await this.ctx.storage.put("settings", this.settings);
     await this.lockFiles(false);
     await this.ctx.storage.delete("receipt:final");
     await this.applyAccess(true);
     this.broadcastMsg({ t: "settings", settings: this.settings! });
-    this.notice(`${byName} reopened the project. The group can edit again.`);
+    this.notice(how === "unsubmit" ? `${byName} unsubmitted the project to keep working. Turn it in again when it's ready.` : `${byName} reopened the project. The group can edit again.`);
     return true;
+  }
+
+  /** The teacher saved a grade: from now on the group can't unsubmit. */
+  async setGraded(at: number) {
+    const p = this.settings?.project;
+    if (!p || p.gradedAt === at) return;
+    p.gradedAt = at;
+    await this.ctx.storage.put("settings", this.settings);
+    this.broadcastMsg({ t: "settings", settings: this.settings! });
   }
 
   // ---------- timed assignments ----------

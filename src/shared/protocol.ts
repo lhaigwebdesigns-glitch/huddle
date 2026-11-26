@@ -148,6 +148,8 @@ export interface ProjectSettings {
   pasteExempt: string[];
   turnedInAt?: number;
   turnedInBy?: string;
+  /** When the teacher graded the turned-in work. After that, students can't unsubmit. */
+  gradedAt?: number;
   /** Asked at turn in ("What was hardest?"); the student's answer is their receipt note. */
   reflection?: string;
   /** When students may work on it (e.g. class time only); none = any time. */
@@ -304,6 +306,8 @@ export type ClientMsg =
   /** Lock the project's files as the submitted version (anyone); the host can reopen. */
   | { t: "turn_in" }
   | { t: "reopen" }
+  /** Take back a turn-in (anyone in the group), until it's graded and while the work is open. */
+  | { t: "unsubmit" }
   /** `ref` comes back on the open_file reply, so the sender knows which file is theirs (imports). */
   | { t: "new_file"; kind: FileKind; title: string; ref?: string }
   | { t: "rename_file"; id: string; title: string }

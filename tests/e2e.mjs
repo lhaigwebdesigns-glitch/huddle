@@ -874,6 +874,15 @@ try {
   await first.getByTestId("receipt-note").fill("I made the title slide.");
   await first.getByTestId("confirm-turn-in").click();
   await first.getByTestId("turned-in").waitFor();
+  // A student can take it back to fix something (until it's graded), then turn it in again.
+  await first.getByTestId("unsubmit").click();
+  await first.getByTestId("dialog-confirm").click();
+  await first.getByTestId("turn-in").waitFor();
+  ok((await first.getByTestId("turned-in").count()) === 0, "a student can unsubmit turned-in work before it's graded");
+  await first.getByTestId("turn-in").click();
+  await first.getByTestId("receipt-note").fill("I made the title slide.");
+  await first.getByTestId("confirm-turn-in").click();
+  await first.getByTestId("turned-in").waitFor();
   // Today shows it's ready to grade, with one button straight to it.
   await park.goto(`${BASE}/classes`);
   const todayRow = park.getByTestId("today-grade").filter({ hasText: "WWI presentation" });
@@ -897,6 +906,8 @@ try {
   await park.getByTestId("grade-comment").fill("Great sources.");
   await park.getByTestId("save-grade").click();
   await park.getByRole("status").getByText("Saved").waitFor();
+  await first.getByTestId("unsubmit").waitFor({ state: "detached", timeout: 10000 });
+  ok((await first.getByTestId("turned-in").count()) === 1, "once it's graded, the student can't unsubmit it any more");
   await park.goto(classUrl);
   const href = await park.getByTestId("export-csv").getAttribute("href");
   const text = await park.evaluate(async (u) => (await fetch(u)).text(), href);
