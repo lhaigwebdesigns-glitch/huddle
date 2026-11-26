@@ -1,7 +1,7 @@
 import { alertDialog, confirmDialog, promptDialog } from "../components/Dialogs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, CalendarClock, ChevronDown, Check, CircleCheck, Clock, Copy, Download, FileText, Flag, GraduationCap, KeyRound, Plus, Upload, Users, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Ban, BookOpen, CalendarClock, Check, ChevronDown, CircleCheck, ClipboardList, Clock, Copy, Download, File, FileText, Flag, FlaskConical, GraduationCap, KeyRound, MessagesSquare, Plus, Presentation, Upload, Users, X } from "lucide-react";
 import { OFFICE_ACCEPT, officeKind } from "../lib/officeFiles";
 import { getIdentity } from "../lib/identity";
 import type { Report } from "../../shared/protocol";
@@ -12,6 +12,8 @@ import { Field, Modal } from "../components/Modal";
 import { pickFromDrive, useDrive } from "../lib/googleDrive";
 import { DriveMark } from "../components/DriveMark";
 import { EmailPills } from "../components/EmailPills";
+import { FilePanel } from "../components/FilePanel";
+import type { RoomFile } from "../../shared/protocol";
 import { exampleTitle, orderTemplates, type Teach } from "../../shared/onboarding";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { formatCode } from "../../shared/code";
@@ -30,13 +32,16 @@ async function api<T>(url: string, init?: RequestInit): Promise<T & { error?: st
 }
 
 /** A small Google Classroom-style mark (green board), drawn here so no logo file is needed. */
-function ClassroomMark() {
+function ClassroomMark({ className = "mr-1 inline h-4 w-4 align-[-3px]" }: { className?: string }) {
   return (
-    <svg viewBox="0 0 16 16" className="mr-1 inline h-3.5 w-3.5 align-[-2px]" aria-hidden>
-      <rect x="1" y="2" width="14" height="11" rx="1.5" fill="#1e8e3e" />
-      <rect x="3" y="4" width="10" height="7" rx="0.5" fill="#fff" opacity=".9" />
-      <circle cx="8" cy="7" r="1.4" fill="#1e8e3e" />
-      <path d="M5.5 10.5c.5-1.2 1.4-1.8 2.5-1.8s2 .6 2.5 1.8" fill="#1e8e3e" />
+    <svg viewBox="0 0 24 24" className={className} aria-hidden>
+      <rect x="2" y="3" width="20" height="18" rx="2" fill="#f4b400" />
+      <rect x="3.5" y="4.5" width="17" height="13" rx="1" fill="#0f9d58" />
+      <circle cx="12" cy="9" r="2" fill="#fff" />
+      <path d="M8.2 15.5c.6-1.9 2-2.9 3.8-2.9s3.2 1 3.8 2.9z" fill="#fff" />
+      <circle cx="7" cy="10" r="1.4" fill="#57bb8a" />
+      <circle cx="17" cy="10" r="1.4" fill="#57bb8a" />
+      <rect x="13" y="18.5" width="5" height="1.6" rx=".8" fill="#fff" />
     </svg>
   );
 }
@@ -335,7 +340,7 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
           className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2"
           data-testid="post-to-classroom"
         >
-          <ClassroomMark /> Post to Classroom
+          <ClassroomMark /> Post to Google Classroom
         </a>
         <button
           onClick={() => {
@@ -498,17 +503,27 @@ function WorksheetRow({ a, classId, solo, reload }: { a: Assignment; classId: st
   );
 }
 
-type StarterChoice = "none" | "doc" | "slides" | "upload";
-const STARTER_CHOICES: { id: StarterChoice; label: string }[] = [
-  { id: "none", label: "None" },
-  { id: "doc", label: "Blank doc" },
-  { id: "slides", label: "Blank slides" },
-  { id: "upload", label: "Upload Word or PowerPoint" },
+type StarterChoice = "none" | "doc" | "slides" | "upload" | "drive";
+const STARTER_CHOICES: { id: StarterChoice; label: string; icon: React.ReactNode }[] = [
+  { id: "none", label: "None", icon: <Ban className="h-4 w-4" /> },
+  { id: "doc", label: "Blank doc", icon: <FileText className="h-4 w-4" /> },
+  { id: "slides", label: "Blank slides", icon: <Presentation className="h-4 w-4" /> },
+  { id: "drive", label: "Google Drive", icon: <DriveMark className="h-4 w-4" /> },
+  { id: "upload", label: "Upload Word or PowerPoint", icon: <Upload className="h-4 w-4" /> },
 ];
+const TEMPLATE_ICON: Record<string, React.ReactNode> = {
+  "": <File className="h-4 w-4" />,
+  "research-paper": <BookOpen className="h-4 w-4" />,
+  presentation: <Presentation className="h-4 w-4" />,
+  "science-lab": <FlaskConical className="h-4 w-4" />,
+  "survey-project": <ClipboardList className="h-4 w-4" />,
+  "debate-prep": <MessagesSquare className="h-4 w-4" />,
+};
 
 const DEFAULT_REFLECTION = "What was hardest about this assignment?";
 
-const WIZARD_STEPS = ["What is it?", "How do students work?", "Share it"] as const;
+/** Steps by number: 0 what, 1 how, 2 the worksheet (only when there is one), 3 share. */
+const STEP_LABEL = ["What is it?", "How do students work?", "Write the worksheet", "Share it"] as const;
 
 /**
  * New assignment, one step at a time: what it is, how students work on it, then share the link.
@@ -532,6 +547,11 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
   const [upload, setUpload] = useState<File | null>(null);
   const [withKey, setWithKey] = useState(false);
   const [worksheetRoom, setWorksheetRoom] = useState<string | null>(null);
+  // The worksheet and answer key, written right here once the assignment is made.
+  const [wsFiles, setWsFiles] = useState<{ starter?: RoomFile; key?: RoomFile }>({});
+  const [wsTab, setWsTab] = useState<"starter" | "key">("starter");
+  const hasWs = starter !== "none" || withKey;
+  const stepList = hasWs ? [0, 1, 2, 3] : [0, 1, 3];
   const [importNote, setImportNote] = useState("");
   const template = PROJECT_TEMPLATES.find((t) => t.id === templateId);
   const groups = Math.max(1, Math.round(students / Math.max(1, size)));
@@ -549,13 +569,25 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
     setErr("");
     if (step === 0) {
       if (!title.trim()) return setErr("Give the assignment a title.");
-      if (starter === "upload" && !upload) return setErr("Pick a Word or PowerPoint file, or choose another worksheet option.");
+      if ((starter === "upload" || starter === "drive") && !upload)
+        return setErr(starter === "drive" ? "Pick a file from Google Drive, or choose another worksheet option." : "Pick a Word or PowerPoint file, or choose another worksheet option.");
       return setStep(1);
     }
+    if (step === 2) return setStep(3);
     if (step !== 1) return;
     setBusy(true);
-    const kind = starter === "upload" ? (upload ? officeKind(upload) : null) : starter === "none" ? null : starter;
-    const d = await api<{ id: string; worksheet?: { room: string; starterId?: string } }>(`/api/classes/${classId}/assignments`, {
+    // Came back to change it: save the changes to the assignment that's already made.
+    if (made) {
+      const d = await api(`/api/classes/${classId}/assignments/${made}`, {
+        method: "PUT",
+        body: JSON.stringify({ title: title.trim(), project: { ...project, ...(reflect && reflection.trim() ? { reflection: reflection.trim() } : {}) }, mode, groupSize: size }),
+      });
+      setBusy(false);
+      if (d.error) return setErr(d.error);
+      return setStep(worksheetRoom ? 2 : 3);
+    }
+    const kind = starter === "upload" || starter === "drive" ? (upload ? officeKind(upload) : null) : starter === "none" ? null : starter;
+    const d = await api<{ id: string; worksheet?: { room: string; starterId?: string; keyId?: string } }>(`/api/classes/${classId}/assignments`, {
       method: "POST",
       body: JSON.stringify({
         title: title.trim(),
@@ -572,8 +604,11 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
     }
     setMade(d.id);
     setWorksheetRoom(d.worksheet?.room ?? null);
+    const f = (id: string | undefined, kind: "doc" | "slides", t: string): RoomFile | undefined => (id ? { id, kind, title: t, createdAt: Date.now(), createdBy: "" } : undefined);
+    setWsFiles({ starter: f(d.worksheet?.starterId, kind === "slides" ? "slides" : "doc", title.trim()), key: f(d.worksheet?.keyId, "doc", "Answer key") });
+    setWsTab(d.worksheet?.starterId ? "starter" : "key");
     // Bring the teacher's own file in as the worksheet (it all happens in this browser).
-    if (starter === "upload" && upload && d.worksheet?.starterId) {
+    if ((starter === "upload" || starter === "drive") && upload && d.worksheet?.starterId) {
       setImportNote("Bringing in your file…");
       try {
         const { importOffice } = await import("../lib/officeImport");
@@ -584,7 +619,7 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
       }
     }
     setBusy(false);
-    setStep(2);
+    setStep(d.worksheet?.room ? 2 : 3);
   };
   // Import from Google Drive (shown once the school's Drive keys are set up).
   const driveCfg = useDrive();
@@ -602,11 +637,11 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
   const choice = (_on: boolean) => "choice-card bg-bg px-5 py-4 text-left";
   const steps = (
     <ol className="flex gap-2" aria-label="Steps" data-testid="wizard-steps">
-      {WIZARD_STEPS.map((label, i) => (
-        <li key={label} className="min-w-0 flex-1" aria-current={i === step ? "step" : undefined}>
-          <div className={`h-1.5 rounded-full ${i <= step ? "bg-primary" : "bg-line"}`} />
-          <div className={`mt-1.5 truncate text-[13px] ${i === step ? "font-semibold text-fg" : "text-fg-subtle"}`}>
-            {i + 1}. {label}
+      {stepList.map((n, i) => (
+        <li key={n} className="min-w-0 flex-1" aria-current={n === step ? "step" : undefined}>
+          <div className={`h-1.5 rounded-full ${n <= step ? "bg-primary" : "bg-line"}`} />
+          <div className={`mt-1.5 truncate text-[13px] ${n === step ? "font-semibold text-fg" : "text-fg-subtle"}`}>
+            {i + 1}. {STEP_LABEL[n]}
           </div>
         </li>
       ))}
@@ -619,9 +654,9 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
           {err}
         </p>
       )}
-      {step === 1 && (
-        <Button type="button" variant="ghost" onClick={() => setStep(0)} data-testid="wizard-back">
-          Back
+      {step >= 1 && (
+        <Button type="button" variant="ghost" onClick={() => (setErr(""), setStep(step === 3 && !worksheetRoom ? 1 : step - 1))} data-testid="wizard-back">
+          <ArrowLeft className="h-4 w-4" /> Back
         </Button>
       )}
       <span className="flex-1" />
@@ -632,10 +667,15 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
       )}
       {step === 1 && (
         <button type="submit" disabled={busy} className="ledge-btn min-w-[220px]" data-testid="create-assignment">
-          {busy ? (importNote ? "Bringing in your file…" : "Making it…") : "Make the assignment"}
+          {busy ? (importNote ? "Bringing in your file…" : made ? "Saving…" : "Making it…") : made ? "Save and continue" : hasWs ? "Make it, then write the worksheet" : "Make the assignment"}
         </button>
       )}
       {step === 2 && (
+        <button type="submit" className="ledge-btn min-w-[200px]" data-testid="wizard-to-share">
+          Next: share it <ArrowRight className="h-4 w-4" />
+        </button>
+      )}
+      {step === 3 && (
         <Button type="button" variant="secondary" size="lg" onClick={onDone} data-testid="wizard-done">
           Done
         </Button>
@@ -644,7 +684,8 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
   );
   return (
     <Modal
-      title={step === 2 ? "Your assignment is ready" : "New assignment"}
+      title={step === 3 ? "Your assignment is ready" : step === 2 ? `Write the worksheet for ${title.trim()}` : "New assignment"}
+      tall={step < 3}
       onClose={close}
       onSubmit={submit}
       header={steps}
@@ -661,8 +702,8 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
             <Field label={<>Start from a template <span className="font-normal text-fg-subtle">(optional)</span></>} hint="Sets up the files, tasks, instructions and rubric for you.">
               <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Template">
                 {[{ id: "", label: "Blank" }, ...templates].map((t) => (
-                  <button key={t.id || "blank"} type="button" role="radio" aria-checked={templateId === t.id} onClick={() => pick(t.id)} className="chip-pick" data-testid={`a-template-${t.id || "blank"}`}>
-                    {t.label}
+                  <button key={t.id || "blank"} type="button" role="radio" aria-checked={templateId === t.id} onClick={() => pick(t.id)} className="chip-pick inline-flex items-center gap-1.5" data-testid={`a-template-${t.id || "blank"}`}>
+                    {TEMPLATE_ICON[t.id] ?? null} {t.label}
                   </button>
                 ))}
               </div>
@@ -672,14 +713,49 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
                 </p>
               )}
             </Field>
+            {made && (
+              <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-fg-muted" data-testid="worksheet-locked">
+                {worksheetRoom ? "The worksheet is made. Change what's in it on the Write the worksheet step." : "This assignment has no worksheet. You can add one from the class page."}
+              </p>
+            )}
+            {!made && (
             <Field testId="worksheet-choice" label={<>Worksheet <span className="font-normal text-fg-subtle">(optional)</span></>} hint="A file every student starts with, like a handout to fill in. Each one gets their own copy.">
               <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Worksheet">
                 {STARTER_CHOICES.map((c) => (
-                  <button key={c.id} type="button" role="radio" aria-checked={starter === c.id} onClick={() => setStarter(c.id)} className="chip-pick" data-testid={`worksheet-${c.id}`}>
-                    {c.label}
+                  <button
+                    key={c.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={starter === c.id}
+                    onClick={() => {
+                      if (c.id !== starter && (starter === "upload" || starter === "drive")) setUpload(null);
+                      setStarter(c.id);
+                      if (c.id === "drive") void fromDrive();
+                    }}
+                    className="chip-pick inline-flex items-center gap-1.5"
+                    data-testid={`worksheet-${c.id}`}
+                  >
+                    {c.icon} {c.label}
                   </button>
                 ))}
               </div>
+              {starter === "drive" && (
+                <div className="mt-3 flex flex-wrap items-center gap-2 rounded-2xl border border-line bg-bg px-4 py-3.5 text-sm" data-testid="drive-picked">
+                  <DriveMark className="h-5 w-5" />
+                  {upload ? (
+                    <span className="font-medium" data-testid="worksheet-file-name">
+                      {upload.name}
+                    </span>
+                  ) : (
+                    <span className="text-fg-muted">{driveReady ? "Pick a Google Doc or Slides file." : "Google Drive isn't connected on this site yet."}</span>
+                  )}
+                  {driveReady && (
+                    <button type="button" onClick={() => void fromDrive()} className="press ml-auto inline-flex items-center gap-1.5 rounded-xl border border-line-strong px-3 py-1.5 font-semibold hover:bg-surface-2" data-testid="worksheet-drive">
+                      {upload ? "Pick a different file" : "Open Google Drive"}
+                    </button>
+                  )}
+                </div>
+              )}
               {starter === "upload" && (
                 <div className="mt-3 rounded-2xl border border-line bg-bg px-4 py-3.5 text-sm">
                   <div className="flex flex-wrap items-center gap-2">
@@ -698,11 +774,6 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
                         }}
                       />
                     </label>
-                    {driveReady && (
-                      <button type="button" onClick={() => void fromDrive()} className="press inline-flex items-center gap-1.5 rounded-xl border border-line-strong px-3 py-1.5 font-semibold hover:bg-surface-2" data-testid="worksheet-drive">
-                        <DriveMark /> From Google Drive
-                      </button>
-                    )}
                     {upload && (
                       <span className="font-medium" data-testid="worksheet-file-name">
                         {upload.name}
@@ -710,9 +781,6 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
                     )}
                   </div>
                   <p className="mt-2 text-sm text-fg-subtle">
-                    {driveReady
-                      ? "Pick a Google Doc or Slides file, or a Word or PowerPoint file. "
-                      : "From Google Docs or Slides, use File, then Download, then .docx or .pptx. "}
                     Text, headings, lists, tables, pictures and slide layouts come through; exact fonts, themes, charts and animations don't.
                   </p>
                 </div>
@@ -721,10 +789,11 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
                 <input type="checkbox" className="mt-1 h-4 w-4 accent-[#44cf6c]" checked={withKey} onChange={(e) => setWithKey(e.target.checked)} data-testid="worksheet-key" />
                 <span>
                   <span className="font-semibold">Add an answer key</span>
-                  <span className="block text-sm text-fg-muted">Only you see it. It sits next to each student's work when you grade.</span>
+                  <span className="block text-sm text-fg-muted">You write it on the next steps, right next to the worksheet. Only you see it, beside each student's work when you grade.</span>
                 </span>
               </label>
             </Field>
+            )}
           </div>
           <div className="space-y-8 lg:border-l lg:border-line lg:pl-10">
             <ProjectEditor part="what" value={project} onChange={setProject} />
@@ -788,6 +857,33 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
       )}
 
       {step === 2 && (
+        <div className="flex h-full min-h-0 flex-col gap-4" data-testid="wizard-sheet">
+          <div className="flex flex-wrap items-center gap-2">
+            {wsFiles.starter && (
+              <button type="button" onClick={() => setWsTab("starter")} aria-pressed={wsTab === "starter"} className="chip-pick inline-flex items-center gap-1.5" data-testid="ws-tab-worksheet">
+                <FileText className="h-4 w-4" /> Worksheet
+              </button>
+            )}
+            {wsFiles.key && (
+              <button type="button" onClick={() => setWsTab("key")} aria-pressed={wsTab === "key"} className="chip-pick inline-flex items-center gap-1.5" data-testid="ws-tab-key">
+                <KeyRound className="h-4 w-4" /> Answer key <span className="text-xs font-normal opacity-70">only you</span>
+              </button>
+            )}
+            <span className="min-w-[12rem] flex-1 text-sm text-fg-muted" data-testid="wizard-worksheet">
+              {importNote ||
+                (wsTab === "key" ? "Write the answers. Only you see this, next to each student's work when you grade." : "Write the questions. Each student gets their own copy when they first open the assignment.")}
+            </span>
+          </div>
+          <div className="min-h-[420px] flex-1 overflow-hidden rounded-2xl border border-line">
+            {worksheetRoom && (wsTab === "key" ? wsFiles.key : wsFiles.starter) && (
+              <FilePanel bare room={worksheetRoom} file={(wsTab === "key" ? wsFiles.key : wsFiles.starter)!} me={getIdentity()} onClose={() => {}} onRename={() => {}} />
+            )}
+          </div>
+          <p className="text-xs text-fg-subtle">It saves as you type. You can change it later from the class page (Edit worksheet).</p>
+        </div>
+      )}
+
+      {step === 3 && (
         <div className="mx-auto max-w-xl py-2" data-testid="wizard-ready">
           <p className="text-[1.0625rem] text-fg-muted">
             Post this link in Google Classroom. When a student opens it, Cairn gives them {mode === "solo" ? "their own copy" : "their group's room"}, and their work shows up on this class page for grading.
@@ -799,7 +895,7 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
             className="ledge-btn mt-6 w-full"
             data-testid="wizard-post-to-classroom"
           >
-            <ClassroomMark /> Post to Google Classroom
+            <ClassroomMark className="h-5 w-5" /> Post to Google Classroom
           </a>
           <p className="mt-2 text-center text-sm text-fg-subtle">In Classroom, pick Assignment, then set the points and due date there.</p>
           <div className="mt-6 flex items-center gap-2 rounded-2xl border border-line bg-bg py-2 pl-4 pr-2">
@@ -820,18 +916,7 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
               {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? "Copied" : "Copy link"}
             </button>
           </div>
-          {worksheetRoom && (
-            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-line px-4 py-3 text-[15px]" data-testid="wizard-worksheet">
-              <FileText className="h-5 w-5 text-fg-muted" aria-hidden />
-              <span className="min-w-[12rem] flex-1">
-                {importNote || "Your worksheet is ready to fill in."}
-                <span className="block text-sm text-fg-subtle">Check it before students open the link: each one gets a copy of it as it is then.</span>
-              </span>
-              <Link to={`/r/${worksheetRoom}`} className="press rounded-xl border border-line-strong px-3 py-1.5 text-sm font-semibold hover:bg-surface-2" data-testid="wizard-edit-worksheet">
-                Open the worksheet
-              </Link>
-            </div>
-          )}
+
         </div>
       )}
     </Modal>

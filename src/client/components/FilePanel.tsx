@@ -113,6 +113,7 @@ export const FilePanel = memo(function FilePanel({
   onRename,
   locked = false,
   lockedNote,
+  bare = false,
 }: {
   room: string;
   file: RoomFile;
@@ -122,6 +123,8 @@ export const FilePanel = memo(function FilePanel({
   locked?: boolean;
   /** Why it's locked, when it isn't because the project was turned in. */
   lockedNote?: string;
+  /** Just the editor, no header (when it's embedded somewhere that has its own). */
+  bare?: boolean;
 }) {
   const [title, setTitle] = useState(file.title);
   const [history, setHistory] = useState(false);
@@ -131,6 +134,12 @@ export const FilePanel = memo(function FilePanel({
     setHistory(false);
     setReplay(false);
   }, [file.id]);
+  if (bare)
+    return (
+      <div className="flex h-full min-h-0 flex-col bg-bg" data-testid="file-panel" data-kind={file.kind}>
+        <Body key={file.id} room={room} file={file} me={me} locked={locked} />
+      </div>
+    );
   return (
     <div className="panel-in flex h-full min-h-0 flex-col bg-bg" data-testid="file-panel" data-kind={file.kind}>
       <div className="flex h-12 shrink-0 items-center gap-2 border-b border-line px-3">
