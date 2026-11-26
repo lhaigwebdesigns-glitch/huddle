@@ -16,7 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { needsWelcome, useAccount, signInUrl } from "../lib/account";
-import { AccountMenu } from "../components/AccountMenu";
+import { AppShell, tint, useMyClasses } from "../components/AppShell";
 import { ProfilePanel } from "../components/ProfilePanel";
 import { NewProjectDialog } from "../components/NewProjectDialog";
 import { GraduationCap } from "lucide-react";
@@ -142,81 +142,8 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
   const counts = { all: rooms?.length ?? 0, hosting: rooms?.filter((r) => r.isHost).length ?? 0, joined: rooms?.filter((r) => !r.isHost).length ?? 0 };
 
   return (
-    <div className="flex h-full bg-bg">
-      {/* Sidebar (Claude Code style) */}
-      <aside className="hidden w-64 shrink-0 flex-col border-r border-line bg-sidebar md:flex">
-        <div className="flex h-14 items-center gap-2 px-4">
-          <Link to="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
-            <Logo className="h-7 w-7" /> <span className="font-display text-[17px] font-extrabold tracking-tight">Cairn</span>
-          </Link>
-        </div>
-        <div className="px-3">
-          <Button className="w-full justify-start" onClick={() => create()} disabled={busy} data-testid="dash-new-room">
-            <Plus className="h-4 w-4" /> New room
-          </Button>
-          <Button variant="secondary" className="mt-1.5 w-full justify-start" onClick={() => setNewProject(true)} data-testid="dash-new-project">
-            <GraduationCap className="h-4 w-4" /> New project
-          </Button>
-          <Link to="/classes" className="press mt-1.5 flex w-full items-center gap-2 rounded-xl px-4 py-2 text-[15px] text-fg-muted hover:bg-accent-soft hover:text-fg" data-testid="sidebar-classes">
-            <Users className="h-4 w-4" /> Classes
-          </Link>
-        </div>
-        <nav className="mt-4 space-y-0.5 px-3 text-sm" aria-label="Filter rooms">
-          <Link
-            to="/profile"
-            aria-current={view === "profile" ? "page" : undefined}
-            className={`press mb-2 flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 ${view === "profile" ? "bg-accent-soft font-medium text-fg" : "text-fg-muted hover:bg-accent-soft/60 hover:text-fg"}`}
-            data-testid="sidebar-profile"
-          >
-            <UserRound className="h-4 w-4" /> Profile
-          </Link>
-          {(
-            [
-              ["all", "All rooms", Users],
-              ["hosting", "Hosting", Crown],
-              ["joined", "Joined", DoorOpen],
-            ] as const
-          ).map(([id, label, Icon]) => (
-            <button
-              key={id}
-              onClick={() => (setFilter(id), view !== "rooms" && nav("/dashboard"))}
-              aria-current={view === "rooms" && filter === id ? "page" : undefined}
-              className={`press flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left ${view === "rooms" && filter === id ? "bg-accent-soft font-medium text-fg" : "text-fg-muted hover:bg-accent-soft/60 hover:text-fg"}`}
-            >
-              <Icon className="h-4 w-4" />
-              <span className="flex-1">{label}</span>
-              <span className="tabular text-xs text-fg-subtle">{counts[id]}</span>
-            </button>
-          ))}
-        </nav>
-        <form onSubmit={join} className="mt-6 px-3">
-          <label htmlFor="dash-join" className="px-1 text-xs font-medium text-fg-subtle">Join with a code</label>
-          <div className="mt-1.5 flex gap-1.5">
-            <Input id="dash-join" placeholder="K7Q-29F" value={code} onChange={(e) => setCode(formatCode(e.target.value))} className="h-9 font-mono" />
-            <Button type="submit" variant="secondary" size="sm" aria-label="Join room">
-              <LogIn className="h-4 w-4" />
-            </Button>
-          </div>
-        </form>
-        {account.isAdmin && (
-          <div className="mt-6 px-3">
-            <Link to="/admin" className="press flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm text-fg-muted hover:bg-accent-soft hover:text-fg" data-testid="sidebar-admin">
-              <Shield className="h-4 w-4" /> Admin
-            </Link>
-          </div>
-        )}
-        <div className="mt-auto flex items-center justify-between gap-2 border-t border-line p-3">
-          <AccountMenu user={account.user} providers={account.providers} />
-          <ThemeToggle />
-        </div>
-      </aside>
-
-      <main className="flex min-w-0 flex-1 flex-col">
-        {/* Mobile top bar */}
-        <header className="flex h-14 items-center justify-between border-b border-line px-4 md:hidden">
-          <Link to="/" className="flex items-center gap-2 font-semibold"><Logo className="h-7 w-7" /> <span className="font-display text-[17px] font-extrabold tracking-tight">Cairn</span></Link>
-          <div className="flex items-center gap-2"><ThemeToggle /><AccountMenu user={account.user} providers={account.providers} /></div>
-        </header>
+    <AppShell account={account.user} isAdmin={account.isAdmin}>
+      <div className="flex min-h-full flex-col">
 
         {view === "profile" ? (
           <div className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-4 pb-16 pt-8 sm:px-8">
@@ -224,9 +151,10 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
             <ProfilePanel user={account.user} onChange={account.update} />
           </div>
         ) : (
-        <div className="mx-auto w-full max-w-3xl flex-1 overflow-y-auto px-4 pb-16 pt-8 sm:px-8">
-          <h1 className="rise text-3xl font-extrabold tracking-tight">Welcome back, {account.user.name.split(" ")[0]}</h1>
-          <p className="rise rise-1 mt-1 text-fg-muted">Your rooms, wherever you left them.</p>
+        <div className="mx-auto w-full max-w-4xl flex-1 px-4 pb-16 pt-8 sm:px-8 sm:pt-10">
+          <h1 className="rise font-display text-[2rem] font-extrabold leading-tight tracking-[-0.03em]">Welcome back, {account.user.name.split(" ")[0]}</h1>
+          <p className="rise rise-1 mt-1 text-[1.0625rem] text-fg-muted">Your rooms, wherever you left them.</p>
+          {account.user.role === "student" && <MyClassCards />}
 
           {/* Start a room */}
           <form onSubmit={create} className="rise rise-2 mt-6 flex gap-2 rounded-2xl border border-line bg-surface p-2 shadow-sm">
@@ -243,9 +171,11 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
           >
             <GraduationCap className="h-4 w-4" /> One group project
           </button>
-          <Link to="/classes" className="press rise rise-2 mt-1 flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-fg-muted hover:bg-accent-soft hover:text-fg" data-testid="classes-link">
-            <Users className="h-4 w-4" /> Teacher? Set up a class and assign projects to every group
-          </Link>
+          {account.user.role !== "student" && (
+            <Link to="/classes" className="press rise rise-2 mt-1 flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-fg-muted hover:bg-accent-soft hover:text-fg" data-testid="classes-link">
+              <Users className="h-4 w-4" /> {account.user.role === "teacher" ? "Go to your classes" : "Teacher? Set up a class and assign projects to every group"}
+            </Link>
+          )}
           {newProject && (
             <NewProjectDialog
               uid={account.user.uid}
@@ -257,23 +187,20 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
             />
           )}
           {/* Mobile: join + filter */}
-          <form onSubmit={join} className="mt-3 flex gap-2 md:hidden">
+          <form onSubmit={join} className="mt-3 flex max-w-md gap-2">
             <Input aria-label="Party code" placeholder="Have a code? K7Q-29F" value={code} onChange={(e) => setCode(formatCode(e.target.value))} className="font-mono" />
             <Button type="submit" variant="secondary">Join</Button>
           </form>
           {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">{err}</p>}
 
           <div className="mt-8 flex items-center gap-3">
-            <div className="flex gap-1 md:hidden" role="tablist">
+            <div className="flex gap-1" role="tablist" aria-label="Which rooms">
               {(["all", "hosting", "joined"] as const).map((f) => (
-                <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)} className={`press rounded-full px-3 py-1 text-sm capitalize ${filter === f ? "bg-primary text-primary-fg" : "text-fg-muted hover:bg-accent-soft"}`}>
-                  {f}
+                <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)} className={`press rounded-full px-3.5 py-1.5 text-sm font-semibold ${filter === f ? "bg-fg text-bg" : "text-fg-muted hover:bg-accent-soft"}`}>
+                  {f === "all" ? "All" : f === "hosting" ? "Hosting" : "Joined"} <span className="tabular opacity-70">{counts[f]}</span>
                 </button>
               ))}
             </div>
-            <h2 className="hidden text-sm font-medium text-fg-muted md:block">
-              {filter === "all" ? "All rooms" : filter === "hosting" ? "Rooms you host" : "Rooms you joined"}
-            </h2>
             <div className="relative ml-auto w-full max-w-56">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" />
               <Input aria-label="Search rooms" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} className="h-9 pl-8" />
@@ -310,7 +237,7 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
           </ul>
         </div>
         )}
-      </main>
+      </div>
 
       {manage && <ManageSheet room={manage} onClose={() => setManage(null)} onToast={setToast} />}
       {deleting && (
@@ -329,7 +256,33 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
           {toast}
         </div>
       )}
-    </div>
+    </AppShell>
+  );
+}
+
+/** A student's classes as cards, one click from home (like the class tiles in Classroom). */
+function MyClassCards() {
+  const mine = useMyClasses(true);
+  if (!mine?.classes.length) return null;
+  return (
+    <section className="rise rise-2 mt-8" aria-labelledby="my-classes">
+      <h2 id="my-classes" className="font-display text-xl font-bold tracking-[-0.01em]">Your classes</h2>
+      <ul className="mt-3 grid gap-3 sm:grid-cols-2" data-testid="dash-classes">
+        {mine.classes.map((c) => (
+          <li key={c.code}>
+            <Link to={c.href} className="press group block overflow-hidden rounded-[20px] border border-line bg-surface hover:border-line-strong" data-testid="dash-class">
+              <span className="block h-16 px-5 pt-4" style={{ background: tint(c.code) }}>
+                <span className="block truncate font-display text-lg font-extrabold text-ink">{c.name}</span>
+              </span>
+              <span className="flex items-center justify-between gap-3 px-5 py-3 text-sm text-fg-muted">
+                <span className="truncate">{c.sub || "Your class"}</span>
+                <span className="font-semibold text-fg group-hover:underline">Open</span>
+              </span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 

@@ -1,4 +1,5 @@
 import { confirmDialog } from "./Dialogs";
+import { Modal } from "./Modal";
 import { useState } from "react";
 import { BookOpen, CalendarClock, ChevronDown, Clock, ListChecks, Lock, ReceiptText, RotateCcw, Send, Sparkles } from "lucide-react";
 import { dueFor } from "../../shared/schedule";
@@ -192,35 +193,43 @@ function TimeRequestDialog({ closed, send, onClose }: { closed: boolean; send: (
   const [kind, setKind] = useState<"open" | "extend">(closed ? "open" : "extend");
   const [days, setDays] = useState(1);
   const [reason, setReason] = useState("");
-  const choice = (on: boolean) => `press rounded-xl border px-3 py-2 text-left text-sm ${on ? "border-fg bg-surface-2" : "border-line-strong hover:border-fg/40"}`;
+  const choice = "choice-card bg-bg px-5 py-4 text-left";
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]" onClick={onClose}>
-      <form
-        role="dialog"
-        aria-modal="true"
-        aria-label="Ask for more time"
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!reason.trim()) return;
-          send({ t: "time_request", kind, ...(kind === "extend" ? { days } : {}), reason: reason.trim() });
-          onClose();
-        }}
-        className="pop w-full max-w-md rounded-[24px] border border-line bg-surface p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.4)]"
-        data-testid="time-request-dialog"
-      >
-        <h2 className="text-xl font-semibold tracking-tight">Ask for more time</h2>
-        <p className="mt-1 text-sm text-fg-muted">Your teacher will see this and can say yes or no.</p>
-        <div className="mt-4 grid gap-2" role="radiogroup" aria-label="What you need">
-          <button type="button" role="radio" aria-checked={kind === "open"} onClick={() => setKind("open")} className={choice(kind === "open")} data-testid="ask-open">
-            <div className="font-medium">Let me work on it now</div>
-            <div className="text-xs text-fg-subtle">Opens it for you for an hour.</div>
+    <Modal
+      size="md"
+      title="Ask for more time"
+      subtitle="Your teacher will see this and can say yes or no."
+      onClose={onClose}
+      testId="time-request-dialog"
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!reason.trim()) return;
+        send({ t: "time_request", kind, ...(kind === "extend" ? { days } : {}), reason: reason.trim() });
+        onClose();
+      }}
+      footer={
+        <>
+          <button type="button" onClick={onClose} className="press rounded-xl px-4 py-2 font-medium text-fg-muted hover:bg-surface-2 hover:text-fg">
+            Cancel
           </button>
-          <button type="button" role="radio" aria-checked={kind === "extend"} onClick={() => setKind("extend")} className={choice(kind === "extend")} data-testid="ask-extend">
-            <div className="font-medium">A later due date</div>
-            <div className="text-xs text-fg-subtle">
+          <span className="flex-1" />
+          <button type="submit" disabled={!reason.trim()} className="ledge-btn min-w-[200px]" data-testid="send-time-request">
+            Send to my teacher
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-7">
+        <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="What you need">
+          <button type="button" role="radio" aria-checked={kind === "open"} onClick={() => setKind("open")} className={choice} data-testid="ask-open">
+            <div className="text-[1.05rem] font-semibold">Let me work on it now</div>
+            <div className="mt-1 text-sm text-fg-muted">Opens it for you for an hour.</div>
+          </button>
+          <button type="button" role="radio" aria-checked={kind === "extend"} onClick={() => setKind("extend")} className={choice} data-testid="ask-extend">
+            <div className="text-[1.05rem] font-semibold">A later due date</div>
+            <div className="mt-2 text-sm text-fg-muted">
               <label>
-                <select aria-label="How many more days" value={days} onChange={(e) => setDays(Number(e.target.value))} onClick={(e) => e.stopPropagation()} className="rounded border border-line-strong bg-transparent px-1 py-0.5">
+                <select aria-label="How many more days" value={days} onChange={(e) => setDays(Number(e.target.value))} onClick={(e) => e.stopPropagation()} className="rounded-lg border border-line-strong bg-transparent px-2 py-1">
                   {[1, 2, 3, 5, 7].map((d) => (
                     <option key={d} value={d}>
                       {d} more day{d === 1 ? "" : "s"}
@@ -231,28 +240,20 @@ function TimeRequestDialog({ closed, send, onClose }: { closed: boolean; send: (
             </div>
           </button>
         </div>
-        <label className="mt-4 block text-sm font-medium">
-          Why do you need it?
+        <label className="block">
+          <span className="text-[15px] font-semibold">Why do you need it?</span>
           <textarea
             required
             maxLength={300}
-            rows={3}
+            rows={4}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder="e.g. I was absent on Tuesday"
-            className="mt-1 w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-fg/40"
+            className="mt-2 w-full rounded-2xl border border-line-strong bg-bg px-4 py-3 text-[15px] outline-none focus:border-fg focus:ring-4 focus:ring-fg/10"
             data-testid="time-reason"
           />
         </label>
-        <div className="mt-4 flex justify-end gap-2">
-          <button type="button" onClick={onClose} className="press rounded-lg px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-2 hover:text-fg">
-            Cancel
-          </button>
-          <button type="submit" disabled={!reason.trim()} className="press rounded-lg bg-primary px-3.5 py-1.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover disabled:opacity-40" data-testid="send-time-request">
-            Send to my teacher
-          </button>
-        </div>
-      </form>
-    </div>
+      </div>
+    </Modal>
   );
 }

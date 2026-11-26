@@ -213,6 +213,14 @@ input, textarea { caret-color: var(--fg); }
   .glass { backdrop-filter: none !important; background: var(--bg) !important; }
 }
 
+/* Big modal: rises a little and settles (a sheet from below on phones). */
+@keyframes modal-in { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: none; } }
+.modal-in { animation: modal-in 300ms var(--ease-out) both; }
+
+/* App shell drawer on phones: slides in from the left, where the sidebar lives. */
+@keyframes sheet-left { from { transform: translateX(-24px); opacity: 0; } to { transform: none; opacity: 1; } }
+.sheet-left { animation: sheet-left 280ms var(--ease-drawer) both; }
+
 /* ---------- Pebble scenes (TourScene): gentle loops; still = the finished picture ---------- */
 .sc-bob, .sc-hop, .sc-scribble, .sc-press, .sc-burst, .sc-line, .sc-bar, .sc-check, .sc-dot, .sc-pop-in, .sc-flow, .sc-type {
   transform-box: fill-box; transform-origin: 50% 100%;
@@ -414,3 +422,8 @@ input, textarea { caret-color: var(--fg); }
   --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
 }
+
+/* Room settings in the big modal: two columns on wide screens, each group kept whole. */
+.settings-cols { column-gap: 48px; }
+@media (min-width: 1024px) { .settings-cols { columns: 2; } }
+.settings-cols > *, .settings-cols > fieldset > * { break-inside: avoid; margin-bottom: 28px; }

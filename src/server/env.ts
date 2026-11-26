@@ -19,6 +19,10 @@ export interface Env {
    */
   REQUIRE_SIGNIN?: string;
   /** Cloudflare Turnstile keys. The bot check is off until both are set. */
+  /** Import from Google Drive (both public by nature; the feature stays hidden until both are set). */
+  GOOGLE_PICKER_KEY?: string;
+  /** The Google Cloud project number (the Picker's app ID). */
+  GOOGLE_APP_ID?: string;
   TURNSTILE_SITE_KEY?: string;
   TURNSTILE_SECRET?: string;
   /** "1" = a passwordless "dev" sign-in for local testing. Never set this in production. */

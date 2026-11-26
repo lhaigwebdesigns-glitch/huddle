@@ -87,20 +87,20 @@ function DialogView({ req, done }: { req: Req; done: () => void }) {
           e.preventDefault();
           if (!blocked) finish(true);
         }}
-        className="pop w-full max-w-sm rounded-[24px] border border-line bg-surface p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.4)]"
+        className="modal-in w-full max-w-md rounded-[28px] border border-line bg-surface p-7 shadow-[0_40px_100px_-30px_rgba(0,0,0,0.5)] sm:p-8"
         style={{ ["--origin" as string]: "center" }}
         data-testid="cairn-dialog"
       >
-        <h2 id="cairn-dialog-title" className="text-lg font-extrabold tracking-tight">
+        <h2 id="cairn-dialog-title" className="font-display text-[1.35rem] font-extrabold leading-tight tracking-[-0.02em]">
           {req.title}
         </h2>
         {req.message && (
-          <p id="cairn-dialog-msg" className="mt-1.5 text-sm leading-relaxed text-fg-muted">
+          <p id="cairn-dialog-msg" className="mt-2 text-[15px] leading-relaxed text-fg-muted">
             {req.message}
           </p>
         )}
         {req.kind === "prompt" && (
-          <label className="mt-4 block text-sm font-medium">
+          <label className="mt-5 block text-[15px] font-semibold">
             {req.label}
             <input
               ref={inputRef}
@@ -108,18 +108,18 @@ function DialogView({ req, done }: { req: Req; done: () => void }) {
               onChange={(e) => setText(e.target.value)}
               placeholder={req.placeholder}
               maxLength={500}
-              className="mt-1 w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-fg/40"
+              className="mt-2 h-12 w-full rounded-xl border border-line-strong bg-bg px-4 text-base outline-none focus:border-fg focus:ring-4 focus:ring-fg/10"
               data-testid="dialog-input"
             />
           </label>
         )}
-        <div className="mt-5 flex justify-end gap-2">
+        <div className="mt-7 flex justify-end gap-2">
           {req.kind !== "alert" && (
-            <Button type="button" variant="secondary" onClick={() => finish(false)} data-testid="dialog-cancel">
+            <Button type="button" variant="ghost" size="md" onClick={() => finish(false)} data-testid="dialog-cancel">
               {req.cancelLabel ?? "Cancel"}
             </Button>
           )}
-          <Button ref={okRef} type="submit" variant={req.danger ? "danger" : "primary"} disabled={blocked} data-testid="dialog-confirm">
+          <Button ref={okRef} type="submit" variant={req.danger ? "danger" : "primary"} disabled={blocked} className="h-11 px-5 font-semibold" data-testid="dialog-confirm">
             {req.confirmLabel ?? "OK"}
           </Button>
         </div>
