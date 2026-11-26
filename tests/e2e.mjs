@@ -1087,9 +1087,20 @@ try {
   await park.getByTestId("ws-tab-key").click();
   await park.getByTestId("wizard-sheet").getByTestId("doc-editor").getByText(/Write the answers here/).waitFor({ timeout: 15000 });
   ok(true, "the wizard shows the worksheet and the answer key in editors, so the teacher writes them right there");
+  // Back works even after it's made: changes are saved to the same assignment.
+  await park.getByTestId("wizard-back").click();
+  await park.getByTestId("wizard-back").click();
+  await park.getByTestId("worksheet-locked").waitFor();
+  await park.getByLabel("Assignment title").fill("Cell worksheet (cells and organelles)");
+  await park.getByTestId("wizard-next").click();
+  await park.getByTestId("create-assignment").getByText("Save and continue").click();
+  await park.getByTestId("wizard-sheet").waitFor();
+  ok(true, "the wizard can go back to change the title after the assignment is made, and comes back to the worksheet");
   await park.getByTestId("wizard-to-share").click();
   await park.getByTestId("wizard-ready").waitFor();
   await park.getByTestId("wizard-done").click();
+  await park.getByTestId("assignment").filter({ hasText: "Cell worksheet (cells and organelles)" }).waitFor();
+  ok((await park.getByTestId("assignment").filter({ hasText: "Cell worksheet" }).count()) === 1, "going back and forward saves to the same assignment, not a second one");
   const wsSection = park.getByTestId("assignment").filter({ hasText: "Cell worksheet" });
   await wsSection.getByTestId("has-key").waitFor();
   ok((await wsSection.getByTestId("worksheet-files").innerText()).includes("Cell worksheet"), "the class page shows the worksheet and that it has an answer key");

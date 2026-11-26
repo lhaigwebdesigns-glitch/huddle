@@ -676,6 +676,50 @@ classes.patch("/:id/assignments/:aid", async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * Change an assignment you just made (the wizard's Back button): title, the project rules,
+ * and solo or groups. Only before any student has a room, so nobody's work is affected.
+ */
+classes.put("/:id/assignments/:aid", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  const row = await c.env.DB!.prepare(`SELECT * FROM assignments WHERE id = ? AND class_id = ?`).bind(c.req.param("aid"), t.cls.id).first<AssignmentRow>();
+  if (!row) return c.json({ error: "Assignment not found." }, 404);
+  const groups = await loadGroups(c.env.DB!, row.id);
+  if (groups.some((g) => !isPending(g.roomCode)))
+    return c.json({ error: "Students have already opened this assignment, so it can't be changed here. Use Edit times, or each room's settings." }, 409);
+  const body = await c.req.json<{ title?: string; project?: Record<string, unknown>; mode?: string; groupSize?: number }>().catch(() => ({}) as Record<string, never>);
+  const title = String(body.title ?? row.title).trim().slice(0, 80);
+  if (!title) return c.json({ error: "Give the assignment a title." }, 400);
+  const mode: AssignmentMode = body.mode === "groups" ? "groups" : body.mode === "solo" ? "solo" : ((row.mode as AssignmentMode) ?? "solo");
+  const groupSize = Math.min(CLASS_LIMITS.groupSize, Math.max(1, Number(body.groupSize ?? row.group_size) || 3));
+  const project = cleanProject(body.project ?? JSON.parse(row.project))!;
+  const stored = {
+    instructions: project.instructions,
+    rubric: project.rubric,
+    ai: project.ai,
+    dueAt: project.dueAt,
+    pasteGuard: project.pasteGuard,
+    ...(project.reflection ? { reflection: project.reflection } : {}),
+    ...(project.schedule ? { schedule: project.schedule } : {}),
+  };
+  const stmts = [c.env.DB!.prepare(`UPDATE assignments SET title = ?, project = ?, mode = ?, group_size = ? WHERE id = ?`).bind(title, JSON.stringify(stored), mode, groupSize, row.id)];
+  // Solo or groups (or the group size) changed: plan the groups again.
+  if (mode !== row.mode || groupSize !== row.group_size) {
+    stmts.push(c.env.DB!.prepare(`DELETE FROM class_groups WHERE assignment_id = ?`).bind(row.id));
+    if (mode === "groups") {
+      const { results: roster } = await c.env.DB!.prepare(`SELECT uid FROM class_students WHERE class_id = ?`).bind(t.cls.id).all<{ uid: string }>();
+      let planned = makeGroups(roster.map((r) => r.uid), groupSize).filter((g, i) => g.length || i === 0);
+      if (!planned.length) planned = [[]];
+      planned.forEach((members, i) =>
+        stmts.push(c.env.DB!.prepare(`INSERT INTO class_groups (assignment_id, room_code, name, members) VALUES (?, ?, ?, ?)`).bind(row.id, `${PENDING}${newId()}`, `Group ${i + 1}`, JSON.stringify(members))),
+      );
+    }
+  }
+  await c.env.DB!.batch(stmts);
+  return c.json({ ok: true });
+});
+
 /** Give one student or group extra time: open it now for a while, extend their due date, or set it. */
 classes.post("/:id/assignments/:aid/groups/:room/time", async (c) => {
   const g = await gradingContext(c);

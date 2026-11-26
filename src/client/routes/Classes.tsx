@@ -576,6 +576,16 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
     if (step === 2) return setStep(3);
     if (step !== 1) return;
     setBusy(true);
+    // Came back to change it: save the changes to the assignment that's already made.
+    if (made) {
+      const d = await api(`/api/classes/${classId}/assignments/${made}`, {
+        method: "PUT",
+        body: JSON.stringify({ title: title.trim(), project: { ...project, ...(reflect && reflection.trim() ? { reflection: reflection.trim() } : {}) }, mode, groupSize: size }),
+      });
+      setBusy(false);
+      if (d.error) return setErr(d.error);
+      return setStep(worksheetRoom ? 2 : 3);
+    }
     const kind = starter === "upload" || starter === "drive" ? (upload ? officeKind(upload) : null) : starter === "none" ? null : starter;
     const d = await api<{ id: string; worksheet?: { room: string; starterId?: string; keyId?: string } }>(`/api/classes/${classId}/assignments`, {
       method: "POST",
@@ -644,9 +654,9 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
           {err}
         </p>
       )}
-      {step === 1 && (
-        <Button type="button" variant="ghost" onClick={() => setStep(0)} data-testid="wizard-back">
-          Back
+      {step >= 1 && (
+        <Button type="button" variant="ghost" onClick={() => (setErr(""), setStep(step === 3 && !worksheetRoom ? 1 : step - 1))} data-testid="wizard-back">
+          <ArrowLeft className="h-4 w-4" /> Back
         </Button>
       )}
       <span className="flex-1" />
@@ -657,7 +667,7 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
       )}
       {step === 1 && (
         <button type="submit" disabled={busy} className="ledge-btn min-w-[220px]" data-testid="create-assignment">
-          {busy ? (importNote ? "Bringing in your file…" : "Making it…") : hasWs ? "Make it, then write the worksheet" : "Make the assignment"}
+          {busy ? (importNote ? "Bringing in your file…" : made ? "Saving…" : "Making it…") : made ? "Save and continue" : hasWs ? "Make it, then write the worksheet" : "Make the assignment"}
         </button>
       )}
       {step === 2 && (
@@ -703,6 +713,12 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
                 </p>
               )}
             </Field>
+            {made && (
+              <p className="rounded-xl bg-surface-2 px-4 py-3 text-sm text-fg-muted" data-testid="worksheet-locked">
+                {worksheetRoom ? "The worksheet is made. Change what's in it on the Write the worksheet step." : "This assignment has no worksheet. You can add one from the class page."}
+              </p>
+            )}
+            {!made && (
             <Field testId="worksheet-choice" label={<>Worksheet <span className="font-normal text-fg-subtle">(optional)</span></>} hint="A file every student starts with, like a handout to fill in. Each one gets their own copy.">
               <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Worksheet">
                 {STARTER_CHOICES.map((c) => (
@@ -777,6 +793,7 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
                 </span>
               </label>
             </Field>
+            )}
           </div>
           <div className="space-y-8 lg:border-l lg:border-line lg:pl-10">
             <ProjectEditor part="what" value={project} onChange={setProject} />
