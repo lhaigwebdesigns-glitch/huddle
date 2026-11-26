@@ -1082,6 +1082,13 @@ try {
   await park.getByTestId("create-assignment").click();
   await park.getByTestId("wizard-worksheet").getByText("Your file is in.").waitFor({ timeout: 30000 });
   ok(true, "a teacher can make a Word file the assignment's worksheet");
+  // The worksheet and the answer key are written right in the wizard.
+  await park.getByTestId("wizard-sheet").getByTestId("doc-editor").locator("h1", { hasText: "Cell Worksheet" }).waitFor({ timeout: 15000 });
+  await park.getByTestId("ws-tab-key").click();
+  await park.getByTestId("wizard-sheet").getByTestId("doc-editor").getByText(/Write the answers here/).waitFor({ timeout: 15000 });
+  ok(true, "the wizard shows the worksheet and the answer key in editors, so the teacher writes them right there");
+  await park.getByTestId("wizard-to-share").click();
+  await park.getByTestId("wizard-ready").waitFor();
   await park.getByTestId("wizard-done").click();
   const wsSection = park.getByTestId("assignment").filter({ hasText: "Cell worksheet" });
   await wsSection.getByTestId("has-key").waitFor();

@@ -295,7 +295,7 @@ input, textarea { caret-color: var(--fg); }
 .choice-card[aria-pressed="true"], .choice-card[aria-checked="true"] { border-color: var(--fg); box-shadow: 0 4px 0 var(--fg); }
 .chip-pick { border: 2px solid var(--line-strong); border-radius: 999px; padding: 8px 14px; font-weight: 600; font-size: 14px; transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease, transform 140ms var(--ease-out); }
 .chip-pick:active { transform: scale(0.97); }
-.chip-pick[aria-checked="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.chip-pick[aria-checked="true"], .chip-pick[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 
 @media (prefers-reduced-motion: reduce) {
   .sc-bob, .sc-hop, .sc-scribble, .sc-press, .sc-burst, .sc-line, .sc-bar, .sc-check, .sc-dot, .sc-pop-in, .sc-flow, .sc-type,

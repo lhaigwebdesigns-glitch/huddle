@@ -23,7 +23,7 @@ The order follows what the pilot teacher and her students hit first.
 | 1 | Welcome (sign-up): teacher and student | `/welcome` | ✅ | All paths work. Fixed: button placement on desktop, header alignment, "signing up as a … · Change" on the last step, age hint, red code box that clears, one focus ring, step announcements for screen readers. |
 | 2 | Today | `/classes` | ✅ | All states work (new, one class, busy, all caught up, Hide, student, signed out). Fixed: work comes before the setup card, no duplicate Grade button, Answer jumps to the waiting list/requests/reports, quieter New class box, true sign-in wording, no errors for students. |
 | 3 | Class page: assignments, class list, waiting, requests | `/classes/:id` | 👀 | Everything works. Fixed: phone header, reported-message wording, shorter section titles, assignment actions tidied into a More menu, Class list + Students merged into one Students list, phone waiting row. | |
-| 4 | New assignment wizard | modal on the class page | ⬜ | |
+| 4 | New assignment wizard | modal on the class page | 👀 | New "Write the worksheet" step with the worksheet and answer key editors right in the wizard; Google Drive as its own choice with its logo; icons on templates and worksheet choices; real Google Classroom-style mark; bigger modal. |
 | 5 | Worksheet room (teacher) | `/r/:code` | ⬜ | |
 | 6 | Student class page: join, waiting, in the class | `/c/:code` | ⬜ | |
 | 7 | Room: sidebar, chat and tutor, project bar, tasks | `/r/:code` | ⬜ | |

@@ -17,6 +17,7 @@ export function Modal({
   size = "lg",
   testId,
   closeLabel = "Close",
+  tall = false,
 }: {
   title: ReactNode;
   subtitle?: ReactNode;
@@ -31,6 +32,8 @@ export function Modal({
   size?: "lg" | "md";
   testId?: string;
   closeLabel?: string;
+  /** Always 88% of the screen's height (for editors and other big content). */
+  tall?: boolean;
 }) {
   const ref = useRef<HTMLElement>(null);
   const back = useRef<Element | null>(null);
@@ -63,7 +66,7 @@ export function Modal({
   }, []);
 
   const Panel = (onSubmit ? "form" : "div") as "form";
-  const width = size === "lg" ? "sm:w-[min(80vw,1080px)]" : "sm:w-[min(80vw,720px)]";
+  const width = size === "lg" ? "sm:w-[min(86vw,1440px)]" : "sm:w-[min(80vw,760px)]";
   return (
     <div className="fade fixed inset-0 z-50 flex items-stretch justify-center bg-black/45 backdrop-blur-[2px] sm:items-center sm:p-6" onClick={onClose}>
       <Panel
@@ -74,7 +77,7 @@ export function Modal({
         tabIndex={-1}
         onSubmit={onSubmit}
         onClick={(e) => e.stopPropagation()}
-        className={`modal-in flex h-[100dvh] w-full flex-col overflow-hidden bg-surface shadow-[0_40px_100px_-30px_rgba(0,0,0,0.5)] outline-none sm:h-auto sm:max-h-[88vh] sm:rounded-[28px] sm:border sm:border-line ${width}`}
+        className={`modal-in flex h-[100dvh] w-full flex-col overflow-hidden bg-surface shadow-[0_40px_100px_-30px_rgba(0,0,0,0.5)] outline-none ${tall ? "sm:h-[88vh]" : "sm:h-auto sm:max-h-[88vh]"} sm:rounded-[28px] sm:border sm:border-line ${width}`}
         data-testid={testId}
       >
         <header className="shrink-0 border-b border-line px-6 pb-5 pt-6 sm:px-8 sm:pt-7">
