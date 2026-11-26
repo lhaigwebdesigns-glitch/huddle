@@ -20,8 +20,8 @@ The order follows what the pilot teacher and her students hit first.
 
 | # | Screen | Where | Status | Notes |
 |---|---|---|---|---|
-| 1 | Welcome (sign-up): teacher and student | `/welcome` | 👀 | All paths work. Fixed: button placement on desktop, header alignment, "signing up as a … · Change" on the last step, age hint, red code box that clears, one focus ring, step announcements for screen readers. |
-| 2 | Today | `/classes` | ⬜ | |
+| 1 | Welcome (sign-up): teacher and student | `/welcome` | ✅ | All paths work. Fixed: button placement on desktop, header alignment, "signing up as a … · Change" on the last step, age hint, red code box that clears, one focus ring, step announcements for screen readers. |
+| 2 | Today | `/classes` | 👀 | All states work (new, one class, busy, all caught up, Hide, student, signed out). Fixed: work comes before the setup card, no duplicate Grade button, Answer jumps to the waiting list/requests/reports, quieter New class box, true sign-in wording, no errors for students. |
 | 3 | Class page: assignments, class list, waiting, requests | `/classes/:id` | ⬜ | |
 | 4 | New assignment wizard | modal on the class page | ⬜ | |
 | 5 | Worksheet room (teacher) | `/r/:code` | ⬜ | |

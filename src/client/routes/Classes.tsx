@@ -70,8 +70,8 @@ function StudentOnly() {
     <div className="mx-auto mt-[12vh] max-w-sm px-6 text-center" data-testid="student-account">
       <RockArt className="mx-auto h-20 w-20" body={PERI} pose="hold" prop="book" />
       <h1 className="mt-3 text-2xl font-extrabold tracking-tight">This is a student account</h1>
-      <p className="mt-2 text-sm text-fg-muted">Teacher tools, like making classes and grading, are only for teacher accounts. Open your teacher's link to get to your work.</p>
-      <Link to="/dashboard" className="press mt-5 inline-flex items-center rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-fg hover:bg-primary-hover">
+      <p className="mt-2 text-[15px] text-fg-muted">Making classes and grading are only for teacher accounts. Your classes are in the menu, under Enrolled, and your work is in Your rooms.</p>
+      <Link to="/dashboard" className="ledge-btn mt-6 h-11 px-5 text-[15px]">
         Go to your rooms
       </Link>
     </div>
@@ -114,7 +114,7 @@ function SignInFirst() {
     <div className="mx-auto mt-[15vh] max-w-sm px-6 text-center">
       <GraduationCap className="mx-auto h-8 w-8 text-fg-muted" />
       <h1 className="mt-3 text-2xl font-extrabold tracking-tight">Sign in to set up classes</h1>
-      <p className="mt-2 text-sm text-fg-muted">Use your school Google account. Students join with a class code, no account needed.</p>
+      <p className="mt-2 text-sm text-fg-muted">Use your school Google account. Students open your class link and sign in with theirs.</p>
       <div className="mt-5 flex flex-col gap-2">
         {account.providers.map((p, i) => (
           <a
@@ -141,6 +141,7 @@ export function ClassesPage() {
   const [today, setToday] = useState<TodayView | null>(null);
   useEffect(() => {
     if (!account.user) return;
+    if (account.user.role !== "teacher") return;
     api<{ classes: ClassInfo[] }>("/api/classes").then((d) => setList(d.classes ?? []));
     api<TodayView>("/api/classes/today").then((d) => !d.error && setToday(d));
   }, [account.user]);
@@ -168,12 +169,13 @@ export function ClassesPage() {
           <h1 className="rise font-display text-[2rem] font-extrabold leading-tight tracking-[-0.03em]">Today</h1>
           <p className="rise rise-1 mt-1 text-[1.0625rem] text-fg-muted">What needs you, across all your classes.</p>
         </div>
-        {today && <GettingStarted setup={today.setup} />}
+        {/* Work waiting on the teacher comes first; the setup steps follow. */}
         {today && <TodayPanel today={today} />}
+        {today && <GettingStarted setup={today.setup} hasWork={today.toGrade.length > 0} />}
         <h2 className="mt-12 font-display text-xl font-bold tracking-[-0.01em]">Your classes</h2>
         <form onSubmit={create} className="mt-3 flex gap-2 rounded-2xl border border-line bg-surface p-2 shadow-sm" data-tour="new-class">
           <Input id="new-class-name" aria-label="Class name" placeholder="New class name (e.g. Period 3 History)" value={name} onChange={(e) => setName(e.target.value)} className="border-0 bg-transparent shadow-none" />
-          <Button type="submit" variant={list?.length ? "secondary" : "primary"} data-testid="create-class">
+          <Button type="submit" variant="secondary" data-testid="create-class">
             <Plus className="h-4 w-4" /> New class
           </Button>
         </form>
@@ -882,7 +884,7 @@ function WaitingSection({ view, onChange }: { view: ClassView; onChange: () => v
     onChange();
   };
   return (
-    <section className="mt-6 rounded-[20px] border border-line bg-surface p-4" data-testid="waiting-list">
+    <section id="waiting" className="mt-6 scroll-mt-6 rounded-[20px] border border-line bg-surface p-4" data-testid="waiting-list">
       <h2 className="text-sm font-semibold">
         Needs your answer: {view.waiting.length} student{view.waiting.length === 1 ? "" : "s"} waiting to join
       </h2>
@@ -1058,7 +1060,7 @@ function TimeRequestsSection({ classId, onChange }: { classId: string; onChange:
     onChange();
   };
   return (
-    <section className="mt-6 rounded-[20px] border border-line bg-surface p-4" data-testid="time-requests">
+    <section id="time-requests" className="mt-6 scroll-mt-6 rounded-[20px] border border-line bg-surface p-4" data-testid="time-requests">
       <h2 className="text-sm font-semibold">Needs your answer: {list.length} request{list.length === 1 ? "" : "s"} for more time</h2>
       <ul className="mt-3 space-y-2">
         {list.map((r) => (
@@ -1104,7 +1106,7 @@ function ReportsSection({ classId }: { classId: string }) {
   }, [load]);
   if (!reports.length) return null;
   return (
-    <section className="mt-6 rounded-[20px] border border-amber-300 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20" data-testid="reports">
+    <section id="reports" className="mt-6 scroll-mt-6 rounded-[20px] border border-amber-300 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20" data-testid="reports">
       <h2 className="flex items-center gap-2 text-sm font-semibold text-amber-900 dark:text-amber-200">
         <Flag className="h-4 w-4" /> {reports.length} reported message{reports.length === 1 ? "" : "s"}
       </h2>
@@ -1155,6 +1157,20 @@ export function ClassPage() {
   }, [account.user, load]);
   const link = useMemo(() => (view ? `${location.origin}/c/${view.class.code}` : ""), [view]);
   useAutoTour("teacher-class", !!view && account.user?.role === "teacher", account.user?.tours, true);
+  // Arriving from Today's "Answer": bring that section into view (it loads a moment later).
+  useEffect(() => {
+    if (!view || !location.hash) return;
+    const id = location.hash.slice(1);
+    let n = 0;
+    const t = setInterval(() => {
+      const el = document.getElementById(id);
+      if (el || ++n > 10) {
+        clearInterval(t);
+        el?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+      }
+    }, 150);
+    return () => clearInterval(t);
+  }, [!!view]);
   if (!account.user) return <TeacherShell><SignInFirst /></TeacherShell>;
   if (account.user.role === "student") return <TeacherShell><StudentOnly /></TeacherShell>;
   if (err) return <TeacherShell back={{ to: "/classes", label: "Today" }}><p className="p-8 text-sm text-fg-muted">{err}</p></TeacherShell>;
@@ -1306,7 +1322,7 @@ const STEPS_KEY = "huddle.teacherSteps.hidden";
  * The first-time path: make a class → make an assignment and post it → grade. Each step shows
  * one button; finished steps get a check. It goes away once something is graded (or on "Hide").
  */
-function GettingStarted({ setup }: { setup: TodayView["setup"] }) {
+function GettingStarted({ setup, hasWork = false }: { setup: TodayView["setup"]; hasWork?: boolean }) {
   const [hidden, setHidden] = useState(() => {
     try {
       return localStorage.getItem(STEPS_KEY) === "1";
@@ -1318,8 +1334,13 @@ function GettingStarted({ setup }: { setup: TodayView["setup"] }) {
   const cls = setup.firstClassId ? `/classes/${setup.firstClassId}` : "";
   const steps = [
     { done: setup.hasClass, label: "Make a class", hint: "One for each period you teach.", action: { label: "Make a class", onClick: () => document.getElementById("new-class-name")?.focus() } },
-    { done: setup.hasAssignment, label: "Make an assignment and post it in Google Classroom", hint: "Students open the link and start. No accounts needed.", action: { label: "Make an assignment", to: cls } },
-    { done: false, label: "Grade the work that's turned in", hint: "You'll see it on this page as soon as someone turns in.", action: { label: "Open your class", to: cls } },
+    { done: setup.hasAssignment, label: "Make an assignment and post it in Google Classroom", hint: "Students open the link and sign in with their school Google account.", action: { label: "Make an assignment", to: cls } },
+    {
+      done: false,
+      label: "Grade the work that's turned in",
+      hint: hasWork ? "Some is ready now: use Grade above." : "You'll see it on this page as soon as someone turns in.",
+      action: hasWork ? { label: "", to: "" } : { label: "Open your class", to: cls },
+    },
   ];
   const current = steps.findIndex((x) => !x.done);
   return (
@@ -1446,7 +1467,11 @@ function TodayPanel({ today }: { today: TodayView }) {
                     )}
                   </div>
                 </div>
-                <Link to={`/classes/${x.classId}`} className={`${go} border border-line-strong hover:bg-surface-2`} data-testid="today-answer-btn">
+                <Link
+                  to={`/classes/${x.classId}#${x.waiting > 0 ? "waiting" : x.timeRequests > 0 ? "time-requests" : "reports"}`}
+                  className={`${go} border border-line-strong hover:bg-surface-2`}
+                  data-testid="today-answer-btn"
+                >
                   Answer <ArrowRight className="h-3.5 w-3.5" />
                 </Link>
               </li>

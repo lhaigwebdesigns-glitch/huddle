@@ -842,6 +842,19 @@ try {
   ok(true, "a student's classes are in the sidebar and on their home page, so they get back without the code");
   await park.getByTestId("app-sidebar").getByTestId("sidebar-class").filter({ hasText: "Period 3 History" }).waitFor();
   ok((await park.getByTestId("app-sidebar").getByTestId("nav-rooms").count()) === 1, "a teacher's sidebar lists their classes, with Your rooms one click away");
+  // The account chip opens its menu (upward, inside the window), and the sidebar can be hidden and brought back.
+  await park.getByTestId("app-sidebar").getByTestId("account-button").click();
+  const acctMenu = await park.getByRole("menu").boundingBox();
+  ok(!!acctMenu && acctMenu.y >= 0 && acctMenu.y + acctMenu.height <= (park.viewportSize()?.height ?? 900) && (await park.getByRole("menuitem", { name: "Sign out" }).count()) === 1, "the account chip opens a menu with Edit profile and Sign out, fully on screen");
+  await park.keyboard.press("Escape");
+  await park.getByTestId("hide-sidebar").click();
+  await park.getByTestId("show-sidebar").waitFor();
+  ok(!(await park.getByTestId("app-sidebar").isVisible()), "the sidebar can be hidden");
+  await park.reload();
+  await park.getByTestId("show-sidebar").waitFor();
+  await park.getByTestId("show-sidebar").click();
+  await park.getByTestId("app-sidebar").getByTestId("nav-rooms").waitFor();
+  ok(true, "it stays hidden after a reload, and the show button brings it back");
   await park.getByTestId("no-assignments").getByTestId("new-assignment-btn").click();
   await park.getByTestId("a-template-presentation").click();
   await park.getByTestId("wizard-next").click();

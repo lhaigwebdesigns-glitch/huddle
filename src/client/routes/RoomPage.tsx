@@ -20,6 +20,8 @@ import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { SignInGate } from "../components/SignInGate";
 import { useAccount, type Account } from "../lib/account";
 import { TourButton, useAutoTour } from "../components/Tour";
+import { HideSidebarButton, ShowSidebarButton } from "../components/AppShell";
+import { useSidebarHidden } from "../lib/sidebar";
 
 /** "I'm 13 or older" checkbox, with the reason when it's left unchecked. */
 export function AgeCheck({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -151,6 +153,7 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
   const [showFeedback, setShowFeedback] = useState(false);
   const [receiptMode, setReceiptMode] = useState<"view" | "turnin" | null>(null);
   const [showSidebar, setShowSidebar] = useState(false);
+  const sidebarHidden = useSidebarHidden();
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
@@ -263,6 +266,7 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
           <Logo className="h-7 w-7" /> <span className="font-display text-[17px] font-extrabold tracking-tight">Cairn</span>
         </Link>
         <TourButton className="ml-auto" />
+        <HideSidebarButton />
         <button onClick={() => setShowSidebar(false)} className="press ml-auto rounded-lg p-1.5 text-fg-muted hover:bg-accent-soft md:hidden" aria-label="Close menu">
           <X className="h-4 w-4" />
         </button>
@@ -372,7 +376,7 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
 
   return (
     <div className="flex h-full min-h-0 bg-bg">
-      <div className="hidden border-r border-line md:flex">{sidebar}</div>
+      <div className={`hidden border-r border-line ${sidebarHidden ? "" : "md:flex"}`}>{sidebar}</div>
       {showSidebar && (
         <div className="fixed inset-0 z-40 flex md:hidden" onClick={() => setShowSidebar(false)}>
           <div onClick={(e) => e.stopPropagation()} className="h-full shadow-2xl [animation:rise_240ms_var(--ease-drawer)_both]">
@@ -387,6 +391,7 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
           <button onClick={() => setShowSidebar(true)} className="press rounded-lg p-1.5 text-fg-muted hover:bg-surface-2 md:hidden" aria-label="Open menu">
             <Menu className="h-5 w-5" />
           </button>
+          {sidebarHidden && <ShowSidebarButton className="mr-1" />}
           <div className="flex min-w-0 flex-1 items-baseline gap-3">
             <div className="truncate text-[15px] font-semibold tracking-tight">{state.settings.title}</div>
             <div className="hidden min-w-0 items-center gap-1.5 truncate text-xs text-fg-subtle sm:flex">

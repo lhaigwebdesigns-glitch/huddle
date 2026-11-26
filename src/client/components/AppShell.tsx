@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { ArrowLeft, CalendarCheck, LayoutGrid, Menu, Plus, Shield, X } from "lucide-react";
+import { ArrowLeft, CalendarCheck, LayoutGrid, Menu, PanelLeftClose, PanelLeftOpen, Plus, Shield, X } from "lucide-react";
+import { setSidebarHidden, useSidebarHidden } from "../lib/sidebar";
 import type { Account } from "../lib/account";
 import type { MyClass, MyClasses } from "../../shared/classes";
 import { isValidCode, normalizeCode } from "../../shared/code";
@@ -106,6 +107,7 @@ function Sidebar({ account, isAdmin, onNavigate }: { account: Account; isAdmin?:
         </Link>
         <span className="flex-1" />
         <TourButton />
+        {!onNavigate && <HideSidebarButton />}
       </div>
 
       <div className="px-3">
@@ -141,10 +143,40 @@ function Sidebar({ account, isAdmin, onNavigate }: { account: Account; isAdmin?:
       </div>
 
       <div className="flex shrink-0 items-center justify-between gap-2 border-t border-line p-3">
-        <AccountMenu user={account} providers={[]} isAdmin={isAdmin} />
+        <AccountMenu user={account} providers={[]} isAdmin={isAdmin} placement="up" />
         <ThemeToggle />
       </div>
     </div>
+  );
+}
+
+/** Hides the sidebar (computers only; phones use the menu). */
+export function HideSidebarButton() {
+  return (
+    <button
+      onClick={() => setSidebarHidden(true)}
+      className="press hidden h-8 w-8 items-center justify-center rounded-full text-fg-muted hover:bg-surface-2 hover:text-fg md:inline-flex"
+      aria-label="Hide sidebar"
+      title="Hide sidebar"
+      data-testid="hide-sidebar"
+    >
+      <PanelLeftClose className="h-[18px] w-[18px]" />
+    </button>
+  );
+}
+
+/** Brings the sidebar back; sits at the top left while it's hidden. */
+export function ShowSidebarButton({ className = "" }: { className?: string }) {
+  return (
+    <button
+      onClick={() => setSidebarHidden(false)}
+      className={`press hidden h-9 w-9 items-center justify-center rounded-xl border border-line bg-surface text-fg-muted shadow-sm hover:text-fg md:inline-flex ${className}`}
+      aria-label="Show sidebar"
+      title="Show sidebar"
+      data-testid="show-sidebar"
+    >
+      <PanelLeftOpen className="h-[18px] w-[18px]" />
+    </button>
   );
 }
 
@@ -161,6 +193,7 @@ export function AppShell({
   children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
+  const hidden = useSidebarHidden();
   const { pathname } = useLocation();
   useEffect(() => setOpen(false), [pathname]);
   useEffect(() => {
@@ -171,7 +204,7 @@ export function AppShell({
   }, [open]);
   return (
     <div className="flex h-full bg-bg" data-testid="app-shell">
-      <aside className="hidden w-[264px] shrink-0 border-r border-line bg-sidebar md:block" data-testid="app-sidebar">
+      <aside className={`hidden w-[264px] shrink-0 border-r border-line bg-sidebar ${hidden ? "" : "md:block"}`} data-testid="app-sidebar">
         <Sidebar account={account} isAdmin={isAdmin} />
       </aside>
       {open && (
@@ -186,8 +219,10 @@ export function AppShell({
         </div>
       )}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line px-3 md:hidden">
-          <button onClick={() => setOpen(true)} className="press rounded-lg p-2 text-fg-muted hover:bg-surface-2 hover:text-fg" aria-label="Open menu" data-testid="open-menu">
+        {/* Phones always; computers while the sidebar is hidden (with the button to bring it back). */}
+        <header className={`flex h-14 shrink-0 items-center gap-2 border-b border-line px-3 ${hidden ? "" : "md:hidden"}`}>
+          <ShowSidebarButton />
+          <button onClick={() => setOpen(true)} className="press rounded-lg p-2 text-fg-muted hover:bg-surface-2 hover:text-fg md:hidden" aria-label="Open menu" data-testid="open-menu">
             <Menu className="h-5 w-5" />
           </button>
           <Link to="/" className="flex items-center gap-2">
@@ -196,7 +231,7 @@ export function AppShell({
           <span className="flex-1" />
           <TourButton />
         </header>
-        <main className="min-h-0 flex-1 overflow-y-auto">
+        <main className="relative min-h-0 flex-1 overflow-y-auto">
           {back && (
             <div className="mx-auto w-full max-w-5xl px-4 pt-5 sm:px-8">
               <Link to={back.to} className="press inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-medium text-fg-muted hover:bg-surface-2 hover:text-fg" data-testid="back-link">
