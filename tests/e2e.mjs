@@ -903,6 +903,7 @@ try {
   ok((await park.getByRole("region", { name: "Contribution receipt" }).count()) === 1, "the grading screen shows the frozen receipt");
   await park.getByTestId("receipt-stuck").getByText(/cite a website/).waitFor({ timeout: 15000 });
   ok(!(await park.getByRole("region", { name: "Contribution receipt" }).innerText()).includes("how do I cite a website?"), "grading shows where a student got stuck with the tutor, as a summary, not their chat");
+  if (shots) await park.screenshot({ path: `${shots}/grading-receipt.png` });
   const rows = park.getByTestId("rubric-row");
   ok((await rows.count()) === 3, "the rubric text becomes rows with points");
   for (let i = 0; i < 3; i++) await rows.nth(i).getByTestId("score-step").first().click();

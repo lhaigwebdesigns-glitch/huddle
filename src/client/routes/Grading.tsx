@@ -206,6 +206,17 @@ export default function Grading() {
     setAllDone(false);
     load();
   }, [account.user, id, aid, room]);
+  // Right after a turn-in, the tutor summary is still being written: check back a few times.
+  const pendingSummary = !!view?.receipt?.final && !view.receipt.tutorSummaryDone && view.receipt.people.some((p) => (p.tutorQuestions ?? 0) > 0);
+  useEffect(() => {
+    if (!pendingSummary) return;
+    let n = 0;
+    const t = setInterval(() => {
+      if (++n > 8) return clearInterval(t);
+      api<GradingView>(`/api/classes/${id}/assignments/${aid}/groups/${room}`).then((d) => !d.error && d.receipt?.tutorSummaryDone && setView(d));
+    }, 4000);
+    return () => clearInterval(t);
+  }, [pendingSummary, id, aid, room]);
   const me = useMemo(() => getIdentity(), []);
   const back = { to: `/classes/${id}`, label: "Class" };
   useAutoTour("teacher-grading", !!view && account.user?.role === "teacher", account.user?.tours, true);

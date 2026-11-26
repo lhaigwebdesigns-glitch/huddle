@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, Eye, Lock, Send, X } from "lucide-react";
+import { ChevronDown, Download, Eye, Lock, MessageCircleQuestion, Send, X } from "lucide-react";
 import type { ClientMsg, Receipt, ReceiptPerson } from "../../shared/protocol";
 import { FILE_INFO, type FileKind } from "../../shared/files";
 import { UNIT_LABEL } from "../../shared/contrib";
@@ -23,6 +23,103 @@ export function workLine(p: Pick<ReceiptPerson, "words" | "units">) {
 }
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+/**
+ * What this person asked the AI tutor about, spelled out so nobody has to guess what it is:
+ * where it comes from (their questions, summarized), what it isn't (the chat), and that the
+ * student sees the same thing. Every case gets a line, so the feature is never invisible.
+ */
+function TutorBox({ p, you, final, done }: { p: ReceiptPerson; you: boolean; final: boolean; done: boolean }) {
+  const n = p.tutorQuestions ?? 0;
+  const who = you ? "you" : p.name.split(" ")[0];
+  const Who = you ? "You" : who;
+  let body: React.ReactNode;
+  if (p.stuck?.length)
+    body = (
+      <>
+        <ul className="mt-2 space-y-1.5 text-sm text-fg" data-testid="receipt-stuck">
+          {p.stuck.map((x, i) => (
+            <li key={i} className="flex gap-2">
+              <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-peri" aria-hidden />
+              <span>{x}</span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-2 text-xs leading-relaxed text-fg-muted">
+          Cairn wrote these points from the {plural(n, "question", "questions")} {who} asked the AI tutor while working. It's a summary of the topics, not the chat itself.{" "}
+          {you ? "Your teacher sees exactly this." : `${who} sees exactly this on their own receipt.`}
+        </p>
+      </>
+    );
+  else if (n === 0) body = <p className="mt-1 text-sm text-fg-muted" data-testid="receipt-stuck-none">{Who} didn't ask the AI tutor anything on this assignment.</p>;
+  else if (!final)
+    body = (
+      <p className="mt-1 text-sm text-fg-muted">
+        {Who} asked the tutor {plural(n, "question", "questions")} so far. When this is turned in, Cairn writes a few short points about the topics, so {you ? "your teacher knows" : "you know"} where {you ? "you" : "they"} needed help.
+      </p>
+    );
+  else if (!done) body = <p className="mt-1 text-sm text-fg-muted" data-testid="receipt-stuck-pending">{Who} asked the tutor {plural(n, "question", "questions")}. Cairn is writing the summary now; it shows up here in a few seconds.</p>;
+  else
+    body = (
+      <p className="mt-1 text-sm text-fg-muted">
+        {Who} asked the tutor {plural(n, "question", "questions")}, but Cairn couldn't write the summary this time (usually because the day's free AI allowance ran out).
+      </p>
+    );
+  return (
+    <div className="mt-3 rounded-xl border border-peri/50 bg-peri/10 px-3.5 py-3" data-testid="receipt-tutor">
+      <div className="flex items-center gap-2 text-[13px] font-semibold text-fg">
+        <MessageCircleQuestion className="h-4 w-4 shrink-0 text-fg-muted" aria-hidden />
+        {you ? "What you asked the AI tutor about" : `What ${who} asked the AI tutor about`}
+      </div>
+      {body}
+    </div>
+  );
+}
+
+/** A short, foldable guide to every part of the receipt (open by default the first time). */
+function HowToRead() {
+  const KEY = "cairn.receiptGuide";
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(KEY) !== "seen";
+    } catch {
+      return true;
+    }
+  });
+  const toggle = () => {
+    setOpen((o) => !o);
+    try {
+      localStorage.setItem(KEY, "seen");
+    } catch {
+      /* private mode */
+    }
+  };
+  return (
+    <div className="mb-4 rounded-xl border border-line bg-surface-2/60" data-testid="receipt-guide">
+      <button type="button" onClick={toggle} aria-expanded={open} className="press flex w-full items-center gap-2 px-3.5 py-2.5 text-left text-[13px] font-semibold">
+        <span className="flex-1">How to read this receipt</span>
+        <ChevronDown className={`h-4 w-4 text-fg-muted transition-transform ${open ? "rotate-180" : ""}`} aria-hidden />
+      </button>
+      {open && (
+        <ul className="space-y-1.5 px-3.5 pb-3 text-xs leading-relaxed text-fg-muted">
+          <li>
+            <b className="text-fg">Words and items</b>: what each person wrote that's still in the files. Text the AI wrote counts for whoever asked for it, and is listed separately below.
+          </li>
+          <li>
+            <b className="text-fg">What they asked the AI tutor about</b>: a few short points Cairn writes at turn-in from each student's questions to the tutor. Not the chat itself.
+          </li>
+          <li>
+            <b className="text-fg">Chat messages</b>: only how many were sent. Nobody's messages are shown.
+          </li>
+          <li>
+            <b className="text-fg">Files and Timeline</b>: who wrote how much of each file, and what happened on each day. Open a doc and press Replay to watch it being written.
+          </li>
+          <li>Students see this same receipt before and after they turn in.</li>
+        </ul>
+      )}
+    </div>
+  );
+}
 
 /** Opens a printable copy; the browser's print dialog saves it as a PDF. */
 function printReceipt(r: Receipt) {
@@ -222,6 +319,7 @@ export function ReceiptDialog({
           ) : (
             <>
               <section aria-label="People">
+                <HowToRead />
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">People</h3>
                 {r.people.length === 0 && <p className="mt-2 text-sm text-fg-subtle">Nobody has worked on the project yet.</p>}
                 <ul className="mt-2 space-y-2">
@@ -239,19 +337,8 @@ export function ReceiptDialog({
                       <p className="mt-0.5 text-xs text-fg-subtle tabular">
                         {plural(p.filesCreated, "file", "files")} created · {plural(p.messages, "chat message", "chat messages")} · active {plural(p.daysActive, "day", "days")}
                         {p.aiAsks > 0 && <> · asked the AI to make or change files {plural(p.aiAsks, "time", "times")}</>}
-                        {(p.tutorQuestions ?? 0) > 0 && <> · asked the tutor {plural(p.tutorQuestions!, "question", "questions")}</>}
                       </p>
-                      {p.stuck && p.stuck.length > 0 && (
-                        <div className="mt-2.5 rounded-xl bg-surface-2 px-3.5 py-2.5" data-testid="receipt-stuck">
-                          <div className="text-xs font-semibold text-fg">Where {p.uid === meUid ? "you" : "they"} got stuck</div>
-                          <ul className="mt-1 list-disc space-y-0.5 pl-4 text-sm text-fg-muted">
-                            {p.stuck.map((x, i) => (
-                              <li key={i}>{x}</li>
-                            ))}
-                          </ul>
-                          <p className="mt-1.5 text-[11px] text-fg-subtle">Written by Cairn from the questions asked to the tutor. The student and the teacher see the same thing.</p>
-                        </div>
-                      )}
+                      <TutorBox p={p} you={p.uid === meUid} final={!!r.final} done={!!r.tutorSummaryDone} />
                       {p.tasks && p.tasks.length > 0 && (
                         <p className="mt-1 text-xs text-fg-muted" data-testid="receipt-tasks">
                           Tasks: {p.tasks.filter((t) => t.done).length} of {p.tasks.length} done ({p.tasks.map((t) => `${t.done ? "✓ " : ""}${t.title}`).join(", ")})
