@@ -868,8 +868,11 @@ try {
     await k.getByTestId("project-bar").waitFor();
   }
   ok(new Set(rooms).size === 2 && rooms.filter((r) => r === rooms[0]).length === 2, "each student lands in their own group's room");
-  // One group turns in.
+  // One group turns in, after asking the tutor something.
   const first = kids[0];
+  await first.getByTestId("composer").fill("how do I cite a website?");
+  await first.getByTestId("composer").press("Enter");
+  await first.getByTestId("ai-message").first().waitFor({ timeout: 20000 });
   await first.getByTestId("turn-in").click();
   await first.getByTestId("receipt-note").fill("I made the title slide.");
   await first.getByTestId("confirm-turn-in").click();
@@ -898,6 +901,8 @@ try {
   await park.getByTestId("grade-group").click();
   await park.getByTestId("grader").waitFor();
   ok((await park.getByRole("region", { name: "Contribution receipt" }).count()) === 1, "the grading screen shows the frozen receipt");
+  await park.getByTestId("receipt-stuck").getByText(/cite a website/).waitFor({ timeout: 15000 });
+  ok(!(await park.getByRole("region", { name: "Contribution receipt" }).innerText()).includes("how do I cite a website?"), "grading shows where a student got stuck with the tutor, as a summary, not their chat");
   const rows = park.getByTestId("rubric-row");
   ok((await rows.count()) === 3, "the rubric text becomes rows with points");
   for (let i = 0; i < 3; i++) await rows.nth(i).getByTestId("score-step").first().click();

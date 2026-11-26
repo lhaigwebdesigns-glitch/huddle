@@ -54,6 +54,7 @@ export function Privacy() {
           <li><b>The teacher</b> sees each group's progress as numbers (tasks done, last activity, turned in or not). After a group turns its project in, the teacher sees the turned-in files and the contribution receipt.</li>
           <li><b>The teacher never sees the group's chat.</b> The only exception is a message a student chooses to report to the teacher; then the teacher sees that one message.</li>
           <li>The contribution receipt counts what each person has in the files and how many chat messages they sent. It never includes what the messages said, and it isn't an AI detector.</li>
+          <li>When work is turned in, Cairn writes a few short points about the topics each student asked the AI tutor about (for example, "how to cite a website"), so the teacher knows where they needed help. It's a summary, not the questions themselves, and the student sees exactly the same points on their receipt.</li>
         </ul>
       </section>
       <section>

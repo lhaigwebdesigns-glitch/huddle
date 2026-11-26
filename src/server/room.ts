@@ -47,6 +47,7 @@ import { wordsFromChars } from "../shared/classes";
 import { checkMessage, safetyReply, SCHOOL_RULES } from "./ai/safety";
 import { accessState, dueFor, type AccessOverride, type TimeRequest } from "../shared/schedule";
 import { aiEnv } from "./ai/pc";
+import { addQuestion, mockStuck, parseStuck, stuckPrompt, type AskedQuestion } from "../shared/stuck";
 
 const MAX_FILES = 100;
 /** Messages that change files or tasks: refused while a project is turned in. */
@@ -462,6 +463,8 @@ export class Room extends Server<Env> {
             this.send(conn, { t: "error", message: "You've hit the hourly AI limit for the free beta. Try again soon." });
             return;
           }
+          // Projects keep each student's questions to the tutor, for "where they got stuck".
+          if (this.settings.project && text) await this.recordQuestion(me.uid, text);
           this.queueAi();
         }
         return;
@@ -699,6 +702,8 @@ export class Room extends Server<Env> {
         await this.lockFiles(true);
         // The receipt is frozen with the files: this is the version the teacher grades.
         await this.ctx.storage.put("receipt:final", await this.buildReceipt(true));
+        // Then, without holding up the turn-in, add where each student got stuck.
+        this.ctx.waitUntil(this.addStuck(p.turnedInAt).catch((e) => console.log("[stuck]", String(e))));
         this.broadcastMsg({ t: "settings", settings: this.settings });
         this.notice(`${me.name} turned in the project. Its files are locked now.`);
         return;
@@ -844,11 +849,12 @@ export class Room extends Server<Env> {
     const known = (await this.ctx.storage.get<Record<string, Omit<PartyPerson, "uid">>>("people")) ?? {};
     const notes = (await this.ctx.storage.get<Record<string, string>>("receiptNotes")) ?? {};
     const asks = (await this.ctx.storage.get<Record<string, number>>("aiAsks")) ?? {};
+    const questions = (await this.ctx.storage.get<Record<string, AskedQuestion[]>>("aiQuestions")) ?? {};
     const people = new Map<string, ReceiptPerson>();
     const person = (uid: string, name?: string) => {
       let p = people.get(uid);
       if (!p) {
-        p = { uid, name: known[uid]?.name ?? name ?? "Someone", words: 0, units: {}, filesCreated: 0, messages: 0, daysActive: 0, aiAsks: asks[uid] ?? 0 };
+        p = { uid, name: known[uid]?.name ?? name ?? "Someone", words: 0, units: {}, filesCreated: 0, messages: 0, daysActive: 0, aiAsks: asks[uid] ?? 0, tutorQuestions: questions[uid]?.length ?? 0 };
         people.set(uid, p);
       }
       return p;
@@ -967,6 +973,37 @@ export class Room extends Server<Env> {
     }
     if (added.length) await this.saveBoard(b);
     return added;
+  }
+
+  private async recordQuestion(uid: string, text: string) {
+    const all = (await this.ctx.storage.get<Record<string, AskedQuestion[]>>("aiQuestions")) ?? {};
+    all[uid] = addQuestion(all[uid] ?? [], text);
+    await this.ctx.storage.put("aiQuestions", all);
+  }
+
+  /**
+   * Writes "where they got stuck" into the frozen receipt: one short AI call for the whole group
+   * (skipped when today's AI allowance is used up; the receipt then shows the count only).
+   */
+  private async addStuck(turnedInAt: number) {
+    const final = await this.ctx.storage.get<Receipt>("receipt:final");
+    const all = (await this.ctx.storage.get<Record<string, AskedQuestion[]>>("aiQuestions")) ?? {};
+    if (!final) return;
+    const people = final.people.filter((p) => all[p.uid]?.length).map((p) => ({ uid: p.uid, name: p.name, questions: all[p.uid] }));
+    for (const p of final.people) p.tutorQuestions = all[p.uid]?.length ?? 0;
+    let stuck: Record<string, string[]> = {};
+    if (people.length) {
+      if (this.env.MOCK_AI === "true") stuck = Object.fromEntries(people.map((p) => [p.uid, mockStuck(p.questions)]));
+      else if ((await this.dailyBudget()) === "ok") {
+        const res = await chatWithFallback(await aiEnv(this.env), { messages: stuckPrompt(people), onDelta: () => {} });
+        stuck = parseStuck(res.content, people.map((p) => p.uid));
+      }
+    }
+    for (const p of final.people) if (stuck[p.uid]) p.stuck = stuck[p.uid];
+    // Only if it's still the same turn-in (not unsubmitted or reopened meanwhile).
+    if (this.settings?.project?.turnedInAt !== turnedInAt) return;
+    await this.ctx.storage.put("receipt:final", final);
+    this.broadcastMsg({ t: "receipt", receipt: final });
   }
 
   /** Credits a turn's file-making AI help to the students who asked for it. */

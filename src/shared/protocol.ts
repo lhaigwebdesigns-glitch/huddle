@@ -250,6 +250,13 @@ export interface ReceiptPerson {
   daysActive: number;
   /** Times they asked the AI to make or change files (full-help projects). */
   aiAsks: number;
+  /**
+   * Where they got stuck: a few short points about what they asked the tutor, written when the
+   * work is turned in. The student sees exactly what the teacher sees.
+   */
+  stuck?: string[];
+  /** How many questions they asked the tutor. */
+  tutorQuestions?: number;
   note?: string;
   role?: string;
   /** Titles of the tasks they own, and which are done. */
