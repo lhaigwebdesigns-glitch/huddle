@@ -245,6 +245,11 @@ auth.get("/providers", (c) =>
     requireSignIn: signInRequired(c.env),
     requireSignInToCreate: signInRequired(c.env) || c.env.REQUIRE_SIGNIN_TO_CREATE === "1",
     turnstileSiteKey: turnstileOn(c.env) ? c.env.TURNSTILE_SITE_KEY : null,
+    // Import from Google Drive: offered only once its keys are set.
+    drive:
+      c.env.GOOGLE_PICKER_KEY && c.env.GOOGLE_APP_ID && c.env.GOOGLE_CLIENT_ID
+        ? { apiKey: c.env.GOOGLE_PICKER_KEY, appId: c.env.GOOGLE_APP_ID, clientId: c.env.GOOGLE_CLIENT_ID }
+        : null,
   }),
 );
 

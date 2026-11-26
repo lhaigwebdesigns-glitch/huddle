@@ -1,46 +1,71 @@
 import { useState } from "react";
+import { Button } from "./ui";
+import { Modal } from "./Modal";
 
 export function FeedbackDialog({ room, uid, name, onClose }: { room: string; uid: string; name: string; onClose: () => void }) {
   const [text, setText] = useState("");
   const [done, setDone] = useState(false);
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl dark:bg-zinc-900" onClick={(e) => e.stopPropagation()}>
-        {done ? (
+  const [busy, setBusy] = useState(false);
+  if (done)
+    return (
+      <Modal
+        size="md"
+        title="Thank you!"
+        subtitle="Your feedback goes straight to the person building Cairn."
+        onClose={onClose}
+        footer={
           <>
-            <h2 className="text-lg font-semibold">Thank you! 💜</h2>
-            <p className="mt-2 text-sm text-zinc-500">Your feedback goes straight to the team building Cairn.</p>
-            <button onClick={onClose} className="mt-4 rounded-lg bg-primary px-4 py-2 text-primary-fg">Close</button>
+            <span className="flex-1" />
+            <button type="button" onClick={onClose} className="ledge-btn min-w-[140px]">
+              Close
+            </button>
           </>
-        ) : (
-          <form
-            onSubmit={async (e) => {
-              e.preventDefault();
-              if (!text.trim()) return;
-              await fetch("/api/feedback", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ room, uid, name, rating: 0, comment: text, page: location.pathname }),
-              });
-              setDone(true);
-            }}
-          >
-            <h2 className="text-lg font-semibold">Send feedback</h2>
-            <p className="mt-1 text-sm text-zinc-500">What's working, what's confusing, what should we build next?</p>
-            <textarea
-              autoFocus
-              rows={5}
-              value={text}
-              onChange={(e) => setText(e.target.value)}
-              className="mt-3 w-full rounded-lg border border-zinc-300 bg-transparent p-3 dark:border-zinc-700"
-            />
-            <div className="mt-3 flex justify-end gap-2">
-              <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-zinc-600">Cancel</button>
-              <button className="rounded-lg bg-primary px-4 py-2 text-primary-fg">Send</button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
+        }
+      >
+        <p className="text-[15px] text-fg-muted">Every note gets read. If something was broken, it's on the list.</p>
+      </Modal>
+    );
+  return (
+    <Modal
+      size="md"
+      title="Send feedback"
+      subtitle="What's working, what's confusing, what should Cairn do next?"
+      onClose={onClose}
+      onSubmit={async (e) => {
+        e.preventDefault();
+        if (!text.trim()) return;
+        setBusy(true);
+        await fetch("/api/feedback", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ room, uid, name, rating: 0, comment: text, page: location.pathname }),
+        }).catch(() => null);
+        setBusy(false);
+        setDone(true);
+      }}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <span className="flex-1" />
+          <button type="submit" disabled={!text.trim() || busy} className="ledge-btn min-w-[160px]">
+            {busy ? "Sending…" : "Send"}
+          </button>
+        </>
+      }
+    >
+      <label className="block">
+        <span className="text-[15px] font-semibold">Your feedback</span>
+        <textarea
+          autoFocus
+          rows={7}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          aria-label="Your feedback"
+          className="mt-2 w-full rounded-2xl border border-line-strong bg-bg p-4 text-[15px] outline-none focus:border-fg focus:ring-4 focus:ring-fg/10"
+        />
+      </label>
+    </Modal>
   );
 }

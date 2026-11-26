@@ -1,4 +1,5 @@
 import { confirmDialog } from "./Dialogs";
+import { Modal } from "./Modal";
 import type { Ban, ClientMsg, Member, RoomSettings, SkillInfo } from "../../shared/protocol";
 import { PartyLists } from "./PartyLists";
 import { hasWebGPU, LOCAL_MODELS } from "../lib/local-llm";
@@ -154,27 +155,14 @@ export function SettingsDialog({
   const patch = (p: Partial<RoomSettings>) => send({ t: "settings", patch: p });
   const disabled = !isHost;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Room settings"
-        className="rise max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[24px] border border-line bg-surface p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.4)]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold tracking-tight">Room settings</h2>
-          <button onClick={onClose} className="press rounded-full p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg" aria-label="Close settings">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        {!isHost && <p className="mt-1 text-sm text-fg-subtle">Only the host can change these.</p>}
-        <div className="mt-5 flex items-center justify-between rounded-2xl border border-line px-4 py-3">
+    <Modal title="Room settings" subtitle={isHost ? "Changes apply for everyone in the room right away." : "Only the host can change these."} onClose={onClose} testId="settings-dialog" closeLabel="Close settings">
+      <div className="settings-cols">
+        <div className="flex items-center justify-between rounded-2xl border border-line px-4 py-3">
           <span className="text-sm font-medium">Appearance</span>
           <ThemeToggle />
         </div>
 
-        <fieldset disabled={disabled} className="mt-4 space-y-5 disabled:opacity-60">
+        <fieldset disabled={disabled} className="contents disabled:opacity-60">
           {isHost && <ProjectSection settings={settings} members={members} send={send} />}
           <label className="block">
             <span className="text-sm font-medium">Room name</span>
@@ -336,6 +324,6 @@ export function SettingsDialog({
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

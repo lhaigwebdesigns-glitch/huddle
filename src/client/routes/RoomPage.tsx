@@ -267,6 +267,18 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
           <X className="h-4 w-4" />
         </button>
       </div>
+      {/* A clear way back: to your class for class rooms, otherwise to your rooms. */}
+      <div className="px-3 pb-2">
+        {state.settings.classLink?.classCode ? (
+          <Link to={`/c/${state.settings.classLink.classCode}`} className="press flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-semibold text-fg-muted hover:bg-accent-soft hover:text-fg" data-testid="room-back">
+            <ArrowLeft className="h-4 w-4" /> Your class
+          </Link>
+        ) : (
+          <Link to="/dashboard" className="press flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-semibold text-fg-muted hover:bg-accent-soft hover:text-fg" data-testid="room-back">
+            <ArrowLeft className="h-4 w-4" /> Your rooms
+          </Link>
+        )}
+      </div>
 
       <Drive
         files={state.files}

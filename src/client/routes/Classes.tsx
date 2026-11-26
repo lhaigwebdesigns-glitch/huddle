@@ -6,7 +6,11 @@ import { OFFICE_ACCEPT, officeKind } from "../lib/officeFiles";
 import { getIdentity } from "../lib/identity";
 import type { Report } from "../../shared/protocol";
 import { needsWelcome, PROVIDER_LABEL, useAccount, signInUrl } from "../lib/account";
-import { TourButton, useAutoTour } from "../components/Tour";
+import { useAutoTour } from "../components/Tour";
+import { AppShell, refreshMyClasses, tint } from "../components/AppShell";
+import { Field, Modal } from "../components/Modal";
+import { pickFromDrive, useDrive } from "../lib/googleDrive";
+import { DriveMark } from "../components/DriveMark";
 import { exampleTitle, orderTemplates, type Teach } from "../../shared/onboarding";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { formatCode } from "../../shared/code";
@@ -36,27 +40,22 @@ function ClassroomMark() {
   );
 }
 
-/** Header shared by the teacher's pages. */
+/** The frame for the teacher's pages: the app sidebar (classes, rooms) once signed in. */
 function TeacherShell({ children, back }: { children: React.ReactNode; back?: { to: string; label: string } }) {
+  const account = useAccount();
+  if (account.user)
+    return (
+      <AppShell account={account.user} isAdmin={account.isAdmin} back={back}>
+        {children}
+      </AppShell>
+    );
   return (
     <div className="flex h-full flex-col bg-bg">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line px-4">
         <Link to="/" className="flex items-center gap-2 text-[15px] font-semibold tracking-tight">
           <Logo className="h-7 w-7" /> <span className="font-display text-[17px] font-extrabold tracking-tight">Cairn</span>
         </Link>
-        {back && (
-          <Link to={back.to} className="press ml-2 flex items-center gap-1 rounded-lg px-2 py-1 text-sm text-fg-muted hover:bg-surface-2 hover:text-fg">
-            <ArrowLeft className="h-4 w-4" /> {back.label}
-          </Link>
-        )}
         <span className="flex-1" />
-        <TourButton />
-        <Link to="/classes" className="hidden text-sm font-medium text-fg-muted hover:text-fg sm:inline" data-testid="nav-today">
-          Today
-        </Link>
-        <Link to="/dashboard" className="hidden text-sm text-fg-muted hover:text-fg sm:inline">
-          Your rooms
-        </Link>
         <ThemeToggle />
       </header>
       <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
@@ -158,39 +157,42 @@ export function ClassesPage() {
     setErr("");
     const d = await api<{ id: string }>("/api/classes", { method: "POST", body: JSON.stringify({ name }) });
     if (d.error || !d.id) return setErr(d.error ?? "Couldn't create the class.");
+    refreshMyClasses();
     nav(`/classes/${d.id}`);
   };
   return (
     <TeacherShell>
-      <div className="mx-auto max-w-3xl px-4 pb-16 pt-8 sm:px-8">
+      <div className="mx-auto max-w-4xl px-4 pb-16 pt-8 sm:px-8 sm:pt-10">
         <div className="w-fit" data-tour="today">
-          <h1 className="rise text-3xl font-extrabold tracking-tight">Today</h1>
-          <p className="rise rise-1 mt-1 text-fg-muted">What needs you, across all your classes.</p>
+          <h1 className="rise font-display text-[2rem] font-extrabold leading-tight tracking-[-0.03em]">Today</h1>
+          <p className="rise rise-1 mt-1 text-[1.0625rem] text-fg-muted">What needs you, across all your classes.</p>
         </div>
         {today && <GettingStarted setup={today.setup} />}
         {today && <TodayPanel today={today} />}
-        <h2 className="mt-10 text-sm font-semibold uppercase tracking-wide text-fg-subtle">Your classes</h2>
+        <h2 className="mt-12 font-display text-xl font-bold tracking-[-0.01em]">Your classes</h2>
         <form onSubmit={create} className="mt-3 flex gap-2 rounded-2xl border border-line bg-surface p-2 shadow-sm" data-tour="new-class">
           <Input id="new-class-name" aria-label="Class name" placeholder="New class name (e.g. Period 3 History)" value={name} onChange={(e) => setName(e.target.value)} className="border-0 bg-transparent shadow-none" />
-          <Button type="submit" data-testid="create-class">
+          <Button type="submit" variant={list?.length ? "secondary" : "primary"} data-testid="create-class">
             <Plus className="h-4 w-4" /> New class
           </Button>
         </form>
         {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">{err}</p>}
-        <ul className="mt-3 space-y-2">
+        <ul className="mt-4 grid gap-3 sm:grid-cols-2">
           {list === null && <li className="text-sm text-fg-subtle">Loading…</li>}
           {list?.length === 0 && <li className="text-sm text-fg-subtle">No classes yet. Make your first one above.</li>}
           {list?.map((c) => (
             <li key={c.id}>
-              <Link to={`/classes/${c.id}`} className="press flex items-center gap-3 rounded-2xl border border-line px-4 py-3 hover:border-line-strong hover:bg-sidebar" data-testid="class-row">
-                <GraduationCap className="h-5 w-5 text-fg-muted" />
-                <span className="min-w-0 flex-1">
-                  <span className="block font-medium">{c.name}</span>
-                  <span className="text-xs text-fg-subtle">
+              <Link to={`/classes/${c.id}`} className="press group block overflow-hidden rounded-[20px] border border-line bg-surface hover:border-line-strong" data-testid="class-row">
+                <span className="flex h-16 items-start justify-between gap-3 px-5 pt-4" style={{ background: tint(c.code) }}>
+                  <span className="truncate font-display text-lg font-extrabold text-ink">{c.name}</span>
+                  <span className="shrink-0 font-mono text-sm font-semibold tracking-[0.12em] text-ink/70">{formatCode(c.code)}</span>
+                </span>
+                <span className="flex items-center justify-between gap-3 px-5 py-3 text-sm text-fg-muted">
+                  <span>
                     {plural(c.students ?? 0, "student")} · {plural(c.assignments ?? 0, "assignment")}
                   </span>
+                  <span className="font-semibold text-fg group-hover:underline">Open</span>
                 </span>
-                <span className="font-mono text-sm tracking-[0.12em] text-fg-muted">{formatCode(c.code)}</span>
               </Link>
             </li>
           ))}
@@ -541,138 +543,169 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
     setBusy(false);
     setStep(2);
   };
-  const choice = (on: boolean) => `press rounded-xl border px-3 py-2 text-left text-sm ${on ? "border-fg bg-surface-2" : "border-line-strong hover:border-fg/40"}`;
+  // Import from Google Drive (shown once the school's Drive keys are set up).
+  const driveCfg = useDrive();
+  const driveReady = !!driveCfg;
+  const fromDrive = async () => {
+    if (!driveCfg) return;
+    setErr("");
+    try {
+      const file = await pickFromDrive(driveCfg);
+      if (file) setUpload(file);
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  };
+  const choice = (_on: boolean) => "choice-card bg-bg px-5 py-4 text-left";
+  const steps = (
+    <ol className="flex gap-2" aria-label="Steps" data-testid="wizard-steps">
+      {WIZARD_STEPS.map((label, i) => (
+        <li key={label} className="min-w-0 flex-1" aria-current={i === step ? "step" : undefined}>
+          <div className={`h-1.5 rounded-full ${i <= step ? "bg-primary" : "bg-line"}`} />
+          <div className={`mt-1.5 truncate text-[13px] ${i === step ? "font-semibold text-fg" : "text-fg-subtle"}`}>
+            {i + 1}. {label}
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+  const footer = (
+    <>
+      {err && (
+        <p className="w-full text-sm font-semibold text-red-600 dark:text-red-400" role="alert">
+          {err}
+        </p>
+      )}
+      {step === 1 && (
+        <Button type="button" variant="ghost" onClick={() => setStep(0)} data-testid="wizard-back">
+          Back
+        </Button>
+      )}
+      <span className="flex-1" />
+      {step === 0 && (
+        <button type="submit" className="ledge-btn min-w-[160px]" data-testid="wizard-next">
+          Next
+        </button>
+      )}
+      {step === 1 && (
+        <button type="submit" disabled={busy} className="ledge-btn min-w-[220px]" data-testid="create-assignment">
+          {busy ? (importNote ? "Bringing in your file…" : "Making it…") : "Make the assignment"}
+        </button>
+      )}
+      {step === 2 && (
+        <Button type="button" variant="secondary" size="lg" onClick={onDone} data-testid="wizard-done">
+          Done
+        </Button>
+      )}
+    </>
+  );
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]" onClick={close}>
-      <form
-        role="dialog"
-        aria-modal="true"
-        aria-label="New assignment"
-        onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
-        className="pop max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[24px] border border-line bg-surface p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.4)]"
-        data-testid="new-assignment"
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold tracking-tight">{step === 2 ? "Your assignment is ready" : "New assignment"}</h2>
-          <button type="button" onClick={close} className="press rounded-full p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg" aria-label="Close">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <ol className="mt-3 flex gap-1.5" aria-label="Steps" data-testid="wizard-steps">
-          {WIZARD_STEPS.map((label, i) => (
-            <li key={label} className="min-w-0 flex-1" aria-current={i === step ? "step" : undefined}>
-              <div className={`h-1 rounded-full ${i <= step ? "bg-fg" : "bg-line"}`} />
-              <div className={`mt-1 truncate text-[11px] ${i === step ? "font-semibold text-fg" : "text-fg-subtle"}`}>
-                {i + 1}. {label}
-              </div>
-            </li>
-          ))}
-        </ol>
-
-        {step === 0 && (
-          <div className="mt-5 space-y-4">
+    <Modal
+      title={step === 2 ? "Your assignment is ready" : "New assignment"}
+      onClose={close}
+      onSubmit={submit}
+      header={steps}
+      footer={footer}
+      testId="new-assignment"
+    >
+      {step === 0 && (
+        <div className="grid gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+          <div className="space-y-8">
             <label className="block">
-              <span className="text-sm font-medium">Title</span>
-              <Input autoFocus aria-label="Assignment title" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={exampleTitle(teach)} className="mt-1" />
+              <span className="text-[15px] font-semibold">Title</span>
+              <Input autoFocus aria-label="Assignment title" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={exampleTitle(teach)} className="mt-2 h-12 text-base" />
             </label>
-            <fieldset>
-              <legend className="text-sm font-medium">
-                Start from a template <span className="font-normal text-fg-subtle">(optional)</span>
-              </legend>
-              <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Template">
+            <Field label={<>Start from a template <span className="font-normal text-fg-subtle">(optional)</span></>} hint="Sets up the files, tasks, instructions and rubric for you.">
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Template">
                 {[{ id: "", label: "Blank" }, ...templates].map((t) => (
-                  <button
-                    key={t.id || "blank"}
-                    type="button"
-                    role="radio"
-                    aria-checked={templateId === t.id}
-                    onClick={() => pick(t.id)}
-                    className={`press rounded-full border px-3 py-1 text-sm ${templateId === t.id ? "border-fg bg-surface-2 font-medium" : "border-line-strong text-fg-muted hover:text-fg"}`}
-                    data-testid={`a-template-${t.id || "blank"}`}
-                  >
+                  <button key={t.id || "blank"} type="button" role="radio" aria-checked={templateId === t.id} onClick={() => pick(t.id)} className="chip-pick" data-testid={`a-template-${t.id || "blank"}`}>
                     {t.label}
                   </button>
                 ))}
               </div>
               {template && (
-                <p className="mt-2 text-xs text-fg-subtle">
+                <p className="mt-3 text-sm text-fg-muted">
                   Each student or group starts with {template.files.map((f) => `${f.title} (${FILE_INFO[f.kind].label.toLowerCase()})`).join(" and ")}, plus {template.tasks.length} starter tasks.
                 </p>
               )}
-            </fieldset>
-            <fieldset data-testid="worksheet-choice">
-              <legend className="text-sm font-medium">
-                Worksheet <span className="font-normal text-fg-subtle">(optional)</span>
-              </legend>
-              <p className="mt-0.5 text-xs text-fg-subtle">A file every student starts with, like a handout to fill in. Each one gets their own copy.</p>
-              <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Worksheet">
+            </Field>
+            <Field testId="worksheet-choice" label={<>Worksheet <span className="font-normal text-fg-subtle">(optional)</span></>} hint="A file every student starts with, like a handout to fill in. Each one gets their own copy.">
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Worksheet">
                 {STARTER_CHOICES.map((c) => (
-                  <button
-                    key={c.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={starter === c.id}
-                    onClick={() => setStarter(c.id)}
-                    className={`press rounded-full border px-3 py-1 text-sm ${starter === c.id ? "border-fg bg-surface-2 font-medium" : "border-line-strong text-fg-muted hover:text-fg"}`}
-                    data-testid={`worksheet-${c.id}`}
-                  >
+                  <button key={c.id} type="button" role="radio" aria-checked={starter === c.id} onClick={() => setStarter(c.id)} className="chip-pick" data-testid={`worksheet-${c.id}`}>
                     {c.label}
                   </button>
                 ))}
               </div>
               {starter === "upload" && (
-                <div className="mt-2 rounded-xl border border-line bg-bg px-3 py-2.5 text-sm">
-                  <label className="press inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2">
-                    <Upload className="h-3.5 w-3.5" /> {upload ? "Pick a different file" : "Pick a file"}
-                    <input
-                      type="file"
-                      accept={OFFICE_ACCEPT}
-                      className="sr-only"
-                      data-testid="worksheet-file"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0] ?? null;
-                        if (file && !officeKind(file)) return setErr("That isn't a Word (.docx) or PowerPoint (.pptx) file.");
-                        setErr("");
-                        setUpload(file);
-                      }}
-                    />
-                  </label>
-                  {upload && <span className="ml-2 text-xs font-medium" data-testid="worksheet-file-name">{upload.name}</span>}
-                  <p className="mt-1.5 text-xs text-fg-subtle">
-                    From Google Docs or Slides, use File, then Download, then .docx or .pptx. Text, headings, lists, tables, pictures and slide layouts come through; exact fonts, themes, charts and animations don't.
+                <div className="mt-3 rounded-2xl border border-line bg-bg px-4 py-3.5 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="press inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-line-strong px-3 py-1.5 font-semibold hover:bg-surface-2">
+                      <Upload className="h-4 w-4" /> {upload ? "Pick a different file" : "Pick a file"}
+                      <input
+                        type="file"
+                        accept={OFFICE_ACCEPT}
+                        className="sr-only"
+                        data-testid="worksheet-file"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0] ?? null;
+                          if (file && !officeKind(file)) return setErr("That isn't a Word (.docx) or PowerPoint (.pptx) file.");
+                          setErr("");
+                          setUpload(file);
+                        }}
+                      />
+                    </label>
+                    {driveReady && (
+                      <button type="button" onClick={() => void fromDrive()} className="press inline-flex items-center gap-1.5 rounded-xl border border-line-strong px-3 py-1.5 font-semibold hover:bg-surface-2" data-testid="worksheet-drive">
+                        <DriveMark /> From Google Drive
+                      </button>
+                    )}
+                    {upload && (
+                      <span className="font-medium" data-testid="worksheet-file-name">
+                        {upload.name}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-2 text-sm text-fg-subtle">
+                    {driveReady
+                      ? "Pick a Google Doc or Slides file, or a Word or PowerPoint file. "
+                      : "From Google Docs or Slides, use File, then Download, then .docx or .pptx. "}
+                    Text, headings, lists, tables, pictures and slide layouts come through; exact fonts, themes, charts and animations don't.
                   </p>
                 </div>
               )}
-              <label className="mt-2.5 flex items-start gap-2.5 text-sm">
-                <input type="checkbox" className="mt-0.5" checked={withKey} onChange={(e) => setWithKey(e.target.checked)} data-testid="worksheet-key" />
+              <label className="mt-4 flex items-start gap-3 text-[15px]">
+                <input type="checkbox" className="mt-1 h-4 w-4 accent-[#44cf6c]" checked={withKey} onChange={(e) => setWithKey(e.target.checked)} data-testid="worksheet-key" />
                 <span>
-                  <span className="font-medium">Add an answer key</span>
-                  <span className="block text-xs text-fg-subtle">Only you see it. It sits next to each student's work when you grade.</span>
+                  <span className="font-semibold">Add an answer key</span>
+                  <span className="block text-sm text-fg-muted">Only you see it. It sits next to each student's work when you grade.</span>
                 </span>
               </label>
-            </fieldset>
+            </Field>
+          </div>
+          <div className="space-y-8 lg:border-l lg:border-line lg:pl-10">
             <ProjectEditor part="what" value={project} onChange={setProject} />
           </div>
-        )}
+        </div>
+      )}
 
-        {step === 1 && (
-          <div className="mt-5 space-y-4">
-            <fieldset>
-              <legend className="text-sm font-medium">Alone or in groups?</legend>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Solo or groups">
+      {step === 1 && (
+        <div className="grid gap-10 lg:grid-cols-2">
+          <div className="space-y-8">
+            <Field label="Alone or in groups?">
+              <div className="grid gap-3" role="radiogroup" aria-label="Solo or groups">
                 <button type="button" role="radio" aria-checked={mode === "solo"} onClick={() => setMode("solo")} className={choice(mode === "solo")} data-testid="mode-solo">
-                  <div className="font-medium">On their own</div>
-                  <div className="mt-0.5 text-xs text-fg-subtle">Every student gets their own copy and their own grade.</div>
+                  <div className="text-[1.05rem] font-semibold">On their own</div>
+                  <div className="mt-1 text-sm text-fg-muted">Every student gets their own copy and their own grade.</div>
                 </button>
                 <button type="button" role="radio" aria-checked={mode === "groups"} onClick={() => setMode("groups")} className={choice(mode === "groups")} data-testid="mode-groups">
-                  <div className="font-medium">In groups</div>
-                  <div className="mt-0.5 text-xs text-fg-subtle">Groups work together, and you see what each person did.</div>
+                  <div className="text-[1.05rem] font-semibold">In groups</div>
+                  <div className="mt-1 text-sm text-fg-muted">Groups work together, and you see what each person did.</div>
                 </button>
               </div>
               {mode === "groups" && (
-                <label className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                  <span className="font-medium">Groups of</span>
+                <label className="mt-4 flex flex-wrap items-center gap-2.5 text-[15px]">
+                  <span className="font-semibold">Groups of</span>
                   <input
                     type="number"
                     min={1}
@@ -680,107 +713,85 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
                     value={size}
                     aria-label="Group size"
                     onChange={(e) => setSize(Math.max(1, Math.min(10, Number(e.target.value) || 1)))}
-                    className="w-16 rounded-lg border border-line-strong bg-transparent px-2 py-1"
+                    className="h-10 w-20 rounded-xl border border-line-strong bg-transparent px-3"
                   />
-                  <span className="text-fg-subtle">
+                  <span className="text-sm text-fg-muted">
                     {students
                       ? `→ about ${groups} group${groups === 1 ? "" : "s"}, picked at random. Students who join later go into a group with space.`
                       : "Students are put into groups as they open the link."}
                   </span>
                 </label>
               )}
-            </fieldset>
-            <ProjectEditor part="how" value={project} onChange={setProject} />
-            <details className="rounded-xl border border-line px-3 py-2.5" data-testid="more-options">
-              <summary className="cursor-pointer text-sm font-medium">More options</summary>
-              <div className="mt-3 space-y-4">
+            </Field>
+            <details className="rounded-2xl border border-line px-4 py-3.5" data-testid="more-options">
+              <summary className="cursor-pointer text-[15px] font-semibold">More options</summary>
+              <div className="mt-4 space-y-5">
                 <ScheduleEditor value={project.schedule} onChange={(schedule) => setProject((p) => ({ ...p, schedule }))} />
-                <label className="flex items-start gap-2.5 text-sm">
-                  <input type="checkbox" className="mt-0.5" checked={reflect} onChange={(e) => setReflect(e.target.checked)} data-testid="reflect-toggle" />
+                <label className="flex items-start gap-3 text-[15px]">
+                  <input type="checkbox" className="mt-1 h-4 w-4 accent-[#44cf6c]" checked={reflect} onChange={(e) => setReflect(e.target.checked)} data-testid="reflect-toggle" />
                   <span>
-                    <span className="font-medium">Ask one question when students turn it in</span>
-                    <span className="block text-xs text-fg-subtle">Their answer shows with their work. It takes them half a minute and tells you a lot.</span>
+                    <span className="font-semibold">Ask one question when students turn it in</span>
+                    <span className="block text-sm text-fg-muted">Their answer shows with their work. It takes them half a minute and tells you a lot.</span>
                   </span>
                 </label>
                 {reflect && <Input aria-label="Reflection question" maxLength={300} value={reflection} onChange={(e) => setReflection(e.target.value)} />}
               </div>
             </details>
           </div>
-        )}
-
-        {step === 2 && (
-          <div className="mt-5" data-testid="wizard-ready">
-            <p className="text-sm text-fg-muted">
-              Post this link in Google Classroom. When a student opens it, Cairn gives them {mode === "solo" ? "their own copy" : "their group's room"}, and their work shows up on this class page for grading.
-            </p>
-            <div className="mt-4 break-all rounded-xl border border-line bg-bg px-3 py-2 font-mono text-xs text-fg-muted" data-testid="wizard-link">
-              {link}
-            </div>
-            {worksheetRoom && (
-              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-line px-3 py-2 text-sm" data-testid="wizard-worksheet">
-                <FileText className="h-4 w-4 text-fg-muted" aria-hidden />
-                <span className="min-w-[10rem] flex-1">
-                  {importNote || "Your worksheet is ready to fill in."}
-                  <span className="block text-xs text-fg-subtle">Check it before students open the link: each one gets a copy of it as it is then.</span>
-                </span>
-                <Link to={`/r/${worksheetRoom}`} className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2" data-testid="wizard-edit-worksheet">
-                  Open the worksheet
-                </Link>
-              </div>
-            )}
-            <div className="mt-4 flex flex-col gap-2">
-              <a
-                href={classroomShareUrl(link, title.trim(), `${mode === "solo" ? "Open the link to start your own copy on Cairn." : "Open the link to join your group's room on Cairn."}${due ? ` Due ${due}.` : ""}`)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="press flex items-center justify-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover"
-                data-testid="wizard-post-to-classroom"
-              >
-                <ClassroomMark /> Post to Google Classroom
-              </a>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard?.writeText(link).catch(() => {});
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
-                }}
-                className="press flex items-center justify-center gap-1.5 rounded-xl border border-line-strong px-4 py-2 text-sm font-medium hover:bg-surface-2"
-                data-link={link}
-                data-testid="wizard-copy-link"
-              >
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? "Copied" : "Copy the link instead"}
-              </button>
-            </div>
+          <div className="space-y-8 lg:border-l lg:border-line lg:pl-10">
+            <ProjectEditor part="how" value={project} onChange={setProject} />
           </div>
-        )}
+        </div>
+      )}
 
-        {err && <p className="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">{err}</p>}
-        <div className="mt-6 flex items-center gap-2">
-          {step === 1 && (
-            <Button type="button" variant="ghost" onClick={() => setStep(0)} data-testid="wizard-back">
-              Back
-            </Button>
-          )}
-          <span className="flex-1" />
-          {step === 0 && (
-            <Button type="submit" data-testid="wizard-next">
-              Next
-            </Button>
-          )}
-          {step === 1 && (
-            <Button type="submit" disabled={busy} data-testid="create-assignment">
-              {busy ? (importNote ? "Bringing in your file…" : "Making it…") : "Make the assignment"}
-            </Button>
-          )}
-          {step === 2 && (
-            <Button type="button" variant="secondary" onClick={onDone} data-testid="wizard-done">
-              Done
-            </Button>
+      {step === 2 && (
+        <div className="mx-auto max-w-xl py-2" data-testid="wizard-ready">
+          <p className="text-[1.0625rem] text-fg-muted">
+            Post this link in Google Classroom. When a student opens it, Cairn gives them {mode === "solo" ? "their own copy" : "their group's room"}, and their work shows up on this class page for grading.
+          </p>
+          <a
+            href={classroomShareUrl(link, title.trim(), `${mode === "solo" ? "Open the link to start your own copy on Cairn." : "Open the link to join your group's room on Cairn."}${due ? ` Due ${due}.` : ""}`)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ledge-btn mt-6 w-full"
+            data-testid="wizard-post-to-classroom"
+          >
+            <ClassroomMark /> Post to Google Classroom
+          </a>
+          <p className="mt-2 text-center text-sm text-fg-subtle">In Classroom, pick Assignment, then set the points and due date there.</p>
+          <div className="mt-6 flex items-center gap-2 rounded-2xl border border-line bg-bg py-2 pl-4 pr-2">
+            <span className="min-w-0 flex-1 truncate font-mono text-sm text-fg-muted" data-testid="wizard-link">
+              {link}
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard?.writeText(link).catch(() => {});
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+              className="press flex shrink-0 items-center gap-1.5 rounded-xl border border-line-strong px-3 py-1.5 text-sm font-semibold hover:bg-surface-2"
+              data-link={link}
+              data-testid="wizard-copy-link"
+            >
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? "Copied" : "Copy link"}
+            </button>
+          </div>
+          {worksheetRoom && (
+            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-2xl border border-line px-4 py-3 text-[15px]" data-testid="wizard-worksheet">
+              <FileText className="h-5 w-5 text-fg-muted" aria-hidden />
+              <span className="min-w-[12rem] flex-1">
+                {importNote || "Your worksheet is ready to fill in."}
+                <span className="block text-sm text-fg-subtle">Check it before students open the link: each one gets a copy of it as it is then.</span>
+              </span>
+              <Link to={`/r/${worksheetRoom}`} className="press rounded-xl border border-line-strong px-3 py-1.5 text-sm font-semibold hover:bg-surface-2" data-testid="wizard-edit-worksheet">
+                Open the worksheet
+              </Link>
+            </div>
           )}
         </div>
-      </form>
-    </div>
+      )}
+    </Modal>
   );
 }
 
@@ -831,27 +842,31 @@ function EditTimesDialog({ classId, a, onClose, onDone }: { classId: string; a: 
     onDone();
   };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]" onClick={onClose}>
-      <div role="dialog" aria-modal="true" aria-label="Edit times" onClick={(e) => e.stopPropagation()} className="pop w-full max-w-md rounded-[24px] border border-line bg-surface p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.4)]" data-testid="edit-times-dialog">
-        <h2 className="text-xl font-semibold tracking-tight">Times for {a.title}</h2>
-        <p className="mt-1 text-sm text-fg-muted">Changes apply to everyone right away. Students you gave extra time keep it.</p>
-        <div className="mt-4 block text-sm font-medium">
-          Due
-          <DateTimeField className="mt-1" label="Due date for everyone" value={dueAt} onChange={setDueAt} />
-        </div>
-        <div className="mt-4">
-          <ScheduleEditor value={schedule} onChange={setSchedule} />
-        </div>
-        <div className="mt-5 flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>
+    <Modal
+      size="md"
+      title={`Times for ${a.title}`}
+      subtitle="Changes apply to everyone right away. Students you gave extra time keep it."
+      onClose={onClose}
+      testId="edit-times-dialog"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={save} disabled={busy} data-testid="save-times">
+          <span className="flex-1" />
+          <button type="button" onClick={save} disabled={busy} className="ledge-btn min-w-[200px]" data-testid="save-times">
             {busy ? "Saving…" : "Save for everyone"}
-          </Button>
-        </div>
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-8">
+        <Field label="Due">
+          <DateTimeField label="Due date for everyone" value={dueAt} onChange={setDueAt} />
+        </Field>
+        <ScheduleEditor value={schedule} onChange={setSchedule} />
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -920,7 +935,7 @@ function ClassListSection({ view, onChange }: { view: ClassView; onChange: () =>
     <section className="mt-10" data-testid="class-list" data-tour="class-list">
       <div className="flex flex-wrap items-end gap-2">
         <div className="min-w-0 flex-1">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-subtle">Class list</h2>
+          <h2 className="font-display text-xl font-bold tracking-[-0.01em]">Class list</h2>
           <p className="mt-1 text-sm text-fg-muted">
             {listOnly
               ? view.roster.length
@@ -1150,11 +1165,11 @@ export function ClassPage() {
       <div className="mx-auto max-w-4xl px-4 pb-16 pt-8 sm:px-8">
         <div className="flex flex-wrap items-end gap-3">
           <div className="min-w-0 flex-1">
-            <h1 className="text-3xl font-extrabold tracking-tight" data-testid="class-name">{view.class.name}</h1>
+            <h1 className="font-display text-[2rem] font-extrabold leading-tight tracking-[-0.03em]" data-testid="class-name">{view.class.name}</h1>
             <p className="mt-1 text-sm text-fg-muted">{view.students.length} student{view.students.length === 1 ? "" : "s"} joined</p>
           </div>
           <div className="rounded-2xl border border-line px-4 py-2.5" data-tour="class-code">
-            <div className="text-[11px] font-medium uppercase tracking-wide text-fg-subtle">Class code</div>
+            <div className="text-sm font-semibold text-fg">Invite students <span className="font-normal text-fg-subtle">· class code</span></div>
             <div className="flex items-center gap-2">
               <span className="font-mono text-lg font-semibold tracking-[0.14em]" data-testid="class-code">{formatCode(view.class.code)}</span>
               <button
@@ -1188,7 +1203,7 @@ export function ClassPage() {
         <TimeRequestsSection classId={view.class.id} onChange={load} />
 
         <div className="mt-8 flex items-center gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-subtle">Assignments</h2>
+          <h2 className="font-display text-xl font-bold tracking-[-0.01em]">Assignments</h2>
           <span className="flex-1" />
           {view.assignments.length > 0 && (
             <Button onClick={() => setNewA(true)} data-testid="new-assignment-btn" data-tour="new-assignment">
@@ -1214,7 +1229,7 @@ export function ClassPage() {
 
         <ClassListSection view={view} onChange={load} />
 
-        <h2 className="mt-10 text-sm font-semibold uppercase tracking-wide text-fg-subtle">Students</h2>
+        <h2 className="mt-12 font-display text-xl font-bold tracking-[-0.01em]">Students</h2>
         <ul className="mt-2 flex flex-wrap gap-1.5" data-testid="roster">
           {view.students.map((s) => (
             <li key={s.uid} className="flex items-center gap-1 rounded-full border border-line py-1 pl-3 pr-1 text-sm">
@@ -1385,7 +1400,7 @@ function TodayPanel({ today }: { today: TodayView }) {
     <div className="rise rise-2 mt-6 space-y-5" data-testid="today">
       {toGrade.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-subtle">Ready to grade</h2>
+          <h2 className="font-display text-xl font-bold tracking-[-0.01em]">Ready to grade</h2>
           <ul className="mt-2 divide-y divide-line rounded-[20px] border border-line bg-surface">
             {toGrade.map((x) => (
               <li key={x.assignmentId} className={row} data-testid="today-grade">
@@ -1405,7 +1420,7 @@ function TodayPanel({ today }: { today: TodayView }) {
       )}
       {answers.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-subtle">Needs your answer</h2>
+          <h2 className="font-display text-xl font-bold tracking-[-0.01em]">Needs your answer</h2>
           <ul className="mt-2 divide-y divide-line rounded-[20px] border border-line bg-surface">
             {answers.map((x) => (
               <li key={x.classId} className={row} data-testid="today-answer">
@@ -1442,7 +1457,7 @@ function TodayPanel({ today }: { today: TodayView }) {
       )}
       {dueSoon.length > 0 && (
         <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-fg-subtle">Due soon</h2>
+          <h2 className="font-display text-xl font-bold tracking-[-0.01em]">Due soon</h2>
           <ul className="mt-2 divide-y divide-line rounded-[20px] border border-line bg-surface">
             {dueSoon.map((x) => (
               <li key={x.assignmentId} className={row} data-testid="today-due">

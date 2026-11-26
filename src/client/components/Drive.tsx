@@ -1,4 +1,7 @@
 import { confirmDialog } from "./Dialogs";
+import { pickFromDrive, useDrive } from "../lib/googleDrive";
+import { DriveMark } from "./DriveMark";
+import { alertDialog } from "./Dialogs";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { MoreHorizontal, Plus, Search, Upload } from "lucide-react";
@@ -161,6 +164,7 @@ export function Drive({
 }) {
   const [q, setQ] = useState("");
   const [newMenu, setNewMenu] = useState(false);
+  const drive = useDrive();
   const menuRef = useOutside(newMenu, () => setNewMenu(false));
   const shown = files.filter((f) => !q || f.title.toLowerCase().includes(q.toLowerCase()));
   return (
@@ -205,6 +209,24 @@ export function Drive({
                   }}
                 />
               </label>
+            )}
+            {onImport && drive && (
+              <button
+                role="menuitem"
+                className={ITEM}
+                data-testid="import-drive"
+                onClick={async () => {
+                  setNewMenu(false);
+                  try {
+                    const file = await pickFromDrive(drive);
+                    if (file) onImport(file);
+                  } catch (e) {
+                    await alertDialog({ title: "Couldn't bring that in", message: (e as Error).message });
+                  }
+                }}
+              >
+                <DriveMark className="h-4 w-4" /> From Google Drive
+              </button>
             )}
           </div>
         )}

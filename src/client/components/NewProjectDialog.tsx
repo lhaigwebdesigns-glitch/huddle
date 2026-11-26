@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Field, Modal } from "./Modal";
 import { X } from "lucide-react";
 import { Button, Input } from "./ui";
 import { EMPTY_PROJECT, ProjectEditor, type ProjectDraft } from "./ProjectEditor";
@@ -35,67 +36,54 @@ export function NewProjectDialog({ uid, onCreated, onClose }: { uid: string; onC
     onCreated(d.code);
   };
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]" onClick={onClose}>
-      <form
-        role="dialog"
-        aria-modal="true"
-        aria-label="New project"
-        onSubmit={submit}
-        onClick={(e) => e.stopPropagation()}
-        className="pop max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-[24px] border border-line bg-surface p-6 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.4)]"
-        data-testid="new-project-dialog"
-      >
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold tracking-tight">New group project</h2>
-          <button type="button" onClick={onClose} className="press rounded-full p-1.5 text-fg-muted hover:bg-surface-2 hover:text-fg" aria-label="Close">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <p className="mt-1 text-sm text-fg-muted">Set it up once, then share the code with your class. You can change any of this later in Room settings.</p>
-        <fieldset className="mt-5">
-          <legend className="text-sm font-medium">Start from a template</legend>
-          <div className="mt-2 flex flex-wrap gap-1.5" role="radiogroup" aria-label="Template">
-            {[{ id: "", label: "Blank" }, ...PROJECT_TEMPLATES].map((t) => (
-              <button
-                key={t.id || "blank"}
-                type="button"
-                role="radio"
-                aria-checked={templateId === t.id}
-                onClick={() => pick(t.id)}
-                className={`press rounded-full border px-3 py-1 text-sm ${templateId === t.id ? "border-fg bg-surface-2 font-medium" : "border-line-strong text-fg-muted hover:text-fg"}`}
-                data-testid={`template-${t.id || "blank"}`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          {template && (
-            <p className="mt-2 text-xs text-fg-subtle" data-testid="template-summary">
-              {template.description} Creates {template.files.map((f) => `${f.title} (${FILE_INFO[f.kind].label.toLowerCase()})`).join(" and ")}, plus {template.tasks.length} starter tasks.
+    <Modal
+      title="New group project"
+      subtitle="Set it up once, then share the code with your class. You can change any of this later in Room settings."
+      onClose={onClose}
+      onSubmit={submit}
+      testId="new-project-dialog"
+      footer={
+        <>
+          {err && (
+            <p className="w-full text-sm font-semibold text-red-600 dark:text-red-400" role="alert">
+              {err}
             </p>
           )}
-        </fieldset>
-        <label className="mt-4 block">
-          <span className="text-sm font-medium">Project name</span>
-          <Input autoFocus aria-label="Project name" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Causes of World War I" className="mt-1" />
-        </label>
-        <div className="mt-4">
-          <ProjectEditor value={project} onChange={setProject} />
-        </div>
-        {err && (
-          <p className="mt-3 text-sm text-red-600 dark:text-red-400" role="alert">
-            {err}
-          </p>
-        )}
-        <div className="mt-5 flex justify-end gap-2">
-          <Button type="button" variant="secondary" onClick={onClose}>
+          <Button type="button" variant="ghost" onClick={onClose}>
             Cancel
           </Button>
-          <Button type="submit" disabled={busy} data-testid="create-project">
+          <span className="flex-1" />
+          <button type="submit" disabled={busy} className="ledge-btn min-w-[200px]" data-testid="create-project">
             {busy ? "Creating…" : "Create project"}
-          </Button>
+          </button>
+        </>
+      }
+    >
+      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div className="space-y-8">
+          <label className="block">
+            <span className="text-[15px] font-semibold">Project name</span>
+            <Input autoFocus aria-label="Project name" maxLength={80} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Causes of World War I" className="mt-2 h-12 text-base" />
+          </label>
+          <Field label="Start from a template" hint="Sets up the files, tasks, instructions and rubric for you.">
+            <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Template">
+              {[{ id: "", label: "Blank" }, ...PROJECT_TEMPLATES].map((t) => (
+                <button key={t.id || "blank"} type="button" role="radio" aria-checked={templateId === t.id} onClick={() => pick(t.id)} className="chip-pick" data-testid={`template-${t.id || "blank"}`}>
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            {template && (
+              <p className="mt-3 text-sm text-fg-muted" data-testid="template-summary">
+                {template.description} Creates {template.files.map((f) => `${f.title} (${FILE_INFO[f.kind].label.toLowerCase()})`).join(" and ")}, plus {template.tasks.length} starter tasks.
+              </p>
+            )}
+          </Field>
         </div>
-      </form>
-    </div>
+        <div className="space-y-8 lg:border-l lg:border-line lg:pl-10">
+          <ProjectEditor value={project} onChange={setProject} />
+        </div>
+      </div>
+    </Modal>
   );
 }

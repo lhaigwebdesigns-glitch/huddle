@@ -522,6 +522,7 @@ try {
   await gina.reload();
   await gina.getByTestId("recent-rooms").waitFor();
   ok((await gina.getByTestId("recent-rooms").locator("li").count()) === 3, "this device shows at most 3 recent rooms");
+  await gina.getByTestId("start-signin").waitFor({ timeout: 10000 }).catch(() => {});
   ok((await gina.getByTestId("start-signin").count()) === 1, "signed out, the landing page asks you to sign in to start a room");
 
   // Profile: Erin renames herself and uploads a picture; both show up when she joins a room.
@@ -770,7 +771,7 @@ try {
   await park.getByTestId("getting-started").waitFor();
   await park.waitForTimeout(3500);
   ok((await park.getByTestId("tour").count()) === 0, "a closed tour doesn't come back on reload");
-  await park.getByTestId("tour-replay").click();
+  await park.getByTestId("app-sidebar").getByTestId("tour-replay").click();
   await park.getByTestId("tour-title").getByText("This is Today").waitFor();
   await park.getByTestId("tour-off").click();
   await park.getByTestId("tour").waitFor({ state: "detached" });
@@ -818,6 +819,15 @@ try {
   await park.reload();
   await park.getByTestId("roster").getByText("Dee").waitFor();
   ok(true, "students join with the class link, and the teacher sees the roster");
+  // Every page sits in the app: a student gets back to their class without the code.
+  await kids[1].goto(`${BASE}/dashboard`);
+  await kids[1].getByTestId("dash-class").filter({ hasText: "Period 3 History" }).waitFor();
+  await kids[1].getByTestId("app-sidebar").getByTestId("sidebar-class").filter({ hasText: "Period 3 History" }).click();
+  await kids[1].waitForURL(/\/c\/[A-Z0-9]{6}$/);
+  await kids[1].getByTestId("student-class-name").getByText("Period 3 History").waitFor();
+  ok(true, "a student's classes are in the sidebar and on their home page, so they get back without the code");
+  await park.getByTestId("app-sidebar").getByTestId("sidebar-class").filter({ hasText: "Period 3 History" }).waitFor();
+  ok((await park.getByTestId("app-sidebar").getByTestId("nav-rooms").count()) === 1, "a teacher's sidebar lists their classes, with Your rooms one click away");
   await park.getByTestId("no-assignments").getByTestId("new-assignment-btn").click();
   await park.getByTestId("a-template-presentation").click();
   await park.getByTestId("wizard-next").click();
@@ -922,6 +932,7 @@ try {
   await kids[0].goto(soloLink);
   await kids[0].waitForURL(/\/r\/[A-Z0-9]{6}$/, { timeout: 20000 });
   ok(kids[0].url().endsWith(soloRooms[0]), "opening the link again goes back to the same room");
+  ok(/^\/c\/[A-Z0-9]{6}$/.test((await kids[0].getByTestId("room-back").getAttribute("href")) ?? ""), "a class room has a clear way back to the class");
   // A student who wasn't in the class yet joins from the assignment link and still gets a room.
   await park.goto(classUrl);
   await park.getByTestId("access-code").click();

@@ -9,6 +9,7 @@ import { PERI, RockArt } from "../components/Rocks";
 import { HumanCheck, SignInGate } from "../components/SignInGate";
 import { normalizeCode } from "../../shared/code";
 import { TourButton, useAutoTour } from "../components/Tour";
+import { AppShell, refreshMyClasses } from "../components/AppShell";
 import { assignmentPath, type AssignmentMode, type StudentClassView } from "../../shared/classes";
 
 type AssignmentInfo = { className: string; title: string; mode: AssignmentMode; dueAt?: number };
@@ -77,6 +78,10 @@ export default function StudentClass() {
     const t = setInterval(() => void load(), 6000);
     return () => clearInterval(t);
   }, [view?.status]);
+
+  useEffect(() => {
+    if (view?.joined) refreshMyClasses();
+  }, [view?.joined]);
 
   // An assignment link opens the room straight away once the student is in the class.
   useEffect(() => {
@@ -179,12 +184,18 @@ export default function StudentClass() {
           </Link>
         </div>
       );
+    // In the class: a real page. The next thing due gets the one green button.
+    const open = view.assignments.filter((x) => !x.turnedIn);
+    const next = [...open].sort((x, y) => (x.dueAt ?? Infinity) - (y.dueAt ?? Infinity))[0];
     return (
       <div>
-        <h1 className="text-2xl font-extrabold tracking-tight">{view.name}</h1>
-        <div className="mt-1 flex items-center gap-1.5 text-sm text-fg-subtle">
-          <Check className="h-3.5 w-3.5" /> You're in this class
-        </div>
+        <h1 className="font-display text-[2rem] font-extrabold leading-tight tracking-[-0.03em]" data-testid="student-class-name">{view.name}</h1>
+        <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[15px] text-fg-muted">
+          <span className="inline-flex items-center gap-1.5">
+            <Check className="h-4 w-4 text-primary" /> You're in this class
+          </span>
+          {view.teacher && <span>· {view.teacher}</span>}
+        </p>
         {account.user === null && !account.requireSignIn && account.providers.includes("google") && (
           <p className="mt-2 text-xs text-fg-subtle">
             Using more than one device?{" "}
@@ -194,35 +205,77 @@ export default function StudentClass() {
             to keep this class everywhere.
           </p>
         )}
-        <h2 className="mt-6 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Your assignments</h2>
-        {view.assignments.length === 0 && <p className="mt-2 text-sm text-fg-muted">Nothing yet. Your teacher's assignments will show up here.</p>}
-        <ul className="mt-2 space-y-2" data-tour="assignments">
-          {view.assignments.map((a, i) => (
-            <li key={a.id} className="rounded-2xl border border-line px-4 py-3" data-testid="student-assignment">
-              <div className="flex items-center gap-2">
-                <BookOpen className="h-4 w-4 shrink-0 text-fg-muted" />
-                <span className="min-w-0 flex-1 font-medium">{a.title}</span>
-                {a.turnedIn && <span className="text-xs text-fg-subtle">Turned in</span>}
-              </div>
-              <p className="mt-0.5 text-xs text-fg-subtle">
-                {a.mode === "solo" ? "Your own work" : (a.groupName ?? "Group project")}
-                {dueText(a.dueAt)}
-              </p>
-              <Link
-                to={assignmentPath(code, a.id)}
-                className="press mt-2.5 inline-flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover"
-                data-testid="open-group-room"
-                data-tour={i === 0 ? "open-work" : undefined}
+        <h2 className="mt-10 font-display text-xl font-bold tracking-[-0.01em]">Your assignments</h2>
+        {view.assignments.length === 0 && (
+          <div className="mt-3 rounded-[20px] border border-dashed border-line-strong px-6 py-10 text-center">
+            <RockArt className="mx-auto h-16 w-16" body={PERI} pose="sit" prop="book" />
+            <p className="mt-3 font-semibold">Nothing yet</p>
+            <p className="mt-1 text-sm text-fg-muted">Your teacher's assignments will show up here.</p>
+          </div>
+        )}
+        <ul className="mt-4 space-y-3" data-tour="assignments">
+          {view.assignments.map((x, i) => {
+            const isNext = x.id === next?.id;
+            const status = x.turnedIn ? "Turned in" : x.roomCode ? "Working" : "Not started";
+            const chip = x.turnedIn ? "bg-mint text-ink dark:bg-mint/15 dark:text-mint" : x.roomCode ? "bg-peri/35 text-ink dark:bg-peri/20 dark:text-fg" : "bg-surface-2 text-fg-muted";
+            return (
+              <li
+                key={x.id}
+                className={`flex flex-wrap items-center gap-x-5 gap-y-3 rounded-[20px] border px-5 py-4 ${isNext ? "border-fg/20 bg-surface shadow-[0_10px_30px_-18px_rgba(10,16,13,0.35)]" : "border-line"}`}
+                data-testid="student-assignment"
               >
-                {a.mode === "solo" ? "Open your work" : "Open your group's room"} <ArrowRight className="h-4 w-4" />
-              </Link>
-            </li>
-          ))}
+                <BookOpen className="h-5 w-5 shrink-0 text-fg-muted" aria-hidden="true" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[1.05rem] font-semibold">{x.title}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${chip}`}>{status}</span>
+                    {isNext && <span className="text-xs font-semibold text-fg-muted">Up next</span>}
+                  </div>
+                  <p className="mt-0.5 text-sm text-fg-subtle">
+                    {x.mode === "solo" ? "Your own work" : (x.groupName ?? "Group project")}
+                    {dueText(x.dueAt)}
+                  </p>
+                </div>
+                <Link
+                  to={assignmentPath(code, x.id)}
+                  className={
+                    isNext
+                      ? "ledge-btn h-11 px-5 text-[15px]"
+                      : "press inline-flex h-10 items-center gap-1.5 rounded-xl border border-line-strong px-4 text-sm font-semibold hover:bg-surface-2"
+                  }
+                  data-testid="open-group-room"
+                  data-tour={i === 0 ? "open-work" : undefined}
+                >
+                  {x.turnedIn ? "View" : x.mode === "solo" ? "Open your work" : "Open your group's room"} <ArrowRight className="h-4 w-4" />
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       </div>
     );
   })();
 
+  // Signed in: inside the app (sidebar with your classes and rooms). In the class it's a full
+  // page; joining, waiting and opening stay a focused card.
+  const page = !!view?.joined && !aid;
+  const body = page ? (
+    <div className="mx-auto w-full max-w-4xl px-4 pb-16 pt-8 sm:px-8 sm:pt-10" data-testid="student-class">
+      {card}
+    </div>
+  ) : (
+    <div className="flex justify-center px-4 pb-16 pt-[8vh]">
+      <div className="rise w-full max-w-lg rounded-[28px] border border-line bg-bg p-8 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.18)]" data-testid="student-class">
+        {card}
+      </div>
+    </div>
+  );
+  if (account.user)
+    return (
+      <AppShell account={account.user} isAdmin={account.isAdmin}>
+        {body}
+      </AppShell>
+    );
   return (
     <div className="flex min-h-full flex-col bg-sidebar">
       <header className="flex h-14 items-center gap-2 px-4">
@@ -233,11 +286,7 @@ export default function StudentClass() {
         <TourButton />
         <ThemeToggle />
       </header>
-      <main className="flex flex-1 items-start justify-center px-4 pb-16 pt-[8vh]">
-        <div className="rise w-full max-w-md rounded-[24px] border border-line bg-bg p-7 shadow-[0_12px_40px_-16px_rgba(0,0,0,0.18)]" data-testid="student-class">
-          {card}
-        </div>
-      </main>
+      <main className="flex-1">{body}</main>
     </div>
   );
 }

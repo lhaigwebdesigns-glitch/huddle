@@ -158,7 +158,7 @@ export function ReceiptDialog({
 
   return (
     <div
-      className={embedded ? "flex h-full min-h-0" : "fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"}
+      className={embedded ? "flex h-full min-h-0" : "fade fixed inset-0 z-50 flex items-stretch justify-center bg-black/45 backdrop-blur-[2px] sm:items-center sm:p-6"}
       onClick={embedded ? undefined : onClose}
     >
       <div
@@ -168,14 +168,14 @@ export function ReceiptDialog({
         className={
           embedded
             ? "flex min-h-0 w-full flex-col overflow-hidden"
-            : "pop flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-[24px] border border-line bg-surface shadow-[0_30px_80px_-20px_rgba(0,0,0,0.4)]"
+            : "modal-in flex h-[100dvh] w-full flex-col overflow-hidden bg-surface shadow-[0_40px_100px_-30px_rgba(0,0,0,0.5)] sm:h-auto sm:max-h-[88vh] sm:w-[min(80vw,1080px)] sm:rounded-[28px] sm:border sm:border-line"
         }
         onClick={(e) => e.stopPropagation()}
         data-testid="receipt"
       >
         <div className="flex items-start gap-3 border-b border-line px-6 pb-4 pt-5">
           <div className="min-w-0 flex-1">
-            <h2 className="text-xl font-semibold tracking-tight">{mode === "turnin" ? "Check your receipt, then turn it in" : "Contribution receipt"}</h2>
+            <h2 className={embedded ? "text-xl font-semibold tracking-tight" : "font-display text-[1.6rem] font-extrabold leading-tight tracking-[-0.02em]"}>{mode === "turnin" ? "Check your receipt, then turn it in" : "Contribution receipt"}</h2>
             <p className="mt-0.5 text-sm text-fg-muted">
               {r?.final && r.turnedInAt ? (
                 <span className="inline-flex items-center gap-1">

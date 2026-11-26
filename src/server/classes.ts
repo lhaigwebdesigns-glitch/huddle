@@ -32,6 +32,7 @@ import {
   type ClassAccess,
   type WaitingStudent,
   parseEmails,
+  type MyClasses,
 } from "../shared/classes";
 import { claimRole, signInRequired } from "./auth";
 import { isHuman, NOT_HUMAN } from "./turnstile";
@@ -171,7 +172,7 @@ async function createRoom(
   title: string,
   project: ProjectSettings,
   template: string | undefined,
-  link: { classId: string; assignmentId: string; group: string },
+  link: { classId: string; assignmentId: string; group: string; classCode?: string },
   worksheet?: string | null,
 ) {
   for (let tries = 0; tries < 5; tries++) {
@@ -249,6 +250,32 @@ classes.post("/", async (c) => {
  * The Today screen: everything that needs the teacher right now, across all their classes.
  * Grading first, then answers (time requests, reports), then what's due soon.
  */
+/** For the sidebar on every page: your classes (teacher) or the classes you're in (student). */
+classes.get("/mine", async (c) => {
+  const user = await currentUser(c.env, c.req.raw);
+  if (!user) return c.json({ error: "Sign in first." }, 401);
+  await ensureClassTables(c.env.DB!);
+  const out: MyClasses = { role: user.role ?? null, classes: [] };
+  if (user.role === "teacher") {
+    const { results } = await c.env.DB!.prepare(
+      `SELECT c.id, c.code, c.name, (SELECT COUNT(*) FROM class_students s WHERE s.class_id = c.id) AS students
+       FROM classes c WHERE teacher_id = ? ORDER BY created_at DESC LIMIT 100`,
+    )
+      .bind(user.id)
+      .all<{ id: string; code: string; name: string; students: number }>();
+    out.classes = results.map((r) => ({ name: r.name, code: r.code, href: `/classes/${r.id}`, sub: `${r.students} student${r.students === 1 ? "" : "s"}` }));
+  } else {
+    const { results } = await c.env.DB!.prepare(
+      `SELECT c.code, c.name, u.name AS teacher FROM class_students s JOIN classes c ON c.id = s.class_id
+       LEFT JOIN users u ON u.id = c.teacher_id WHERE s.uid = ? ORDER BY s.joined_at DESC LIMIT 100`,
+    )
+      .bind(user.uid)
+      .all<{ code: string; name: string; teacher: string | null }>();
+    out.classes = results.map((r) => ({ name: r.name, code: r.code, href: `/c/${r.code}`, sub: r.teacher ?? "" }));
+  }
+  return c.json(out);
+});
+
 classes.get("/today", async (c) => {
   const user = await currentUser(c.env, c.req.raw);
   if (!user) return c.json({ error: "Sign in to see your classes." }, 401);
@@ -715,6 +742,8 @@ classes.get("/join/:code", async (c) => {
   const asked = !me && uid ? await c.env.DB!.prepare(`SELECT denied FROM class_waiting WHERE class_id = ? AND uid = ?`).bind(cls.id, uid).first<{ denied: number | null }>() : null;
   const view: StudentClassView = { name: cls.name, joined: !!me, status: me ? "joined" : asked ? (asked.denied ? "denied" : "waiting") : "new", assignments: [] };
   if (me) {
+    const t = await c.env.DB!.prepare(`SELECT name FROM users WHERE id = ?`).bind(cls.teacher_id).first<{ name: string }>().catch(() => null);
+    if (t?.name) view.teacher = t.name;
     for (const a of await loadAssignments(c, cls.id, false)) {
       const group = a.groups.find((g) => g.members.includes(uid));
       const ready = group && !isPending(group.roomCode) ? group : undefined;
@@ -838,7 +867,7 @@ classes.post("/join/:code/a/:aid/open", async (c) => {
     const mine = await db.prepare(`SELECT room_code FROM class_groups WHERE assignment_id = ? AND members LIKE ?`).bind(a.id, memberLike).first<{ room_code: string }>();
     if (mine) return give(mine.room_code);
     if (!host) return c.json({ error: "This assignment can't make rooms. Ask your teacher to create it again." }, 500);
-    const code = await createRoom(c, host, `${a.title} · ${student.name}`, project, template, { classId: cls.id, assignmentId: a.id, group: student.name }, a.worksheet);
+    const code = await createRoom(c, host, `${a.title} · ${student.name}`, project, template, { classId: cls.id, assignmentId: a.id, group: student.name, classCode: cls.code }, a.worksheet);
     if (!code) return c.json({ error: "Couldn't open your room. Try again." }, 500);
     // One room per student, even if they click twice at once: only the first insert wins.
     const ins = await db
@@ -875,7 +904,7 @@ classes.post("/join/:code/a/:aid/open", async (c) => {
   }
   if (!isPending(group.roomCode)) return give(group.roomCode);
   if (!host) return c.json({ error: "This assignment can't make rooms. Ask your teacher to create it again." }, 500);
-  const code = await createRoom(c, host, `${a.title} · ${group.name}`, project, template, { classId: cls.id, assignmentId: a.id, group: group.name }, a.worksheet);
+  const code = await createRoom(c, host, `${a.title} · ${group.name}`, project, template, { classId: cls.id, assignmentId: a.id, group: group.name, classCode: cls.code }, a.worksheet);
   if (!code) return c.json({ error: "Couldn't open your group's room. Try again." }, 500);
   // The first member to open it makes the room; anyone racing them gets that same room.
   const swap = await db.prepare(`UPDATE class_groups SET room_code = ? WHERE assignment_id = ? AND room_code = ?`).bind(code, a.id, group.roomCode).run();

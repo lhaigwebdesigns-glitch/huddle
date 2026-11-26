@@ -10,6 +10,20 @@ export interface ClassInfo {
   assignments?: number;
 }
 
+/** The sidebar list: a teacher's classes, or the classes a student is in. */
+export interface MyClass {
+  name: string;
+  code: string;
+  /** Where it opens: the teacher's class page, or the student's. */
+  href: string;
+  /** "24 students" for a teacher; the teacher's name for a student. */
+  sub: string;
+}
+export interface MyClasses {
+  role: "teacher" | "student" | null;
+  classes: MyClass[];
+}
+
 export interface ClassStudent {
   uid: string;
   name: string;
@@ -163,6 +177,8 @@ export interface GradingView {
 /** A student's view of a class: just their own assignments and rooms. */
 export interface StudentClassView {
   name: string;
+  /** The teacher's name, once you're in. */
+  teacher?: string;
   joined: boolean;
   /** joined; waiting = asked to join and the teacher hasn't answered; denied = the teacher said no. */
   status?: "joined" | "waiting" | "denied" | "new";
