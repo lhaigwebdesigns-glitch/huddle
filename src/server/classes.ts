@@ -642,6 +642,8 @@ classes.put("/:id/assignments/:aid/groups/:room/grade", async (c) => {
   await c.env.DB!.prepare(`INSERT OR REPLACE INTO grades (assignment_id, room_code, data, graded_at) VALUES (?, ?, ?, ?)`)
     .bind(g.assignment.id, g.group.roomCode, JSON.stringify(data), Date.now())
     .run();
+  // Graded work can't be unsubmitted by the students any more.
+  await (await getServerByName(c.env.Room, g.group.roomCode)).setGraded(Date.now()).catch(() => null);
   return c.json({ ok: true, total: gradeTotal(data), max });
 });
 

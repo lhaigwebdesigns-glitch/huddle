@@ -145,6 +145,21 @@ export function ProjectBar({
                 <RotateCcw className="h-3.5 w-3.5" /> Reopen
               </button>
             )}
+            {!isHost && !project.gradedAt && project.status?.open !== false && (
+              <button
+                onClick={async () =>
+                  (await confirmDialog({
+                    title: "Unsubmit?",
+                    message: "Your files unlock so you can keep working. Your teacher sees it as not turned in until you turn it in again.",
+                    confirmLabel: "Unsubmit",
+                  })) && send({ t: "unsubmit" })
+                }
+                className="press flex items-center gap-1 rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2"
+                data-testid="unsubmit"
+              >
+                <RotateCcw className="h-3.5 w-3.5" /> Unsubmit
+              </button>
+            )}
           </span>
         ) : (
           <button
