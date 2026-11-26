@@ -35,7 +35,19 @@ function useDismiss(open: boolean, close: () => void) {
 const MENU = "pop absolute right-0 z-40 mt-2 rounded-2xl border border-line bg-surface p-1.5 text-sm shadow-[0_16px_40px_-12px_rgba(0,0,0,0.25)]";
 const ITEM = "flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-fg transition-colors hover:bg-surface-2";
 
-export function AccountMenu({ user, providers, isAdmin = false }: { user: Account | null | undefined; providers: string[]; isAdmin?: boolean }) {
+export function AccountMenu({
+  user,
+  providers,
+  isAdmin = false,
+  placement = "down",
+}: {
+  user: Account | null | undefined;
+  providers: string[];
+  isAdmin?: boolean;
+  /** "up" when the button sits at the bottom of the screen (the sidebar). */
+  placement?: "down" | "up";
+}) {
+  const menuCls = placement === "up" ? MENU.replace("right-0", "left-0 bottom-full").replace("mt-2", "mb-2") : MENU;
   const [open, setOpen] = useState(false);
   const ref = useDismiss(open, () => setOpen(false));
   if (user === undefined) return null;
@@ -52,7 +64,7 @@ export function AccountMenu({ user, providers, isAdmin = false }: { user: Accoun
           <span className="max-w-[10rem] truncate">{user.name}</span>
         </button>
         {open && (
-          <div className={`${MENU} w-56`} role="menu">
+          <div className={`${menuCls} w-56`} role="menu" style={{ ["--origin" as string]: placement === "up" ? "bottom left" : "top right" }}>
             <div className="truncate px-3 py-2 text-xs text-fg-subtle">{user.email ?? PROVIDER_LABEL[user.provider] ?? user.provider}</div>
             <a role="menuitem" href="/profile" className={ITEM} data-testid="menu-profile">
               <UserRound className="h-4 w-4 text-fg-muted" /> Edit profile
@@ -84,7 +96,7 @@ export function AccountMenu({ user, providers, isAdmin = false }: { user: Accoun
         Sign in
       </button>
       {open && (
-        <div className={`${MENU} w-64`} role="menu">
+        <div className={`${menuCls} w-64`} role="menu">
           {providers.map((p) => (
             <a key={p} role="menuitem" href={signInUrl(p)} className={ITEM}>
               {p === "google" ? <GoogleMark /> : null}
