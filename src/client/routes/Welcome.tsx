@@ -176,9 +176,9 @@ export default function Welcome() {
 
   return (
     <div className="flex min-h-full flex-col bg-bg" data-testid="welcome" data-step={cur}>
-      <header className="mx-auto flex w-full max-w-2xl items-center gap-3 px-4 pt-5">
+      <header className="mx-auto flex w-full max-w-xl items-center gap-3 px-4 pt-5">
         {idx > 0 ? (
-          <button onClick={() => go(-1)} className="press flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-fg-muted hover:bg-surface-2 hover:text-fg" aria-label="Back" data-testid="welcome-back">
+          <button onClick={() => go(-1)} className="press -ml-2.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-fg-muted hover:bg-surface-2 hover:text-fg" aria-label="Back" data-testid="welcome-back">
             <ArrowLeft className="h-5 w-5" />
           </button>
         ) : (
@@ -189,8 +189,12 @@ export default function Welcome() {
         </div>
       </header>
 
-      <form onSubmit={onSubmit} className="mx-auto flex w-full max-w-xl flex-1 flex-col px-4 pb-6 pt-6 sm:pt-10">
-        <div key={cur} className={`flex-1 ${dir === "next" ? "wel-next" : "wel-back"}`}>
+      <form onSubmit={onSubmit} className="mx-auto flex w-full max-w-xl flex-1 flex-col px-4 pb-6 pt-6 sm:flex-none sm:pb-16 sm:pt-10">
+        {/* Screen readers hear which step they're on. */}
+        <p className="sr-only" aria-live="polite">
+          {cur === "role" ? "Step 1: teacher or student." : `Step ${idx + 1} of ${steps.length}: ${(cur === "name" && role === "student" ? STUDENT_NAME : COPY[cur as Exclude<StepId, "role">]).title}`}
+        </p>
+        <div key={cur} className={`flex-1 sm:flex-none ${dir === "next" ? "wel-next" : "wel-back"}`}>
           {cur === "role" ? (
             <RolePick
               onPick={(r) => {
@@ -218,7 +222,7 @@ export default function Welcome() {
                     onChange={(e) => setName(e.target.value)}
                     placeholder={role === "teacher" ? "e.g. Ms. Rivera" : "Your name"}
                     aria-label="Your name"
-                    className="mt-6 h-12 text-base"
+                    className="mt-6 h-12 text-base focus-visible:outline-none"
                     data-testid="welcome-name"
                   />
                 )}
@@ -229,15 +233,18 @@ export default function Welcome() {
                     <span className="font-semibold">I'm 13 or older</span>
                   </label>
                 )}
+                {cur === "age" && !age && <p className="mt-3 text-sm text-fg-muted">Check the box to keep going.</p>}
                 {cur === "code" && (
                   <Input
                     autoFocus
                     value={code}
-                    onChange={(e) => setCode(e.target.value.toUpperCase())}
+                    onChange={(e) => (setCode(e.target.value.toUpperCase()), setErr(""))}
                     maxLength={8}
                     placeholder="ABC-123"
                     aria-label="Class code"
-                    className="mt-6 h-[52px] font-display text-lg font-bold uppercase tracking-[0.14em]"
+                    aria-invalid={!!err}
+                    aria-describedby={err ? "welcome-err" : undefined}
+                    className={`mt-6 h-[52px] font-display text-lg font-bold uppercase tracking-[0.14em] focus-visible:outline-none ${err ? "border-red-500 focus:border-red-500 focus:ring-red-500/15" : ""}`}
                     data-testid="welcome-code"
                   />
                 )}
@@ -245,14 +252,31 @@ export default function Welcome() {
             )
           )}
           {err && (
-            <p className="mt-3 text-sm font-semibold text-red-600 dark:text-red-400" role="alert">
+            <p id="welcome-err" className="mt-3 text-sm font-semibold text-red-600 dark:text-red-400" role="alert">
               {err}
             </p>
           )}
         </div>
 
+        {last && !had && cur !== "role" && (
+          <p className="mt-8 text-sm text-fg-muted" data-testid="welcome-role-note">
+            You're signing up as a <b className="font-semibold text-fg">{role}</b>. This can't be changed later.{" "}
+            <button
+              type="button"
+              onClick={() => {
+                setErr("");
+                setDir("back");
+                setI(0);
+              }}
+              className="font-semibold text-fg underline underline-offset-2 hover:text-fg-muted"
+              data-testid="welcome-change-role"
+            >
+              Change
+            </button>
+          </p>
+        )}
         {cur !== "role" && (
-          <div className="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
+          <div className="mt-8 flex flex-col-reverse gap-3 sm:mt-10 sm:flex-row sm:items-center sm:justify-end">
             {cur === "code" && (
               <button type="button" disabled={busy} onClick={() => void finish("/dashboard")} className="press rounded-[14px] px-5 py-3 font-semibold text-fg-muted hover:bg-surface-2 hover:text-fg" data-testid="welcome-no-code">
                 Not yet
