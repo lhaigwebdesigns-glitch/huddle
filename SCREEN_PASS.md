@@ -50,8 +50,8 @@ The order follows what the pilot teacher and her students hit first.
 - ✅ The wizard froze on "Make it" with a big deck — screen 9
 - ✅ Delete an assignment — screen 9
 - ⬜ Docs, slides and sheets feel like 2015: bring the editors up to what people expect now (plan first)
-- ⬜ Landing page: the "Cairn stack" timing is too slow
-- ⬜ Animate the pebbles
+- ✅ Landing page: the "Cairn stack" timing is too slow (a stone every 3 s, was 12)
+- ✅ Animate the pebbles (they breathe, blink and wave, each on its own beat; hover to hop)
 - ⬜ Finish the screen pass (screens 10–16)
 - ⬜ Styling pass on the whole app, then get feedback
 - ⬜ Pricing: how Cairn makes money
