@@ -74,12 +74,12 @@ export default function SheetChart({ chart, values, onRemove }: { chart: Chart; 
   }, [key]);
 
   return (
-    <figure className="rounded-lg border border-zinc-200 p-2 dark:border-zinc-800" data-testid="sheet-chart">
-      <div className="flex items-center justify-between text-xs text-zinc-500">
+    <figure className="rounded-lg border border-line p-2 " data-testid="sheet-chart">
+      <div className="flex items-center justify-between text-xs text-fg-muted">
         <figcaption>
           {chart.title || `${chart.type[0].toUpperCase()}${chart.type.slice(1)} chart`} · {chart.range}
         </figcaption>
-        <button onClick={onRemove} className="rounded px-1 hover:bg-zinc-100 dark:hover:bg-zinc-800" aria-label="Remove chart">
+        <button onClick={onRemove} className="rounded px-1 hover:bg-surface-2" aria-label="Remove chart">
           ✕
         </button>
       </div>

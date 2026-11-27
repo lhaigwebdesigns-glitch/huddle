@@ -1,4 +1,5 @@
 import { alertDialog, confirmDialog } from "./Dialogs";
+import { AlignCenter, AlignLeft, AlignRight, BarChart3, Bold, Columns3, Download, Italic, LineChart, PieChart, Rows3, Upload } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EditorProps } from "./FilePanel";
 import { useYObserve, usePeers } from "../lib/useYDoc";
@@ -34,7 +35,7 @@ function TB({ on, active, title, children }: { on: () => void; active?: boolean;
       aria-pressed={active}
       onMouseDown={(e) => e.preventDefault()}
       onClick={on}
-      className={`rounded px-2 py-1 text-sm hover:bg-zinc-200 dark:hover:bg-zinc-800 ${active ? "bg-zinc-200 dark:bg-zinc-800" : ""}`}
+      className={`press flex h-8 min-w-8 items-center justify-center rounded-md px-1.5 text-sm text-fg-muted hover:bg-surface-2 hover:text-fg ${active ? "bg-surface-2 text-fg" : ""}`}
     >
       {children}
     </button>
@@ -309,7 +310,7 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
         role="gridcell"
         aria-selected={inSel}
         data-cell={name}
-        className={`absolute truncate border-b border-r border-zinc-200 px-1.5 text-sm leading-[27px] dark:border-zinc-800 ${isError(v) ? "text-red-600" : ""} ${inSel && !isActive ? "bg-surface-2 " : ""}`}
+        className={`absolute truncate border-b border-r border-line px-1.5 text-sm leading-[27px]  ${isError(v) ? "text-red-600" : ""} ${inSel && !isActive ? "bg-surface-2 " : ""}`}
         style={{
           top: r * ROW_H,
           left: colLeft[c],
@@ -338,7 +339,7 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
           <input
             autoFocus
             aria-label={`Edit ${name}`}
-            className="absolute inset-0 z-10 w-full bg-white px-1.5 text-sm outline-none dark:bg-zinc-900"
+            className="absolute inset-0 z-10 w-full bg-surface px-1.5 text-sm outline-none "
             value={editing}
             onChange={(e) => setEditing(e.target.value)}
             onKeyDown={(e) => {
@@ -368,25 +369,25 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="sheet-editor">
-      <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-3 py-1 text-xs text-zinc-500 dark:border-zinc-800">
-        <span>{synced ? "● Live — edits sync for everyone" : "Connecting…"}</span>
+      <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-1 text-xs text-fg-muted ">
+        <span>{synced ? "Saves as you type" : "Connecting…"}</span>
         <span className="flex gap-2">
-          <button className="hover:text-zinc-900 dark:hover:text-zinc-100" onClick={importCsv}>⬆ Import CSV</button>
-          <button className="hover:text-zinc-900 dark:hover:text-zinc-100" onClick={exportCsv}>⬇ CSV</button>
-          <button className="hover:text-zinc-900 dark:hover:text-zinc-100" onClick={exportXlsx}>⬇ Excel</button>
+          <button className="inline-flex items-center gap-1 hover:text-fg" onClick={importCsv}><Upload className="h-3.5 w-3.5" /> Import CSV</button>
+          <button className="inline-flex items-center gap-1 hover:text-fg" onClick={exportCsv}><Download className="h-3.5 w-3.5" /> CSV</button>
+          <button className="inline-flex items-center gap-1 hover:text-fg" onClick={exportXlsx}><Download className="h-3.5 w-3.5" /> Excel</button>
         </span>
       </div>
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-zinc-200 px-2 py-1 dark:border-zinc-800" role="toolbar" aria-label="Sheet formatting">
-        <TB title="Bold (Ctrl+B)" active={!!activeCell?.b} on={() => formatSel({ b: !activeCell?.b || undefined })}><b>B</b></TB>
-        <TB title="Italic (Ctrl+I)" active={!!activeCell?.i} on={() => formatSel({ i: !activeCell?.i || undefined })}><i>I</i></TB>
-        <span className="mx-1 h-5 w-px bg-zinc-200 dark:bg-zinc-800" />
-        <TB title="Align left" active={activeCell?.a === "l"} on={() => formatSel({ a: "l" })}>⇤</TB>
-        <TB title="Align center" active={activeCell?.a === "c"} on={() => formatSel({ a: "c" })}>↔</TB>
-        <TB title="Align right" active={activeCell?.a === "r"} on={() => formatSel({ a: "r" })}>⇥</TB>
-        <span className="mx-1 h-5 w-px bg-zinc-200 dark:bg-zinc-800" />
+      <div className="flex flex-wrap items-center gap-0.5 border-b border-line px-2 py-1 " role="toolbar" aria-label="Sheet formatting">
+        <TB title="Bold (Ctrl+B)" active={!!activeCell?.b} on={() => formatSel({ b: !activeCell?.b || undefined })}><Bold className="h-4 w-4" /></TB>
+        <TB title="Italic (Ctrl+I)" active={!!activeCell?.i} on={() => formatSel({ i: !activeCell?.i || undefined })}><Italic className="h-4 w-4" /></TB>
+        <span className="mx-1 h-5 w-px bg-surface-2" />
+        <TB title="Align left" active={activeCell?.a === "l"} on={() => formatSel({ a: "l" })}><AlignLeft className="h-4 w-4" /></TB>
+        <TB title="Align center" active={activeCell?.a === "c"} on={() => formatSel({ a: "c" })}><AlignCenter className="h-4 w-4" /></TB>
+        <TB title="Align right" active={activeCell?.a === "r"} on={() => formatSel({ a: "r" })}><AlignRight className="h-4 w-4" /></TB>
+        <span className="mx-1 h-5 w-px bg-surface-2" />
         <select
           aria-label="Number format"
-          className="rounded border border-zinc-200 bg-transparent px-1 py-0.5 text-sm dark:border-zinc-700"
+          className="rounded border border-line bg-transparent px-1 py-0.5 text-sm "
           value={activeCell?.fmt ?? ""}
           onChange={(e) => formatSel({ fmt: (e.target.value || undefined) as Cell["fmt"] })}
         >
@@ -404,24 +405,24 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
               aria-label={s ? `Fill ${s}` : "No fill"}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => formatSel({ bg: s || undefined })}
-              className="h-5 w-5 rounded border border-zinc-300 dark:border-zinc-600"
+              className="h-5 w-5 rounded border border-line-strong"
               style={{ background: s || "transparent", backgroundImage: s ? undefined : "linear-gradient(135deg,transparent 45%,#ef4444 45%,#ef4444 55%,transparent 55%)" }}
             />
           ))}
         </span>
-        <span className="mx-1 h-5 w-px bg-zinc-200 dark:bg-zinc-800" />
-        <TB title="Add 10 rows" on={() => meta.set("rows", Math.min(MAX_ROWS, rows + 10))}>+ Rows</TB>
-        <TB title="Add a column" on={() => meta.set("cols", Math.min(MAX_COLS, cols + 1))}>+ Col</TB>
-        <span className="mx-1 h-5 w-px bg-zinc-200 dark:bg-zinc-800" />
-        <TB title="Bar chart from selection" on={() => addChart("bar")}>📊 Chart</TB>
-        <TB title="Line chart from selection" on={() => addChart("line")}>📈</TB>
-        <TB title="Pie chart from selection" on={() => addChart("pie")}>🥧</TB>
+        <span className="mx-1 h-5 w-px bg-surface-2" />
+        <TB title="Add 10 rows" on={() => meta.set("rows", Math.min(MAX_ROWS, rows + 10))}><span className="inline-flex items-center gap-1"><Rows3 className="h-4 w-4" /> Rows</span></TB>
+        <TB title="Add a column" on={() => meta.set("cols", Math.min(MAX_COLS, cols + 1))}><span className="inline-flex items-center gap-1"><Columns3 className="h-4 w-4" /> Column</span></TB>
+        <span className="mx-1 h-5 w-px bg-surface-2" />
+        <TB title="Bar chart from selection" on={() => addChart("bar")}><span className="inline-flex items-center gap-1"><BarChart3 className="h-4 w-4" /> Chart</span></TB>
+        <TB title="Line chart from selection" on={() => addChart("line")}><LineChart className="h-4 w-4" /></TB>
+        <TB title="Pie chart from selection" on={() => addChart("pie")}><PieChart className="h-4 w-4" /></TB>
       </div>
-      <div className="flex items-center gap-2 border-b border-zinc-200 px-2 py-1 dark:border-zinc-800">
-        <span className="w-16 shrink-0 rounded bg-zinc-100 px-1.5 py-0.5 text-center font-mono text-xs dark:bg-zinc-800" data-testid="active-ref">
+      <div className="flex items-center gap-2 border-b border-line px-2 py-1 ">
+        <span className="w-16 shrink-0 rounded bg-surface-2 px-1.5 py-0.5 text-center font-mono text-xs " data-testid="active-ref">
           {selRange(sel)}
         </span>
-        <span className="text-xs italic text-zinc-400">fx</span>
+        <span className="text-xs italic text-fg-subtle">fx</span>
         <input
           aria-label="Formula bar"
           data-testid="formula-bar"
@@ -455,11 +456,11 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
         <div style={{ width: totalW, height: (rows + 1) * ROW_H, position: "relative" }}>
           {/* column headers */}
           <div className="sticky top-0 z-20" style={{ height: ROW_H, width: totalW }}>
-            <div className="absolute left-0 top-0 z-30 border-b border-r border-zinc-200 bg-zinc-100 dark:border-zinc-800 dark:bg-zinc-900" style={{ width: HEAD_W, height: ROW_H, position: "sticky" }} />
+            <div className="absolute left-0 top-0 z-30 border-b border-r border-line bg-surface-2" style={{ width: HEAD_W, height: ROW_H, position: "sticky" }} />
             {Array.from({ length: cols }, (_, c) => (
               <div
                 key={c}
-                className={`absolute top-0 select-none border-b border-r border-zinc-200 bg-zinc-100 text-center text-xs leading-[27px] text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 ${c >= n.c0 && c <= n.c1 ? "bg-surface-2 text-fg  " : ""}`}
+                className={`absolute top-0 select-none border-b border-r border-line bg-surface-2 text-center text-xs leading-[27px] text-fg-muted   ${c >= n.c0 && c <= n.c1 ? "bg-surface-2 text-fg" : ""}`}
                 style={{ left: colLeft[c], width: widthOf(c), height: ROW_H }}
                 onMouseDown={() => setSel({ c, r: 0, c2: c, r2: rows - 1 })}
               >
@@ -473,7 +474,7 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
             {Array.from({ length: lastRow - firstRow + 1 }, (_, i) => firstRow + i).map((r) => (
               <div key={r}>
                 <div
-                  className={`sticky left-0 z-10 select-none border-b border-r border-zinc-200 bg-zinc-100 text-center text-xs leading-[27px] text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 ${r >= n.r0 && r <= n.r1 ? "bg-surface-2 text-fg  " : ""}`}
+                  className={`sticky left-0 z-10 select-none border-b border-r border-line bg-surface-2 text-center text-xs leading-[27px] text-fg-muted   ${r >= n.r0 && r <= n.r1 ? "bg-surface-2 text-fg" : ""}`}
                   style={{ position: "absolute", top: r * ROW_H, width: HEAD_W, height: ROW_H }}
                   onMouseDown={() => setSel({ c: 0, r, c2: cols - 1, r2: r })}
                 >
@@ -485,7 +486,7 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-3 border-t border-zinc-200 px-3 py-1 text-xs text-zinc-500 dark:border-zinc-800">
+      <div className="flex items-center gap-3 border-t border-line px-3 py-1 text-xs text-fg-muted ">
         <span>{selStats ?? `${rows} rows × ${cols} columns`}</span>
         <span className="flex-1" />
         {peers.filter((p) => p.state?.user && p.state?.sheetSel).map((p) => (
@@ -496,8 +497,8 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
         ))}
       </div>
       {charts.length > 0 && (
-        <div className="max-h-[45%] shrink-0 overflow-y-auto border-t border-zinc-200 p-3 dark:border-zinc-800" data-testid="sheet-charts">
-          <Suspense fallback={<div className="text-sm text-zinc-500">Loading charts…</div>}>
+        <div className="max-h-[45%] shrink-0 overflow-y-auto border-t border-line p-3 " data-testid="sheet-charts">
+          <Suspense fallback={<div className="text-sm text-fg-muted">Loading charts…</div>}>
             <div className="grid gap-3 md:grid-cols-2">
               {charts.map((ch) => (
                 <ChartView

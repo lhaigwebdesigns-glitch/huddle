@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
+import { Download } from "lucide-react";
 import { CaptureUpdateAction, convertToExcalidrawElements, Excalidraw, exportToBlob, MainMenu, reconcileElements } from "@excalidraw/excalidraw";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types";
 import "@excalidraw/excalidraw/index.css";
@@ -162,13 +163,13 @@ export default function WhiteboardEditor({ ydoc, provider, file, me, synced }: E
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" data-testid="whiteboard-editor">
-      <div className="flex items-center justify-between gap-2 border-b border-zinc-200 px-3 py-1 text-xs text-zinc-500 dark:border-zinc-800">
-        <span>{synced ? "● Live — everyone draws on the same board" : "Connecting…"}</span>
+      <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-1 text-xs text-fg-muted ">
+        <span>{synced ? "Saves as you draw" : "Connecting…"}</span>
         <span data-testid="wb-count" className="sr-only">{shapeCount}</span>
-        <button className="hover:text-zinc-900 dark:hover:text-zinc-100" onClick={exportPng}>⬇ PNG</button>
+        <button className="hover:text-fg" onClick={exportPng}><span className="inline-flex items-center gap-1"><Download className="h-3.5 w-3.5" /> PNG</span></button>
       </div>
       {busy && (
-        <div className="absolute left-1/2 top-12 z-10 -translate-x-1/2 rounded-full bg-zinc-900 px-3 py-1 text-xs text-white shadow">{busy}</div>
+        <div className="absolute left-1/2 top-12 z-10 -translate-x-1/2 rounded-full bg-fg px-3 py-1 text-xs text-bg shadow">{busy}</div>
       )}
       <div className="min-h-0 flex-1">
         <Excalidraw
