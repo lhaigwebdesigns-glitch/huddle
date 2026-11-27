@@ -1237,7 +1237,26 @@ export class Room extends Server<Env> {
     if (!this.settings?.worksheet) return null;
     const files = await this.starterFiles();
     const keyId = this.settings.worksheet.keyId;
-    return { files: files.map((f) => ({ title: f.title, kind: f.kind })), hasKey: !!keyId && this.files().some((f) => f.id === keyId) };
+    return { files: files.map((f) => ({ id: f.id, title: f.title, kind: f.kind })), hasKey: !!keyId && this.files().some((f) => f.id === keyId) };
+  }
+
+  /** The answer key's file id, if this worksheet has one. */
+  async keyFileId(): Promise<string | null> {
+    const keyId = this.settings?.worksheet?.keyId;
+    return keyId && this.files().some((f) => f.id === keyId) ? keyId : null;
+  }
+
+  /** Copies another worksheet's answer key into this one (when an assignment is copied to another class). */
+  async copyAnswerKeyFrom(from: string) {
+    const src = await getServerByName(this.env.Room, from);
+    const srcKey = (await src.keyFileId()) as string | null;
+    if (!srcKey) return false;
+    const keyId = await this.addAnswerKey();
+    if (!keyId) return false;
+    const a = await getServerByName(this.env.Doc, `${from}--${srcKey}`);
+    const b = await getServerByName(this.env.Doc, `${this.name}--${keyId}`);
+    await b.importState(await a.exportState(), "doc");
+    return true;
   }
 
   /** Gives this (new) room its own copy of every starter file in the worksheet room `from`. */
