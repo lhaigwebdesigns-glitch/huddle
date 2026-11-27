@@ -1,5 +1,6 @@
 import { alertDialog, confirmDialog } from "./Dialogs";
-import { AlignCenter, AlignLeft, AlignRight, BarChart3, Bold, Columns3, Download, Italic, LineChart, PieChart, Rows3, Upload } from "lucide-react";
+import { undoKey, useYUndo } from "../lib/yUndo";
+import { AlignCenter, AlignLeft, AlignRight, BarChart3, Bold, Columns3, Download, Italic, LineChart, PieChart, Redo2, Rows3, Undo2, Upload } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EditorProps } from "./FilePanel";
 import { useYObserve, usePeers } from "../lib/useYDoc";
@@ -26,7 +27,7 @@ const selRange = (s: Sel) => {
   return n.c0 === n.c1 && n.r0 === n.r1 ? refName(n.c0, n.r0) : `${refName(n.c0, n.r0)}:${refName(n.c1, n.r1)}`;
 };
 
-function TB({ on, active, title, children }: { on: () => void; active?: boolean; title: string; children: React.ReactNode }) {
+function TB({ on, active, title, children, disabled, testId }: { on: () => void; active?: boolean; title: string; children: React.ReactNode; disabled?: boolean; testId?: string }) {
   return (
     <button
       type="button"
@@ -35,7 +36,9 @@ function TB({ on, active, title, children }: { on: () => void; active?: boolean;
       aria-pressed={active}
       onMouseDown={(e) => e.preventDefault()}
       onClick={on}
-      className={`press flex h-8 min-w-8 items-center justify-center rounded-md px-1.5 text-sm text-fg-muted hover:bg-surface-2 hover:text-fg ${active ? "bg-surface-2 text-fg" : ""}`}
+      disabled={disabled}
+      data-testid={testId}
+      className={`press flex h-8 min-w-8 items-center justify-center rounded-md px-1.5 text-sm text-fg-muted hover:bg-surface-2 hover:text-fg disabled:opacity-35 disabled:hover:bg-transparent ${active ? "bg-surface-2 text-fg" : ""}`}
     >
       {children}
     </button>
@@ -47,10 +50,16 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
   const meta = metaOf(ydoc);
   useYObserve([cells, meta]);
   const peers = usePeers(provider);
+  // Your own edits only: teammates' and the AI's changes are never undone from here.
+  const history = useYUndo([cells, meta], 0);
 
   const { rows, cols } = sheetSize(ydoc);
   const colW: Record<string, number> = meta.get("colW") ?? {};
   const charts: Chart[] = meta.get("charts") ?? [];
+  // Frozen rows and columns stay in view while the rest scrolls (like View > Freeze in Google Sheets).
+  const frozen: { r: number; c: number } = meta.get("freeze") ?? { r: 0, c: 0 };
+  const FR = Math.min(frozen.r, 3);
+  const FC = Math.min(frozen.c, 2);
   const raw = rawValues(ydoc);
   const rawKey = JSON.stringify(raw);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -155,6 +164,8 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
     if (mod && e.key.toLowerCase() === "b") return e.preventDefault(), formatSel({ b: !activeCell?.b || undefined });
     if (mod && e.key.toLowerCase() === "i") return e.preventDefault(), formatSel({ i: !activeCell?.i || undefined });
     if (mod && e.key.toLowerCase() === "c") return void copySel();
+    const u = undoKey(e);
+    if (u) return e.preventDefault(), u === "undo" ? history.undo() : history.redo();
     if (mod) return; // let paste etc. through
     switch (e.key) {
       case "ArrowUp":
@@ -294,7 +305,7 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
     return count ? `Sum ${formatValue(sum)} · Avg ${formatValue(sum / count)} · Count ${count}` : null;
   })();
 
-  const renderCell = (c: number, r: number) => {
+  const renderCell = (c: number, r: number, top = r * ROW_H) => {
     const name = refName(c, r);
     const cell = cells.get(name);
     const v: Result | undefined = values[name];
@@ -312,7 +323,7 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
         data-cell={name}
         className={`absolute truncate border-b border-r border-line px-1.5 text-sm leading-[27px]  ${isError(v) ? "text-red-600" : ""} ${inSel && !isActive ? "bg-surface-2 " : ""}`}
         style={{
-          top: r * ROW_H,
+          top,
           left: colLeft[c],
           width: widthOf(c),
           height: ROW_H,
@@ -361,6 +372,30 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
     );
   };
 
+  const colHeader = (c: number) => (
+    <div
+      key={`h${c}`}
+      className={`absolute top-0 select-none border-b border-r border-line bg-surface-2 text-center text-xs leading-[27px] text-fg-muted ${c >= n.c0 && c <= n.c1 ? "text-fg" : ""}`}
+      style={{ left: colLeft[c], width: widthOf(c), height: ROW_H }}
+      onMouseDown={() => setSel({ c, r: 0, c2: c, r2: rows - 1 })}
+    >
+      {colName(c)}
+      <span className="absolute -right-0.5 top-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-primary" title="Drag to resize" onMouseDown={(e) => startResize(c, e)} aria-hidden />
+    </div>
+  );
+  const rowHeader = (r: number, top: number) => (
+    <div
+      key={`r${r}`}
+      className={`absolute left-0 select-none border-b border-r border-line bg-surface-2 text-center text-xs leading-[27px] text-fg-muted ${r >= n.r0 && r <= n.r1 ? "text-fg" : ""}`}
+      style={{ top, width: HEAD_W, height: ROW_H }}
+      onMouseDown={() => setSel({ c: 0, r, c2: cols - 1, r2: r })}
+    >
+      {r + 1}
+    </div>
+  );
+  // Rows below the frozen ones that are on screen (plus a few either side).
+  const visibleRows = Array.from({ length: Math.max(0, lastRow - Math.max(firstRow, FR) + 1) }, (_, i) => Math.max(firstRow, FR) + i);
+
   useEffect(() => {
     const up = () => (dragging.current = false);
     window.addEventListener("mouseup", up);
@@ -378,6 +413,9 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-0.5 border-b border-line px-2 py-1 " role="toolbar" aria-label="Sheet formatting">
+        <TB title="Undo (Ctrl+Z)" on={history.undo} disabled={!history.canUndo} testId="sheet-undo"><Undo2 className="h-4 w-4" /></TB>
+        <TB title="Redo (Ctrl+Y)" on={history.redo} disabled={!history.canRedo} testId="sheet-redo"><Redo2 className="h-4 w-4" /></TB>
+        <span className="mx-1 h-5 w-px bg-surface-2" />
         <TB title="Bold (Ctrl+B)" active={!!activeCell?.b} on={() => formatSel({ b: !activeCell?.b || undefined })}><Bold className="h-4 w-4" /></TB>
         <TB title="Italic (Ctrl+I)" active={!!activeCell?.i} on={() => formatSel({ i: !activeCell?.i || undefined })}><Italic className="h-4 w-4" /></TB>
         <span className="mx-1 h-5 w-px bg-surface-2" />
@@ -410,6 +448,23 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
             />
           ))}
         </span>
+        <select
+          aria-label="Freeze"
+          title="Freeze rows or columns"
+          data-testid="sheet-freeze"
+          className="ml-1 rounded border border-line bg-transparent px-1 py-0.5 text-sm"
+          value={`${FR},${FC}`}
+          onChange={(e) => {
+            const [fr, fc] = e.target.value.split(",").map(Number);
+            meta.set("freeze", { r: fr, c: fc });
+          }}
+        >
+          <option value="0,0">No freeze</option>
+          <option value="1,0">Freeze top row</option>
+          <option value="2,0">Freeze 2 rows</option>
+          <option value="0,1">Freeze first column</option>
+          <option value="1,1">Freeze top row and first column</option>
+        </select>
         <span className="mx-1 h-5 w-px bg-surface-2" />
         <TB title="Add 10 rows" on={() => meta.set("rows", Math.min(MAX_ROWS, rows + 10))}><span className="inline-flex items-center gap-1"><Rows3 className="h-4 w-4" /> Rows</span></TB>
         <TB title="Add a column" on={() => meta.set("cols", Math.min(MAX_COLS, cols + 1))}><span className="inline-flex items-center gap-1"><Columns3 className="h-4 w-4" /> Column</span></TB>
@@ -454,34 +509,35 @@ export default function SheetEditor({ ydoc, provider, file, me, synced }: Editor
         }}
       >
         <div style={{ width: totalW, height: (rows + 1) * ROW_H, position: "relative" }}>
-          {/* column headers */}
-          <div className="sticky top-0 z-20" style={{ height: ROW_H, width: totalW }}>
-            <div className="absolute left-0 top-0 z-30 border-b border-r border-line bg-surface-2" style={{ width: HEAD_W, height: ROW_H, position: "sticky" }} />
-            {Array.from({ length: cols }, (_, c) => (
-              <div
-                key={c}
-                className={`absolute top-0 select-none border-b border-r border-line bg-surface-2 text-center text-xs leading-[27px] text-fg-muted   ${c >= n.c0 && c <= n.c1 ? "bg-surface-2 text-fg" : ""}`}
-                style={{ left: colLeft[c], width: widthOf(c), height: ROW_H }}
-                onMouseDown={() => setSel({ c, r: 0, c2: c, r2: rows - 1 })}
-              >
-                {colName(c)}
-                <span className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize" onMouseDown={(e) => startResize(c, e)} aria-hidden />
+          {/* Top band: column letters and frozen rows. Sticky to the top. */}
+          <div className="sticky top-0 z-20 bg-bg" style={{ height: ROW_H * (1 + FR), width: totalW }}>
+            {Array.from({ length: cols - FC }, (_, i) => FC + i).map((c) => colHeader(c))}
+            {Array.from({ length: FR }, (_, r) => Array.from({ length: cols - FC }, (_, i) => renderCell(FC + i, r, ROW_H * (1 + r))))}
+            {/* Corner: sticky to the left as well, so it never moves. */}
+            <div className="sticky left-0 z-10 bg-bg" style={{ width: colLeft[FC], height: ROW_H * (1 + FR) }}>
+              <div className="absolute left-0 top-0 border-b border-r border-line bg-surface-2" style={{ width: HEAD_W, height: ROW_H }} />
+              {Array.from({ length: FC }, (_, c) => colHeader(c))}
+              {Array.from({ length: FR }, (_, r) => (
+                <div key={r}>
+                  {rowHeader(r, ROW_H * (1 + r))}
+                  {Array.from({ length: FC }, (_, c) => renderCell(c, r, ROW_H * (1 + r)))}
+                </div>
+              ))}
+            </div>
+          </div>
+          {/* Left band: row numbers and frozen columns. Sticky to the left. */}
+          <div className="sticky left-0 z-10 bg-bg" style={{ width: colLeft[FC], height: (rows - FR) * ROW_H }}>
+            {visibleRows.map((r) => (
+              <div key={r}>
+                {rowHeader(r, (r - FR) * ROW_H)}
+                {Array.from({ length: FC }, (_, c) => renderCell(c, r, (r - FR) * ROW_H))}
               </div>
             ))}
           </div>
-          {/* rows (only the visible window is rendered) */}
+          {/* The rest (only the visible window is rendered). */}
           <div className="absolute left-0" style={{ top: ROW_H, width: totalW }}>
-            {Array.from({ length: lastRow - firstRow + 1 }, (_, i) => firstRow + i).map((r) => (
-              <div key={r}>
-                <div
-                  className={`sticky left-0 z-10 select-none border-b border-r border-line bg-surface-2 text-center text-xs leading-[27px] text-fg-muted   ${r >= n.r0 && r <= n.r1 ? "bg-surface-2 text-fg" : ""}`}
-                  style={{ position: "absolute", top: r * ROW_H, width: HEAD_W, height: ROW_H }}
-                  onMouseDown={() => setSel({ c: 0, r, c2: cols - 1, r2: r })}
-                >
-                  {r + 1}
-                </div>
-                {Array.from({ length: cols }, (_, c) => renderCell(c, r))}
-              </div>
+            {visibleRows.map((r) => (
+              <div key={r}>{Array.from({ length: cols - FC }, (_, i) => renderCell(FC + i, r))}</div>
             ))}
           </div>
         </div>

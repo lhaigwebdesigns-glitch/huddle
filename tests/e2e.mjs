@@ -295,6 +295,14 @@ try {
   ok(true, "Alice sees Bob's live pointer in the sheet");
   await alice.locator('[data-cell="C2"]').click();
   ok((await alice.getByTestId("formula-bar").inputValue()) === "=B2*2", "formula bar shows the formula");
+  await alice.keyboard.press("Delete");
+  await bob.locator('[data-cell="C2"]').getByText("40").waitFor({ state: "detached", timeout: 10000 });
+  await alice.keyboard.press("Control+z");
+  await bob.locator('[data-cell="C2"]').getByText("40").waitFor({ timeout: 10000 });
+  ok(true, "Ctrl+Z in a sheet brings back a cell you cleared, for everyone");
+  await alice.getByTestId("sheet-freeze").selectOption("1,0");
+  await bob.waitForFunction(() => document.querySelector("[data-testid=sheet-freeze]")?.value === "1,0", null, { timeout: 10000 });
+  ok((await bob.getByTestId("sheet-freeze").inputValue()) === "1,0", "freezing the top row is shared with the group");
 
   // Slides: AI deck, live co-editing of a text box, and "follow the presenter".
   await bob.getByTestId("composer").fill("make slides for our pitch");
@@ -302,6 +310,13 @@ try {
   await alice.getByTestId("slides-editor").waitFor({ timeout: 15000 });
   await bob.getByTestId("slides-editor").waitFor();
   ok((await bob.getByTestId("slide-thumb").count()) === 3, "AI deck has 3 slides for everyone");
+  await bob.getByTestId("add-slide").click();
+  await bob.getByRole("button", { name: "Title + bullets" }).click();
+  await alice.waitForFunction(() => document.querySelectorAll("[data-testid=slide-thumb]").length === 4, null, { timeout: 10000 });
+  await bob.getByTestId("slides-undo").click();
+  await alice.waitForFunction(() => document.querySelectorAll("[data-testid=slide-thumb]").length === 3, null, { timeout: 10000 });
+  ok(true, "Undo in slides takes back a slide you added, for everyone");
+  await bob.getByTestId("slide-thumb").first().click();
   const titleBox = alice.getByTestId("slide-canvas").locator('textarea[data-field="title"]');
   await titleBox.click();
   await alice.keyboard.press("End");
@@ -360,6 +375,12 @@ try {
   await dave.getByTestId("form-submit").click();
   await dave.getByTestId("form-thanks").waitFor();
   ok(true, "a stranger submits the public form");
+  await alice.getByTestId("add-dropdown").click();
+  await alice.waitForFunction(() => document.querySelectorAll("[data-testid=form-question]").length === 4, null, { timeout: 10000 });
+  await dave.goto(formLink);
+  await dave.getByTestId("public-form-title").waitFor();
+  await dave.locator("form select").first().waitFor({ timeout: 10000 });
+  ok(true, "a dropdown question shows as a dropdown on the public form");
   await alice.getByTestId("form-tab-responses").getByText("Responses (1)").waitFor({ timeout: 10000 });
   await alice.getByTestId("form-tab-responses").click();
   await alice.getByTestId("form-responses").getByText("Afternoon").waitFor();
@@ -1501,11 +1522,22 @@ try {
   await ed2.getByTestId("doc-editor").locator("table").waitFor();
   await ed2.getByTestId("doc-editor").locator('img[src^="/api/rooms/"]').waitFor();
   ok(true, "tables and images sync to everyone in the doc");
+  await ed1.evaluate(() => document.querySelector('[data-testid="doc-editor"]').editor.commands.selectAll());
+  await ed1.getByTestId("doc-font").click();
+  await ed1.getByTestId("font-times-new-roman").click();
+  await ed1.getByTestId("doc-size").click();
+  await ed1.getByTestId("size-14").click();
+  await ed1.getByTestId("doc-spacing").click();
+  await ed1.getByTestId("spacing-double").click();
+  await ed2.getByTestId("doc-editor").locator('p[style*="line-height: 2.4"] span[style*="Times New Roman"][style*="14pt"]').first().waitFor({ timeout: 10000 });
+  ok(true, "font, size and double spacing apply and sync to the group");
+  ok(/^\d+ of \d+ words$/.test(await ed1.getByTestId("doc-words").innerText()), "the word count shows the doc's words and the selection's");
   await ed1.getByTestId("doc-word").click();
   await ed1.getByTestId("dialog-input").fill("Ivy, Jo");
   const [wordFile] = await Promise.all([ed1.waitForEvent("download"), ed1.getByTestId("dialog-confirm").click()]);
   const wordHtml = await (await import("node:fs/promises")).readFile(await wordFile.path(), "utf8");
   ok(wordFile.suggestedFilename() === "Mock plan.doc" && /<p>Ivy<\/p><p>Jo<\/p>/.test(wordHtml) && /class="title">Mock plan</.test(wordHtml), "Word export uses school-paper format with names, date and title");
+  ok(/Times New Roman/.test(wordHtml) && /line-height: 2\.4/.test(wordHtml), "the Word export keeps the doc's font and spacing");
 
   // Slides: a free-layout slide with a text box and a shape you can drag; slide owners.
   await ed1.getByTestId("composer").fill("make slides about our plan");

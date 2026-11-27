@@ -37,3 +37,29 @@ describe("forms model", () => {
     expect(rows[1].slice(1)).toEqual(["Ana", "Sat", "Cookies; Pie", "5"]);
   });
 });
+
+describe("dropdowns and pictures", () => {
+  it("a dropdown gets default options and only accepts one of them", () => {
+    const doc = new Y.Doc();
+    questionsOf(doc).push([makeQuestion({ id: "period", type: "dropdown", title: "Class period", options: ["1st", "2nd", "3rd"], required: true })]);
+    const { questions } = publicForm(doc, "Sign-up");
+    expect(questions[0].type).toBe("dropdown");
+    expect(validateAnswers(questions, { period: "2nd" })).toEqual({ ok: true, answers: { period: "2nd" } });
+    expect(validateAnswers(questions, { period: "9th" }).ok).toBe(false);
+    expect(validateAnswers(questions, {}).ok).toBe(false);
+    questionsOf(doc).push([makeQuestion({ id: "blank", type: "dropdown", title: "Pick" })]);
+    expect(publicForm(doc, "x").questions[1].options).toEqual(["Option 1", "Option 2"]);
+  });
+
+  it("keeps a picture only when it's a Cairn upload", () => {
+    const doc = new Y.Doc();
+    const bad = ["https://evil.example/x.png", "javascript:alert(1)", "/api/rooms/ABC123/blobs/../../x"];
+    questionsOf(doc).push([
+      makeQuestion({ type: "short", title: "What is this?", image: "/api/rooms/ABC123/blobs/0123456789abcdef" }),
+      ...bad.map((image) => makeQuestion({ type: "short", title: "x", image })),
+    ]);
+    const qs = publicForm(doc, "x").questions;
+    expect(qs[0].image).toBe("/api/rooms/ABC123/blobs/0123456789abcdef");
+    expect(qs.slice(1).map((q) => q.image)).toEqual([undefined, undefined, undefined]);
+  });
+});

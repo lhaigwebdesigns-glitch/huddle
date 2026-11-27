@@ -28,6 +28,17 @@ function Field({ q, value, onChange }: { q: Question; value: Answers[string] | u
           ))}
         </div>
       );
+    case "dropdown":
+      return (
+        <select id={id} className={base} value={String(value ?? "")} onChange={(e) => onChange(e.target.value)} required={q.required} aria-labelledby={`${id}-label`}>
+          <option value="">Choose…</option>
+          {(q.options ?? []).map((o) => (
+            <option key={o} value={o}>
+              {o}
+            </option>
+          ))}
+        </select>
+      );
     case "checkbox": {
       const picked = Array.isArray(value) ? value : [];
       return (
@@ -129,6 +140,7 @@ export default function PublicForm() {
                       </label>
                     </legend>
                     <div className="clear-both" />
+                    {q.image && <img src={q.image} alt={`Picture for: ${q.title || "this question"}`} className="mt-2 max-h-72 rounded-lg border border-line" />}
                     <Field q={q} value={answers[q.id]} onChange={(v) => setAnswers((a) => ({ ...a, [q.id]: v }))} />
                   </fieldset>
                 ))}

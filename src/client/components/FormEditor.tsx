@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { AlignLeft, CalendarDays, Check, CircleDot, ExternalLink, Link2, Minus, Plus, SlidersHorizontal, SquareCheck } from "lucide-react";
+import { AlignLeft, CalendarDays, Check, CircleDot, ExternalLink, ImagePlus, Link2, Minus, Plus, SlidersHorizontal, SquareCheck, SquareChevronDown, X } from "lucide-react";
+import { uploadFile } from "../lib/uploads";
+import { alertDialog } from "./Dialogs";
 import { promptDialog } from "./Dialogs";
 import * as Y from "yjs";
 import type { EditorProps } from "./FilePanel";
 import { useYObserve } from "../lib/useYDoc";
 import {
   formMetaOf,
+  hasOptions,
   makeQuestion,
   QUESTION_LABEL,
   QUESTION_TYPES,
@@ -22,8 +25,29 @@ import { sendFromEditor } from "../lib/editorBridge";
 
 const input = "w-full rounded-md border border-line-strong bg-surface px-2 py-1 text-sm";
 
-function QuestionCard({ q, ymap, index, total, onMove, onDelete }: { q: Question; ymap: Y.Map<any>; index: number; total: number; onMove: (d: -1 | 1) => void; onDelete: () => void }) {
+function QuestionCard({ q, ymap, index, total, onMove, onDelete, room }: { q: Question; ymap: Y.Map<any>; index: number; total: number; onMove: (d: -1 | 1) => void; onDelete: () => void; room: string }) {
   const options = q.options ?? [];
+  const [uploading, setUploading] = useState(false);
+  // A picture for the question: uploaded to the room, so the public form can show it.
+  const addImage = () => {
+    const pick = document.createElement("input");
+    pick.type = "file";
+    pick.accept = "image/png,image/jpeg,image/webp,image/gif";
+    pick.onchange = async () => {
+      const f = pick.files?.[0];
+      if (!f) return;
+      setUploading(true);
+      try {
+        const up = await uploadFile(room, f);
+        ymap.set("image", up.url);
+      } catch (e) {
+        void alertDialog({ title: "Couldn't add the picture", message: String((e as Error).message) });
+      } finally {
+        setUploading(false);
+      }
+    };
+    pick.click();
+  };
   const setOptions = (next: string[]) => ymap.set("options", next.slice(0, 20));
   return (
     <li className="rounded-xl border border-line bg-surface p-3 shadow-sm" data-testid="form-question">
@@ -44,7 +68,7 @@ function QuestionCard({ q, ymap, index, total, onMove, onDelete }: { q: Question
             const type = e.target.value as QuestionType;
             ymap.doc!.transact(() => {
               ymap.set("type", type);
-              if ((type === "choice" || type === "checkbox") && !options.length) ymap.set("options", ["Option 1", "Option 2"]);
+              if (hasOptions(type) && !options.length) ymap.set("options", ["Option 1", "Option 2"]);
               if (type === "scale" && !ymap.get("max")) ymap.set("max", 5);
             });
           }}
@@ -54,11 +78,19 @@ function QuestionCard({ q, ymap, index, total, onMove, onDelete }: { q: Question
           ))}
         </select>
       </div>
-      {(q.type === "choice" || q.type === "checkbox") && (
+      {q.image && (
+        <div className="relative mt-2 w-fit pl-5">
+          <img src={q.image} alt="" className="max-h-48 rounded-lg border border-line" />
+          <button onClick={() => ymap.delete("image")} className="press absolute right-1 top-1 rounded-full bg-surface/90 p-1 text-fg-muted shadow hover:text-fg" aria-label="Remove picture" data-testid="question-image-remove">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+      {hasOptions(q.type) && (
         <ul className="mt-2 space-y-1 pl-5">
           {options.map((o, i) => (
             <li key={i} className="flex items-center gap-2">
-              <span className="text-fg-subtle" aria-hidden>{q.type === "choice" ? "○" : "☐"}</span>
+              <span className="w-4 text-center text-fg-subtle" aria-hidden>{q.type === "choice" ? "○" : q.type === "checkbox" ? "☐" : `${i + 1}.`}</span>
               <input
                 aria-label={`Option ${i + 1}`}
                 className={input}
@@ -91,6 +123,9 @@ function QuestionCard({ q, ymap, index, total, onMove, onDelete }: { q: Question
         <label className="flex items-center gap-1">
           <input type="checkbox" checked={!!q.required} onChange={(e) => ymap.set("required", e.target.checked)} /> Required
         </label>
+        <button onClick={addImage} disabled={uploading} className="flex items-center gap-1 rounded px-1 hover:bg-surface-2 hover:text-fg disabled:opacity-50" data-testid="question-image">
+          <ImagePlus className="h-3.5 w-3.5" /> {uploading ? "Adding…" : q.image ? "Change picture" : "Picture"}
+        </button>
         <span className="flex-1" />
         <button onClick={() => onMove(-1)} disabled={index === 0} className="rounded px-1 hover:bg-surface-2 disabled:opacity-30" aria-label="Move question up">↑</button>
         <button onClick={() => onMove(1)} disabled={index === total - 1} className="rounded px-1 hover:bg-surface-2 disabled:opacity-30" aria-label="Move question down">↓</button>
@@ -112,7 +147,7 @@ function Bar({ label, n, total }: { label: string; n: number; total: number }) {
   );
 }
 
-const QUESTION_ICON: Record<(typeof QUESTION_TYPES)[number], typeof Plus> = { short: Minus, long: AlignLeft, choice: CircleDot, checkbox: SquareCheck, scale: SlidersHorizontal, date: CalendarDays };
+const QUESTION_ICON: Record<(typeof QUESTION_TYPES)[number], typeof Plus> = { short: Minus, long: AlignLeft, choice: CircleDot, checkbox: SquareCheck, dropdown: SquareChevronDown, scale: SlidersHorizontal, date: CalendarDays };
 
 export default function FormEditor({ ydoc, room, file, synced }: EditorProps) {
   const qArr = questionsOf(ydoc);
@@ -191,6 +226,7 @@ export default function FormEditor({ ydoc, room, file, synced }: EditorProps) {
             <ol className="space-y-3">
               {questions.map((q, i) => (
                 <QuestionCard
+                  room={room}
                   key={q.id}
                   q={q}
                   ymap={qArr.get(i)}
@@ -250,7 +286,7 @@ export default function FormEditor({ ydoc, room, file, synced }: EditorProps) {
                   <section key={q.id} className="rounded-xl border border-line bg-surface p-3">
                     <h3 className="font-medium">{q.title || "Untitled question"}</h3>
                     <p className="mb-2 text-xs text-fg-muted">{vals.length} answer{vals.length === 1 ? "" : "s"}</p>
-                    {q.type === "choice" || q.type === "checkbox" ? (
+                    {hasOptions(q.type) ? (
                       <div className="space-y-1">
                         {(q.options ?? []).map((o) => (
                           <Bar key={o} label={o} n={vals.filter((v) => (Array.isArray(v) ? v.includes(o) : v === o)).length} total={vals.length} />

@@ -5,6 +5,7 @@ import Collaboration from "@tiptap/extension-collaboration";
 import { Placeholder } from "@tiptap/extensions";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { docExtensions } from "../lib/docExtensions";
+import { LINE_SPACING } from "../lib/paragraphFormat";
 import * as Y from "yjs";
 import YProvider from "y-partyserver/provider";
 import type { RoomFile } from "../../shared/protocol";
@@ -22,6 +23,10 @@ import {
   Plus,
   Highlighter,
   ImagePlus,
+  IndentDecrease,
+  IndentIncrease,
+  Underline as UnderlineIcon,
+  UnfoldVertical,
   Italic,
   Link2,
   List,
@@ -87,7 +92,7 @@ function Pick({ label, title, items, testId }: { label: React.ReactNode; title: 
         <ChevronDown className="h-3.5 w-3.5" aria-hidden />
       </button>
       {open && (
-        <span className="pop absolute left-0 top-full z-20 mt-1 block min-w-[11rem] rounded-xl border border-line bg-surface p-1 shadow-lg [--origin:top_left]" role="menu">
+        <span className="pop absolute left-0 top-full z-20 mt-1 block max-h-80 min-w-[11rem] overflow-y-auto rounded-xl border border-line bg-surface p-1 shadow-lg [--origin:top_left]" role="menu">
           {items.map((it, i) => (
             <button
               key={i}
@@ -115,6 +120,16 @@ function Pick({ label, title, items, testId }: { label: React.ReactNode; title: 
 const ic = "h-4 w-4";
 const COLORS = ["#18181b", "#dc2626", "#ea580c", "#16a34a", "#2563eb", "#7c3aed", "#db2777"];
 const SMALL = "press rounded-md px-1.5 py-1 text-fg-muted hover:bg-accent-soft hover:text-fg";
+/** A short list of fonts every computer has, including the ones teachers ask for (MLA: Times New Roman 12). */
+const FONTS = [
+  { label: "Default", css: null },
+  { label: "Arial", css: "Arial, Helvetica, sans-serif" },
+  { label: "Times New Roman", css: '"Times New Roman", Times, serif' },
+  { label: "Georgia", css: "Georgia, serif" },
+  { label: "Verdana", css: "Verdana, Geneva, sans-serif" },
+  { label: "Courier New", css: '"Courier New", Courier, monospace' },
+] as const;
+const SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 24, 30, 36, 48, 60, 72];
 
 function Toolbar({ editor, onImage }: { editor: Editor; onImage: () => void }) {
   const c = () => editor.chain().focus();
@@ -146,9 +161,35 @@ function Toolbar({ editor, onImage }: { editor: Editor; onImage: () => void }) {
           { title: "Heading 3", label: <span className="text-sm font-bold">Subheading</span>, active: editor.isActive("heading", { level: 3 }), on: () => c().setHeading({ level: 3 }).run() },
         ]}
       />
+      <Pick
+        title="Font"
+        testId="doc-font"
+        label={<span className="max-w-[7.5rem] truncate text-left">{FONTS.find((x) => x.css && editor.isActive("textStyle", { fontFamily: x.css }))?.label ?? "Default"}</span>}
+        items={FONTS.map((x) => ({
+          title: x.label,
+          testId: `font-${x.label.toLowerCase().replace(/\s+/g, "-")}`,
+          label: <span style={{ fontFamily: x.css ?? undefined }}>{x.label}</span>,
+          active: x.css ? editor.isActive("textStyle", { fontFamily: x.css }) : !editor.getAttributes("textStyle").fontFamily,
+          on: () => (x.css ? c().setFontFamily(x.css).run() : c().unsetFontFamily().run()),
+        }))}
+      />
+      <Pick
+        title="Font size"
+        testId="doc-size"
+        label={<span className="w-6 text-left tabular-nums">{String(editor.getAttributes("textStyle").fontSize ?? "12pt").replace("pt", "")}</span>}
+        items={SIZES.map((n) => ({
+          title: `${n} point`,
+          testId: `size-${n}`,
+          label: <span className="tabular-nums">{n}</span>,
+          active: (editor.getAttributes("textStyle").fontSize ?? "12pt") === `${n}pt`,
+          // 12 is the doc's normal size, so it clears the setting instead of storing it.
+          on: () => (n === 12 ? c().unsetFontSize().run() : c().setFontSize(`${n}pt`).run()),
+        }))}
+      />
       {sep}
       <Btn title="Bold" active={editor.isActive("bold")} on={() => c().toggleBold().run()}><Bold className={ic} /></Btn>
       <Btn title="Italic" active={editor.isActive("italic")} on={() => c().toggleItalic().run()}><Italic className={ic} /></Btn>
+      <Btn title="Underline" active={editor.isActive("underline")} on={() => c().toggleUnderline().run()} testId="doc-underline"><UnderlineIcon className={ic} /></Btn>
       <Btn title="Strikethrough" active={editor.isActive("strike")} on={() => c().toggleStrike().run()}><Strikethrough className={ic} /></Btn>
       <Btn title="Highlight" active={editor.isActive("highlight")} on={() => c().toggleHighlight().run()} testId="doc-highlight"><Highlighter className={ic} /></Btn>
       <Btn title="Text color" active={colors} on={() => setColors((o) => !o)}><Palette className={ic} /></Btn>
@@ -164,6 +205,23 @@ function Toolbar({ editor, onImage }: { editor: Editor; onImage: () => void }) {
           { title: "Align right", label: <><AlignRight className={ic} /> Right</>, active: editor.isActive({ textAlign: "right" }), on: () => c().setTextAlign("right").run() },
         ]}
       />
+      <Pick
+        title="Line spacing"
+        testId="doc-spacing"
+        label={<UnfoldVertical className={ic} />}
+        items={[
+          ...LINE_SPACING.map((x) => ({
+            title: `${x.label} spacing`,
+            testId: `spacing-${x.label.toLowerCase()}`,
+            label: x.label,
+            active: editor.getAttributes(editor.isActive("heading") ? "heading" : "paragraph").lineHeight === x.value,
+            on: () => c().setLineSpacing(x.value).run(),
+          })),
+          { title: "Normal spacing", label: "Normal", active: !editor.getAttributes(editor.isActive("heading") ? "heading" : "paragraph").lineHeight, on: () => c().setLineSpacing(null).run() },
+        ]}
+      />
+      <Btn title="Decrease indent" on={() => (editor.isActive("listItem") || editor.isActive("taskItem") ? c().liftListItem(editor.isActive("taskItem") ? "taskItem" : "listItem").run() : c().outdent().run())} testId="doc-outdent"><IndentDecrease className={ic} /></Btn>
+      <Btn title="Increase indent" on={() => (editor.isActive("listItem") || editor.isActive("taskItem") ? c().sinkListItem(editor.isActive("taskItem") ? "taskItem" : "listItem").run() : c().indent().run())} testId="doc-indent"><IndentIncrease className={ic} /></Btn>
       {sep}
       <Btn title="Bullet list" active={editor.isActive("bulletList")} on={() => c().toggleBulletList().run()}><List className={ic} /></Btn>
       <Btn title="Numbered list" active={editor.isActive("orderedList")} on={() => c().toggleOrderedList().run()}><ListOrdered className={ic} /></Btn>
@@ -209,6 +267,29 @@ function Toolbar({ editor, onImage }: { editor: Editor; onImage: () => void }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Words in the doc, and in the selection when something is selected. Essays have word limits. */
+function WordCount({ editor }: { editor: Editor }) {
+  const [, force] = useState(0);
+  useEffect(() => {
+    const up = () => force((n) => n + 1);
+    editor.on("update", up);
+    editor.on("selectionUpdate", up);
+    return () => {
+      editor.off("update", up);
+      editor.off("selectionUpdate", up);
+    };
+  }, [editor]);
+  const total = editor.storage.characterCount.words() as number;
+  const { from, to, empty } = editor.state.selection;
+  const picked = empty ? 0 : editor.state.doc.textBetween(from, to, " ", " ").split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+  const words = (n: number) => `${n.toLocaleString()} ${n === 1 ? "word" : "words"}`;
+  return (
+    <div className="flex justify-end border-t border-line px-3 py-1 text-xs tabular-nums text-fg-subtle" aria-live="polite" data-testid="doc-words">
+      {picked ? `${picked.toLocaleString()} of ${words(total)}` : words(total)}
     </div>
   );
 }
@@ -372,6 +453,7 @@ export function DocEditor({
       <div className="min-h-0 flex-1 overflow-y-auto">
         <EditorContent editor={editor} />
       </div>
+      <WordCount editor={editor} />
     </>
   );
 }

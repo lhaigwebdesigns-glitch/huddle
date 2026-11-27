@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { typingInField, undoKey, useYUndo } from "../lib/yUndo";
+import { Redo2, Undo2 } from "lucide-react";
 import * as Y from "yjs";
 import { createPortal } from "react-dom";
 import type { EditorProps } from "./FilePanel";
@@ -255,6 +257,8 @@ export default function SlidesEditor({ ydoc, provider, file, me, synced, room }:
   const deck = deckOf(ydoc);
   useYObserve([slidesArr, deck]);
   const peers = usePeers(provider);
+  // Your own changes only (slides added, moved, deleted, text, layout, theme); never a teammate's or the AI's.
+  const history = useYUndo([slidesArr, deck]);
   const slides = slidesArr.toArray().map(readSlide);
   const theme = themeOf(ydoc);
   const [current, setCurrent] = useState(0);
@@ -316,9 +320,25 @@ export default function SlidesEditor({ ydoc, provider, file, me, synced, room }:
   const viewersOf = (i: number) => peers.filter((p) => p.state?.slide === i && p.state?.user);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-testid="slides-editor">
+    <div
+      className="flex min-h-0 flex-1 flex-col"
+      data-testid="slides-editor"
+      onKeyDown={(e) => {
+        // Text boxes keep the browser's own undo while you type in them.
+        const u = undoKey(e);
+        if (u && !typingInField(e.target)) (e.preventDefault(), u === "undo" ? history.undo() : history.redo());
+      }}
+    >
       <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-3 py-1 text-xs text-zinc-500 dark:border-zinc-800">
         <span>{synced ? "● Live" : "Connecting…"}</span>
+        <span className="flex items-center gap-0.5">
+          <button type="button" onClick={history.undo} disabled={!history.canUndo} title="Undo (Ctrl+Z)" aria-label="Undo" data-testid="slides-undo" className="press flex h-7 w-7 items-center justify-center rounded-md hover:bg-surface-2 hover:text-fg disabled:opacity-35 disabled:hover:bg-transparent">
+            <Undo2 className="h-4 w-4" />
+          </button>
+          <button type="button" onClick={history.redo} disabled={!history.canRedo} title="Redo (Ctrl+Y)" aria-label="Redo" data-testid="slides-redo" className="press flex h-7 w-7 items-center justify-center rounded-md hover:bg-surface-2 hover:text-fg disabled:opacity-35 disabled:hover:bg-transparent">
+            <Redo2 className="h-4 w-4" />
+          </button>
+        </span>
         <label className="flex items-center gap-1">
           Theme
           <select
