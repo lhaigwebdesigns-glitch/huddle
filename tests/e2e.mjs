@@ -1321,6 +1321,21 @@ try {
   ok((await park.getByTestId("grid-row").count()) === 2 && (await park.getByTestId("grid-level-name").count()) === 3, "a teacher can build a rubric grid in the wizard (3 levels to start, rows added)");
   await park.getByTestId("rubric-mode-text").click();
   ok((await park.getByLabel("Project rubric").inputValue()).includes("Focus: 3 pts"), "switching back to typing keeps the grid as text");
+  // Pasting a Google Classroom rubric turns it into a grid by itself.
+  await park.getByLabel("Project rubric").fill("");
+  await park.getByLabel("Project rubric").evaluate((el) => {
+    const text = "Focus\nYou've got it!\n3 pts\nFocused on one idea.\nAlmost there\n2 pts\nMostly focused.\nUse of quotations\nYou've got it!\n3 pts\nWell chosen.\nAlmost there\n2 pts\nOne or two errors.";
+    const dt = new DataTransfer();
+    dt.setData("text/plain", text);
+    el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  await park.getByTestId("rubric-pasted").waitFor();
+  ok(
+    (await park.getByTestId("grid-row").count()) === 2 && (await park.getByTestId("grid-row-title").nth(1).inputValue()) === "Use of quotations" && (await park.getByTestId("grid-cell").nth(3).inputValue()) === "One or two errors.",
+    "a pasted Google Classroom rubric becomes a grid",
+  );
+  await park.getByTestId("rubric-paste-undo").click();
+  ok((await park.getByLabel("Project rubric").inputValue()).startsWith("Focus\nYou've got it!"), "Keep it as text puts the pasted rubric back as typed");
   await park.keyboard.press("Escape");
   const gridAid = await park.evaluate(async (cid) => {
     const grid = {
