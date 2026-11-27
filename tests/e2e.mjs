@@ -462,6 +462,9 @@ try {
   const [shared] = await Promise.all([alice.context().waitForEvent("page"), alice.getByTestId("dialog-confirm").click()]);
   await shared.getByTestId("shared-title").getByText("Science project").waitFor();
   ok((await shared.getByTestId("shared-message").count()) > 5, "read-only share link shows the chat");
+  await shared.goto(`${BASE}/s/doesnotexist`);
+  await shared.getByTestId("shared-missing").getByText("This link doesn't work").waitFor();
+  ok(true, "a broken share link explains itself instead of saying 'not found'");
   await shared.close();
 
   // Accounts (dev sign-in, local only): signing in lands on the dashboard, which lists your rooms.

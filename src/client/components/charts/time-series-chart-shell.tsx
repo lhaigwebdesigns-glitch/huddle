@@ -321,8 +321,9 @@ export const TimeSeriesChartInner = memo(function TimeSeriesChartCore({
   // Unique per instance — shared clipPath ids crop later charts (#226).
   const uniqueClipPathId = `${clipPathId}-${useId().replace(/:/g, "")}`;
   const staticPreview = useStaticChartPreview();
-  const innerWidth = width - margin.left - margin.right;
-  const innerHeight = height - margin.top - margin.bottom;
+  // Never below zero: mid-resize the box can be smaller than its margins.
+  const innerWidth = Math.max(0, width - margin.left - margin.right);
+  const innerHeight = Math.max(0, height - margin.top - margin.bottom);
 
   const resolveAutoYDomain = useCallback(
     (
