@@ -517,6 +517,7 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
       )}
       {receiptMode && state.settings.project && (
         <ReceiptDialog
+          solo={solo}
           receipt={state.receipt}
           meUid={state.you.uid}
           isHost={isHost}

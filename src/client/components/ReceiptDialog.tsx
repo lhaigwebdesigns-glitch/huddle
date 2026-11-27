@@ -196,6 +196,7 @@ export function ReceiptDialog({
   onClose,
   embedded = false,
   reflection,
+  solo = false,
 }: {
   receipt?: Receipt;
   meUid: string;
@@ -207,6 +208,8 @@ export function ReceiptDialog({
   embedded?: boolean;
   /** The teacher's reflection question: the student's note answers it, and is required to turn in. */
   reflection?: string;
+  /** A student's own room (not a group's): the words say "you", not "your group". */
+  solo?: boolean;
 }) {
   const r = receipt;
   // Ask for a fresh receipt on open, and keep a live one current while it's open.
@@ -216,6 +219,12 @@ export function ReceiptDialog({
     const t = setInterval(() => send({ t: "receipt" }), 15_000);
     return () => clearInterval(t);
   }, [send, embedded]);
+  useEffect(() => {
+    if (embedded) return;
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", key);
+    return () => window.removeEventListener("keydown", key);
+  }, [embedded, onClose]);
   const mine = r?.people.find((p) => p.uid === meUid);
   const [note, setNote] = useState(mine?.note ?? "");
   const [noteSaved, setNoteSaved] = useState(false);
@@ -286,7 +295,7 @@ export function ReceiptDialog({
                   <Lock className="h-3.5 w-3.5" aria-hidden /> Final, turned in {new Date(r.turnedInAt).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                 </span>
               ) : (
-                "Live: it updates as your group works."
+                solo ? "Live: it updates as you work." : "Live: it updates as your group works."
               )}
             </p>
           </div>
@@ -307,7 +316,7 @@ export function ReceiptDialog({
             <div className="flex items-start gap-2.5 rounded-xl border border-line bg-sidebar px-3.5 py-2.5 text-[13px] text-fg-muted">
               <Eye className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
               <div className="flex-1">
-                <b className="font-medium text-fg">This is exactly what your teacher sees</b> once you turn it in. It counts what's in the files and who wrote it. Your chat is never shown, only how many messages each person sent. When you turn it in, Cairn also writes a few short points about what you asked the tutor, so your teacher knows where you needed help. You'll see them here too.
+                <b className="font-medium text-fg">Your teacher sees exactly this</b> once you turn it in: what's in the files and who wrote it. Never your chat, only how many messages. At turn-in, Cairn also sums up what you asked the tutor.
               </div>
               <button
                 onClick={() => setPreview((p) => !p)}
@@ -320,6 +329,12 @@ export function ReceiptDialog({
             </div>
           )}
 
+          {mode === "turnin" && reflection && !preview && (
+            <section className="rounded-2xl border-2 border-primary/60 bg-mint/30 px-4 py-3 dark:bg-mint/10" aria-label="Before you turn it in" data-testid="turnin-question">
+              <div className="text-xs font-bold uppercase tracking-[0.08em] text-fg-muted">Before you turn it in</div>
+              {noteBox}
+            </section>
+          )}
           {!r ? (
             <p className="text-sm text-fg-subtle">Adding up everyone's work…</p>
           ) : (
@@ -366,7 +381,7 @@ export function ReceiptDialog({
                         )}
                       </ul>
                       {p.uid === meUid && editable ? (
-                        noteBox
+                        mode === "turnin" && reflection ? null : noteBox
                       ) : (
                         p.note && (
                           <div className="mt-3 rounded-xl bg-surface-2 px-3.5 py-2.5" data-testid="receipt-person-note">
@@ -384,7 +399,7 @@ export function ReceiptDialog({
                   <div className="mt-2 rounded-2xl border border-dashed border-line px-4 py-3" data-testid="my-note-card">
                     <div className="text-sm font-medium">You</div>
                     <p className="text-xs text-fg-subtle">Nothing of yours is in the files yet.</p>
-                    {noteBox}
+                    {mode === "turnin" && reflection ? null : noteBox}
                   </div>
                 )}
                 {(r.aiWords > 0 || r.aiUnits > 0) && (
@@ -457,12 +472,17 @@ export function ReceiptDialog({
         </div>
 
         {mode === "turnin" && (
-          <div className="flex flex-wrap items-center gap-2 border-t border-line px-6 py-4">
-            <p className="min-w-0 flex-1 text-xs text-fg-subtle">Turning in locks the files and this receipt for the whole group. Your teacher can reopen it.</p>
-            <button onClick={onClose} className="press rounded-lg px-3 py-1.5 text-sm text-fg-muted hover:bg-surface-2 hover:text-fg">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-line px-6 py-4">
+            <p className="min-w-[12rem] flex-1 text-sm text-fg-subtle">
+              {reflection && !note.trim()
+                ? "Answer the question at the top to turn it in."
+                : solo
+                  ? "Turning in locks your files and this receipt. Your teacher can reopen it."
+                  : "Turning in locks the files and this receipt for the whole group. Your teacher can reopen it."}
+            </p>
+            <button onClick={onClose} className="press rounded-xl px-4 py-2 text-[15px] font-medium text-fg-muted hover:bg-surface-2 hover:text-fg">
               Not yet
             </button>
-            {reflection && !note.trim() && <p className="w-full text-xs text-fg-muted">Answer the question above before you turn in.</p>}
             <button
               onClick={() => {
                 if (note !== (mine?.note ?? "")) send({ t: "receipt_note", text: note });
@@ -470,10 +490,10 @@ export function ReceiptDialog({
                 onClose();
               }}
               disabled={!r || (!!reflection && !note.trim())}
-              className="press flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover disabled:opacity-40"
+              className="ledge-btn min-w-[180px] px-5 disabled:opacity-40"
               data-testid="confirm-turn-in"
             >
-              <Send className="h-4 w-4" /> Turn in for the group
+              <Send className="h-4 w-4" /> {solo ? "Turn it in" : "Turn in for the group"}
             </button>
           </div>
         )}
