@@ -729,11 +729,13 @@ const STONES = (() => {
   });
 })();
 
-/** How long each day stays up before the week moves on by itself. */
-const DAY_MS = 12_000;
+/** How long each day stays up before the next stone drops on by itself. */
+const DAY_MS = 3_000;
+/** The last day (the whole cairn) waits longer before the week starts over. */
+const stepMs = (day: number) => (day === WEEK.length - 1 ? DAY_MS * 2 : DAY_MS);
 
 function Week() {
-  // Starts on Monday with one stone. It steps a day at a time, by itself every 12 seconds
+  // Starts on Monday with one stone. It steps a day at a time, by itself every 3 seconds (the full cairn on Friday stays a bit longer)
   // (while it's on screen), or by dragging, where it snaps from day to day.
   const [day, setDay] = useState(0);
   const [paused, setPaused] = useState(false); // the person pressed pause
@@ -752,7 +754,7 @@ function Week() {
   }, []);
   useEffect(() => {
     if (!playing) return;
-    const t = setTimeout(() => setDay((d) => (d + 1) % WEEK.length), DAY_MS);
+    const t = setTimeout(() => setDay((d) => (d + 1) % WEEK.length), stepMs(day));
     return () => clearTimeout(t);
   }, [playing, day]);
   useEffect(() => () => clearTimeout(resume.current), []);
@@ -858,7 +860,7 @@ function Week() {
         </div>
         {/* How long until the next day, so a skimmer knows it will move on. */}
         <div className="next-day" aria-hidden="true">
-          <i key={day} style={{ animationDuration: `${DAY_MS}ms`, animationPlayState: playing ? "running" : "paused" }} />
+          <i key={day} style={{ animationDuration: `${stepMs(day)}ms`, animationPlayState: playing ? "running" : "paused" }} />
         </div>
       </div>
     </div>

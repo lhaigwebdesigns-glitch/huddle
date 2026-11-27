@@ -76,6 +76,8 @@ export function RockPerson({
       <circle cx={hx} cy={hy} r="4.4" fill={hand} />
     </>
   );
+  // Named parts, for the landing page's motion: the body breathes, eyes blink, a raised hand waves.
+  const raised = (side: 0 | 1) => (pose === "cheer" ? true : pose === "wave" || pose === "sit" ? side === 1 : false);
   const arms = {
     hold: [arm("M26 62c4 8 10 11 16 11", 42, 73), arm("M76 60c-3 8-9 12-16 13", 60, 73)],
     wave: [arm("M26 64c-6 6-8 12-7 18", 19, 82), arm("M76 56c8-6 11-14 10-24", 86, 32)],
@@ -130,18 +132,31 @@ export function RockPerson({
   return (
     <g transform={`translate(${x - 50 * s} ${y + (100 - 100 * s)}) scale(${s})`}>
       {legs}
-      {prop && !front && props[prop]}
-      <g filter="url(#grain)">
-        <path d="M23 74c-7-14-1-32 16-37 17-5 36 1 40 17 4 15-4 27-21 29-15 2-29 1-35-9z" fill={body} {...edge} />
+      <g className={`rock-up pose-${pose}`} style={{ ["--rk" as string]: rockSeed(body + pose + (prop ?? "") + x + y) }}>
+        {prop && !front && props[prop]}
+        <g className="rock-body">
+          <g filter="url(#grain)">
+            <path d="M23 74c-7-14-1-32 16-37 17-5 36 1 40 17 4 15-4 27-21 29-15 2-29 1-35-9z" fill={body} {...edge} />
+          </g>
+          <g className="rock-eyes">
+            <circle cx="43" cy="53" r="2.7" fill={ink} />
+            <circle cx="57" cy="52" r="2.7" fill={ink} />
+          </g>
+          <path d="M45 60c3.4 2.6 7.6 2.6 10.4 0" fill="none" stroke={ink} strokeWidth="2.2" strokeLinecap="round" />
+        </g>
+        <g className={`rock-arm rock-arm-l${raised(0) ? " rock-raised" : ""}`}>{arms[0]}</g>
+        <g className={`rock-arm rock-arm-r${raised(1) ? " rock-raised" : ""}`}>{arms[1]}</g>
+        {prop && front && props[prop]}
       </g>
-      <circle cx="43" cy="53" r="2.7" fill={ink} />
-      <circle cx="57" cy="52" r="2.7" fill={ink} />
-      <path d="M45 60c3.4 2.6 7.6 2.6 10.4 0" fill="none" stroke={ink} strokeWidth="2.2" strokeLinecap="round" />
-      {arms[0]}
-      {arms[1]}
-      {prop && front && props[prop]}
     </g>
   );
+}
+
+/** A steady 0–9 per rock, so each one breathes and blinks on its own beat. */
+function rockSeed(key: string) {
+  let h = 0;
+  for (const ch of key) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return h % 10;
 }
 
 /** A rock face for small spots (avatars on the example work record). */

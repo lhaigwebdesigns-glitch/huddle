@@ -416,3 +416,26 @@
 @keyframes next-day { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 @keyframes cairn-drop { 0% { opacity: 0; transform: translateY(-140px); } 30% { opacity: 1; } 100% { opacity: 1; transform: none; } }
 @keyframes cairn-pop { from { opacity: 0; transform: scale(0.4) rotate(-14deg); } to { opacity: 1; transform: none; } }
+
+/* Living pebbles: each rock breathes, blinks now and then, and a raised hand waves.
+   Small, slow, and out of step with each other, so the page feels alive without pulling focus. */
+.cairn-home .rock-up { transform-box: fill-box; transform-origin: 50% 100%; animation: rock-breathe 3.6s ease-in-out infinite; }
+.cairn-home .rock-eyes { transform-box: fill-box; transform-origin: 50% 50%; animation: rock-blink 5.2s ease-in-out infinite; }
+.cairn-home .rock-raised { transform-box: fill-box; animation: rock-wave 2.4s ease-in-out infinite; }
+.cairn-home .rock-arm-r.rock-raised { transform-origin: 0% 100%; }
+.cairn-home .rock-arm-l.rock-raised { transform-origin: 100% 100%; animation-name: rock-wave-l; }
+.cairn-home .pose-cheer .rock-raised { animation-duration: 1.4s; }
+/* Out of step: each rock has its own beat (--rk, 0–9, set per rock). */
+.cairn-home .rock-up { animation-delay: calc(var(--rk, 0) * -0.37s); animation-duration: calc(3.4s + var(--rk, 0) * 0.08s); }
+.cairn-home .rock-up .rock-eyes { animation-delay: calc(var(--rk, 0) * -0.61s); animation-duration: calc(4.4s + var(--rk, 0) * 0.29s); }
+.cairn-home .rock-up .rock-raised { animation-delay: calc(var(--rk, 0) * -0.23s); }
+/* Point at one: it hops. */
+.cairn-home .tile:hover .rock-up, .cairn-home .rock-hover:hover .rock-up { animation: rock-hop 620ms cubic-bezier(0.3, 0.7, 0.4, 1.2); }
+@keyframes rock-breathe { 0%, 100% { transform: translateY(0) scale(1, 1); } 50% { transform: translateY(-1.5px) scale(1.012, 0.99); } }
+@keyframes rock-blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.12); } }
+@keyframes rock-wave { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(-9deg); } 75% { transform: rotate(7deg); } }
+@keyframes rock-wave-l { 0%, 100% { transform: rotate(0deg); } 25% { transform: rotate(9deg); } 75% { transform: rotate(-7deg); } }
+@keyframes rock-hop { 0% { transform: translateY(0) scale(1, 1); } 30% { transform: translateY(0) scale(1.06, 0.92); } 60% { transform: translateY(-9px) scale(0.97, 1.04); } 100% { transform: translateY(0) scale(1, 1); } }
+@media (prefers-reduced-motion: reduce) {
+  .cairn-home .rock-up, .cairn-home .rock-eyes, .cairn-home .rock-raised { animation: none !important; }
+}
