@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Check } from "lucide-react";
 import type { PublicForm as Form, Question } from "../../shared/forms-model";
 import { DateField } from "../components/DateTimePicker";
 
@@ -103,14 +104,16 @@ export default function PublicForm() {
             </header>
             {sent ? (
               <div className="mt-4 rounded-2xl bg-white p-6 text-center shadow-sm dark:bg-zinc-900" role="status" data-testid="form-thanks">
-                <div className="text-4xl">✅</div>
-                <p className="mt-2 font-medium">Thanks! Your response was recorded.</p>
+                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-mint text-ink">
+                  <Check className="h-6 w-6" strokeWidth={2.5} aria-hidden />
+                </div>
+                <p className="mt-3 font-display text-lg font-bold">Thanks! Your response was recorded.</p>
                 <button
                   onClick={() => {
                     setAnswers({});
                     setSent(false);
                   }}
-                  className="mt-4 text-sm text-fg hover:underline "
+                  className="press mt-3 rounded-lg px-2 py-1 text-sm font-medium text-fg-muted underline underline-offset-2 hover:text-fg"
                 >
                   Submit another response
                 </button>

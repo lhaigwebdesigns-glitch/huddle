@@ -27,6 +27,8 @@ interface PcState {
 function PilotSignups({ token }: { token: string }) {
   type Signup = { id: number; created_at: number; name: string; email: string; school: string; grade: string; subject: string; class_size: string; classroom: string; problem: string };
   const [list, setList] = useState<Signup[] | null>(null);
+  // Newest first, a few at a time: the list only grows.
+  const [all, setAll] = useState(false);
   useEffect(() => {
     fetch("/api/admin/pilot", { headers: { "x-admin-token": token } })
       .then((r) => (r.ok ? r.json() : Promise.resolve({ signups: [] })) as Promise<{ signups?: Signup[] }>)
@@ -38,7 +40,7 @@ function PilotSignups({ token }: { token: string }) {
       {list === null && <p className="mt-2 text-fg-subtle">Loading…</p>}
       {list?.length === 0 && <p className="mt-2 text-fg-subtle">No teachers have signed up yet.</p>}
       <ul className="mt-2 space-y-3">
-        {list?.map((s) => (
+        {list?.slice(0, all ? undefined : 5).map((s) => (
           <li key={s.id} className="rounded-xl border border-line px-3 py-2.5">
             <div className="flex flex-wrap items-baseline gap-x-2">
               <b>{s.name}</b>
@@ -52,6 +54,11 @@ function PilotSignups({ token }: { token: string }) {
           </li>
         ))}
       </ul>
+      {!!list && list.length > 5 && (
+        <button onClick={() => setAll((a) => !a)} className="press mt-3 rounded-lg px-2 py-1 text-sm font-medium text-fg-muted underline underline-offset-2 hover:text-fg" data-testid="pilot-show-all">
+          {all ? "Show fewer" : `Show all ${list.length}`}
+        </button>
+      )}
     </section>
   );
 }
@@ -214,8 +221,15 @@ function KeyHealth({ token }: { token: string }) {
 }
 
 export default function Admin() {
-  const [token, setToken] = useState(() => sessionStorage.getItem("huddle.admin") ?? "");
+  const [token, setToken] = useState(() => {
+    try {
+      return sessionStorage.getItem("huddle.admin") ?? "";
+    } catch {
+      return "";
+    }
+  });
   const [rows, setRows] = useState<Row[] | null>(null);
+  const [allFeedback, setAllFeedback] = useState(false);
   const [health, setHealth] = useState<any>(null);
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
@@ -338,7 +352,7 @@ export default function Admin() {
                   <td colSpan={5} className="p-6 text-center text-fg-subtle">No feedback yet.</td>
                 </tr>
               )}
-              {rows.map((r) => (
+              {rows.slice(0, allFeedback ? undefined : 25).map((r) => (
                 <tr key={r.id} className="border-t border-line align-top">
                   <td className="whitespace-nowrap p-3 text-fg-muted">{new Date(r.created_at).toLocaleString()}</td>
                   <td className="p-3">{r.name} <span className="font-mono text-xs text-fg-subtle">{r.room}</span></td>
@@ -350,6 +364,11 @@ export default function Admin() {
             </tbody>
           </table>
         </div>
+        {rows.length > 25 && (
+          <button onClick={() => setAllFeedback((a) => !a)} className="press mt-3 rounded-lg px-2 py-1 text-sm font-medium text-fg-muted underline underline-offset-2 hover:text-fg" data-testid="feedback-show-all">
+            {allFeedback ? "Show the newest 25" : `Show all ${rows.length}`}
+          </button>
+        )}
       </main>
     </div>
   );
