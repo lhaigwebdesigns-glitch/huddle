@@ -4,6 +4,7 @@ import type { ProjectSettings } from "../../shared/protocol";
 import { dueFor, describeSchedule } from "../../shared/schedule";
 import { parseRubric, rubricMax } from "../../shared/classes";
 import { Markdown } from "./Markdown";
+import { RubricGridView } from "./RubricGrid";
 import { Modal } from "./Modal";
 
 /** The AI rule, said to the student. */
@@ -84,7 +85,11 @@ export function AssignmentBrief({ project, title, group, solo, onClose }: { proj
           {project.rubric.trim() && (
             <section data-testid="brief-rubric">
               <h3 className="font-display text-lg font-bold tracking-[-0.01em]">How it's graded</h3>
-              {table ? (
+              {project.rubricGrid ? (
+                <div className="mt-3">
+                  <RubricGridView grid={project.rubricGrid} />
+                </div>
+              ) : table ? (
                 <table className="mt-3 w-full overflow-hidden rounded-2xl border border-line text-[15px]">
                   <tbody>
                     {rows.map((r, i) => (

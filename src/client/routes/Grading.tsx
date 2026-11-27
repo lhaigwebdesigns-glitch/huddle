@@ -13,7 +13,8 @@ import { Button } from "../components/ui";
 import { lateBy } from "../../shared/schedule";
 import { gradeTotal, parseRubric, rubricMax, type GradeData, type GradingView, type RubricRow } from "../../shared/classes";
 import type { FileKind } from "../../shared/files";
-import type { RoomFile } from "../../shared/protocol";
+import { criterionMax, type RoomFile } from "../../shared/protocol";
+import { RubricGridView } from "../components/RubricGrid";
 import { SignInFirst, TeacherShell, api, StudentOnly } from "./Classes";
 
 const STEPS = [1, 0.75, 0.5, 0.25, 0];
@@ -21,8 +22,16 @@ const STEPS = [1, 0.75, 0.5, 0.25, 0];
 /** Rubric rows with one-click scores, the group total, optional per-student grades and a comment. */
 function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: () => void; onNext: () => void }) {
   const initial = view.group.grade;
-  const [rows, setRows] = useState<RubricRow[]>(() => initial?.rows ?? parseRubric(view.assignment.project.rubric ?? ""));
+  // A rubric grid: one row per criterion, graded by clicking a box.
+  const grid = view.assignment.project.rubricGrid;
+  const [rows, setRows] = useState<RubricRow[]>(() => (grid ? grid.rows.map((r) => ({ label: r.title, max: criterionMax(r) })) : (initial?.rows ?? parseRubric(view.assignment.project.rubric ?? ""))));
   const [scores, setScores] = useState<(number | null)[]>(() => initial?.scores ?? rows.map(() => null));
+  const [picks, setPicks] = useState<(number | null)[]>(() => initial?.picks ?? rows.map(() => null));
+  const pick = (i: number, j: number) => {
+    const same = picks[i] === j;
+    setPicks((p) => rows.map((_, k) => (k === i ? (same ? null : j) : (p[k] ?? null))));
+    setScores((s) => rows.map((_, k) => (k === i ? (same ? null : grid!.rows[i].levels[j].points) : (s[k] ?? null))));
+  };
   const [students, setStudents] = useState<Record<string, number>>(initial?.students ?? {});
   const [comment, setComment] = useState(initial?.comment ?? "");
   const [status, setStatus] = useState("");
@@ -32,7 +41,7 @@ function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: (
   const setScore = (i: number, v: number | null) => setScores((s) => rows.map((_, j) => (j === i ? v : (s[j] ?? null))));
   const save = async (next = false) => {
     setStatus("Saving…");
-    const body: Partial<GradeData> = { rows, scores: rows.map((_, i) => scores[i] ?? null), students, comment };
+    const body: Partial<GradeData> = { rows, scores: rows.map((_, i) => scores[i] ?? null), students, comment, ...(grid ? { picks: rows.map((_, i) => picks[i] ?? null) } : {}) };
     const d = await api<{ ok: boolean }>(
       `/api/classes/${view.class.id}/assignments/${view.assignment.id}/groups/${view.group.roomCode}/grade`,
       { method: "PUT", body: JSON.stringify(body) },
@@ -43,9 +52,11 @@ function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: (
     else onSaved();
   };
   return (
-    <section className="border-t border-line bg-surface px-4 py-4 sm:px-6" aria-label="Grade" data-testid="grader" data-tour="grade-save">
+    <section className="max-h-[55vh] overflow-y-auto border-t border-line bg-surface px-4 py-4 sm:px-6" aria-label="Grade" data-testid="grader" data-tour="grade-save">
       <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-base font-semibold">Rubric</h2>
+        <h2 className="text-base font-semibold">
+          Score <span className="text-sm font-normal text-fg-subtle">(optional: a comment alone is fine)</span>
+        </h2>
         <span className="text-sm text-fg-muted tabular" data-testid="grade-total">
           {total ?? "–"} / {max}
         </span>
@@ -77,6 +88,12 @@ function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: (
             </Button>
           ))}
       </div>
+      {grid ? (
+        <div className="mt-3">
+          <RubricGridView grid={grid} picks={picks} onPick={pick} />
+        </div>
+      ) : (
+      <>
       <ul className="mt-3 space-y-2">
         {rows.map((r, i) => (
           <li key={i} className="flex flex-wrap items-center gap-2" data-testid="rubric-row">
@@ -146,6 +163,8 @@ function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: (
       >
         <Plus className="h-3.5 w-3.5" /> Add a row
       </button>
+      </>
+      )}
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         <div>
@@ -179,7 +198,7 @@ function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: (
           </ul>
         </div>
         <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">Comment for the group</span>
+          <span className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">{view.assignment.mode === "solo" ? "Comment" : "Comment for the group"}</span>
           <textarea
             value={comment}
             maxLength={2000}

@@ -533,6 +533,7 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
           ai={a.project.ai}
           instructions={a.project.instructions}
           rubric={a.project.rubric}
+          rubricGrid={a.project.rubricGrid}
           worksheetRoom={a.worksheet?.room}
           files={(a.worksheet?.files ?? []).filter((x) => x.id).map((x) => ({ id: x.id!, title: x.title, kind: x.kind as RoomFile["kind"], createdAt: 0, createdBy: "" }))}
           onClose={() => setPreview(false)}
@@ -666,6 +667,10 @@ function GradesTab({ view, onOpen }: { view: ClassView; onOpen: (id: string) => 
                         {score}
                         <span className="text-sm font-normal text-fg-subtle">/{rubricMax(g.grade.rows)}</span>
                         {!g.grade.returnedAt && <span className="ml-1.5 text-xs font-normal text-fg-subtle">not returned</span>}
+                      </span>
+                    ) : g?.grade ? (
+                      <span className="text-sm text-fg-muted">
+                        Reviewed{!g.grade.returnedAt && <span className="ml-1.5 text-xs text-fg-subtle">not returned</span>}
                       </span>
                     ) : g?.status?.turnedInAt ? (
                       <Link to={`/classes/${view.class.id}/a/${a.id}/${g.roomCode}`} className="text-sm font-semibold text-primary-hover hover:underline dark:text-primary">
@@ -967,6 +972,7 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
         ai={project.ai}
         instructions={project.instructions}
         rubric={project.rubric}
+        rubricGrid={project.rubricGrid}
         worksheetRoom={worksheetRoom}
         files={wsFiles.starter ? [wsFiles.starter] : []}
         onClose={() => setPreviewing(false)}

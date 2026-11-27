@@ -457,6 +457,7 @@ classes.post("/:id/assignments", async (c) => {
       JSON.stringify({
         instructions: project.instructions,
         rubric: project.rubric,
+        ...(project.rubricGrid ? { rubricGrid: project.rubricGrid } : {}),
         ai: project.ai,
         dueAt: project.dueAt,
         pasteGuard: project.pasteGuard,
@@ -643,7 +644,8 @@ classes.put("/:id/assignments/:aid/groups/:room/grade", async (c) => {
   const students: Record<string, number> = {};
   for (const [uid, v] of Object.entries(body.students ?? {}))
     if (g.group.members.includes(uid) && typeof v === "number" && Number.isFinite(v)) students[uid] = Math.max(0, Math.min(max, v));
-  const data: GradeData = { rows, scores, students, comment: String(body.comment ?? "").slice(0, 2000) };
+  const picks = Array.isArray(body.picks) ? rows.map((_, i) => (Number.isInteger(body.picks![i]) && body.picks![i]! >= 0 && body.picks![i]! < 10 ? body.picks![i]! : null)) : undefined;
+  const data: GradeData = { rows, scores, students, comment: String(body.comment ?? "").slice(0, 2000), ...(picks?.some((x) => x !== null) ? { picks } : {}) };
   // Saving again keeps it returned (or not): returning is its own step.
   await c.env.DB!.prepare(
     `INSERT INTO grades (assignment_id, room_code, data, graded_at) VALUES (?, ?, ?, ?) ON CONFLICT (assignment_id, room_code) DO UPDATE SET data = excluded.data, graded_at = excluded.graded_at`,
@@ -719,6 +721,7 @@ classes.put("/:id/assignments/:aid", async (c) => {
   const stored = {
     instructions: project.instructions,
     rubric: project.rubric,
+    ...(project.rubricGrid ? { rubricGrid: project.rubricGrid } : {}),
     ai: project.ai,
     dueAt: project.dueAt,
     pasteGuard: project.pasteGuard,
@@ -870,7 +873,15 @@ classes.get("/join/:code", async (c) => {
         turnedIn = !!status?.turnedInAt;
         if (status?.dueAt) dueAt = status.dueAt;
         const g = await loadGrade(c.env.DB!, a.id, ready.roomCode);
-        if (g?.returnedAt) grade = { score: g.students[uid] ?? gradeTotal(g), max: rubricMax(g.rows), comment: g.comment };
+        if (g?.returnedAt) {
+          const grid = a.project.rubricGrid;
+          const rows = g.rows.map((r, i) => {
+            const pick = g.picks?.[i];
+            const level = grid?.rows[i] && pick != null ? grid.rows[i].levels[pick]?.label : undefined;
+            return { title: r.label, ...(level ? { level } : {}), points: g.scores[i] ?? null, max: r.max };
+          });
+          grade = { score: g.students[uid] ?? gradeTotal(g), max: rubricMax(g.rows), comment: g.comment, ...(rows.some((r) => r.points !== null) ? { rows } : {}) };
+        }
       }
       view.assignments.push({
         id: a.id,

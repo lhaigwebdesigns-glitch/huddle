@@ -78,6 +78,17 @@ function AssignmentRow({ x, code, isNext, teacher, tour }: { x: StudentAssignmen
           {x.turnedIn ? "View" : x.mode === "solo" ? "Open your work" : "Open your group's room"} <ArrowRight className="h-4 w-4" />
         </Link>
       </div>
+      {x.grade?.rows && x.grade.rows.length > 0 && (
+        <ul className="grid gap-x-6 gap-y-1 rounded-xl border border-line px-4 py-2.5 text-[15px] sm:col-start-2 sm:col-end-4 sm:grid-cols-2" data-testid="assignment-rubric">
+          {x.grade.rows.map((r, i) => (
+            <li key={i} className="flex items-baseline gap-2">
+              <span className="min-w-0 flex-1 truncate">{r.title}</span>
+              {r.level && <span className="shrink-0 text-sm font-semibold">{r.level}</span>}
+              <span className="shrink-0 text-sm text-fg-subtle tabular-nums">{r.points === null ? "–" : `${r.points}/${r.max}`}</span>
+            </li>
+          ))}
+        </ul>
+      )}
       {x.grade?.comment && (
         <blockquote className="rounded-xl bg-surface-2 px-4 py-3 text-[15px] sm:col-start-2 sm:col-end-4" data-testid="assignment-comment">
           <span className="block text-xs font-semibold text-fg-subtle">{teacher ? `${teacher} wrote` : "Your teacher wrote"}</span>

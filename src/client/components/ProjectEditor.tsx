@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { PROJECT_LIMITS, type AiSetting, type Member, type ProjectSettings } from "../../shared/protocol";
+import { gridToText, PROJECT_LIMITS, type AiSetting, type Member, type ProjectSettings, type RubricGrid } from "../../shared/protocol";
+import { newGrid, RubricGridEditor } from "./RubricGrid";
 import { DAY_NAMES, type Schedule } from "../../shared/schedule";
 import { DateTimeField, TimeField } from "./DateTimePicker";
 
@@ -25,7 +26,8 @@ export function fromLocalInput(v: string): number | null {
 
 const FIELD = "mt-1 w-full rounded-xl border border-line-strong bg-transparent px-3 py-2 text-sm outline-none focus:border-fg/40";
 
-export type ProjectDraft = Pick<ProjectSettings, "instructions" | "rubric" | "ai" | "pasteGuard" | "pasteExempt"> & { dueAt?: number; schedule?: Schedule };
+/** `rubricGrid: null` means "no grid" (so turning a grid off reaches the server). */
+export type ProjectDraft = Pick<ProjectSettings, "instructions" | "rubric" | "ai" | "pasteGuard" | "pasteExempt"> & { dueAt?: number; schedule?: Schedule; rubricGrid?: RubricGrid | null };
 
 const WEEK = [1, 2, 3, 4, 5, 6, 0];
 const localTz = () => {
@@ -147,20 +149,60 @@ export function ProjectEditor({
           className={FIELD}
         />
       </label>
-      <label className="block">
-        <span className="text-sm font-medium">
-          Rubric <span className="font-normal text-fg-subtle">(optional)</span>
-        </span>
-        <textarea
-          aria-label="Project rubric"
-          value={value.rubric}
-          maxLength={PROJECT_LIMITS.rubric}
-          rows={3}
-          placeholder="How it will be graded (e.g. Research 40%, Slides 30%, Presentation 30%)."
-          onChange={(e) => set({ rubric: e.target.value })}
-          className={FIELD}
-        />
-      </label>
+      <div className="block">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-medium">
+            Rubric <span className="font-normal text-fg-subtle">(optional)</span>
+          </span>
+          <span className="flex-1" />
+          <div className="inline-flex rounded-xl border border-line-strong p-0.5 text-xs font-semibold" role="radiogroup" aria-label="How to write the rubric">
+            {(
+              [
+                ["text", "Type it"],
+                ["grid", "Rubric grid"],
+              ] as const
+            ).map(([mode, label]) => {
+              const on = (mode === "grid") === !!value.rubricGrid;
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => {
+                    if (on) return;
+                    if (mode === "grid") set({ rubricGrid: newGrid() });
+                    else {
+                      const titled = value.rubricGrid?.rows.filter((r) => r.title.trim()) ?? [];
+                      set({ rubricGrid: null, rubric: titled.length ? gridToText({ rows: titled }) : value.rubric });
+                    }
+                  }}
+                  className={`press rounded-[10px] px-2.5 py-1 ${on ? "bg-fg text-bg" : "text-fg-muted hover:text-fg"}`}
+                  data-testid={`rubric-mode-${mode}`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        {value.rubricGrid ? (
+          <>
+            <p className="mb-3 mt-1 text-xs text-fg-subtle">Students see this grid when they open the assignment. When you grade, you click one box per row.</p>
+            <RubricGridEditor value={value.rubricGrid} onChange={(g) => set({ rubricGrid: g })} />
+          </>
+        ) : (
+          <textarea
+            aria-label="Project rubric"
+            value={value.rubric}
+            maxLength={PROJECT_LIMITS.rubric}
+            rows={3}
+            placeholder="How it will be graded (e.g. Research 40%, Slides 30%, Presentation 30%)."
+            onChange={(e) => set({ rubric: e.target.value })}
+            className={FIELD}
+          />
+        )}
+      </div>
       </>
       )}
       {part !== "what" && (
