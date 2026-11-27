@@ -470,6 +470,10 @@ try {
   await erin.waitForURL(/\/dashboard$/);
   await erin.getByTestId("dash-rooms").getByText("No rooms yet").waitFor();
   ok((await erin.getByTestId("dash-greeting").innerText()) === "Welcome, Erin", "a brand-new account is greeted with Welcome, not Welcome back");
+  await erin.goto(BASE);
+  await erin.getByTestId("nav-open").waitFor();
+  ok((await erin.getByTestId("nav-open").getAttribute("href")) === "/dashboard" && (await erin.getByTestId("nav-pilot").count()) === 0, "signed in, the landing page's main button opens Cairn instead of the pilot sign-up");
+  await erin.goto(`${BASE}/dashboard`);
   await erin.getByPlaceholder("New room name").fill("Erin's room");
   await erin.getByRole("button", { name: /Start a room/ }).click();
   await erin.waitForURL(/\/r\/[A-Z0-9]{6}$/);

@@ -139,6 +139,13 @@
   & .finding.hope h3 { color: var(--ink); }
   & .finding.hope p { color: #1b2a21; }
   & .chart { width: 100%; height: auto; display: block; }
+  /* Chart words live in HTML, so they stay readable when the chart shrinks on a phone. */
+  & .chart-x { position: relative; height: 2.8em; margin-top: 8px; font-size: 0.875rem; line-height: 1.25; color: #b9c8bf; }
+  & .chart-x span { position: absolute; top: 0; width: 32%; transform: translateX(-50%); text-align: center; }
+  & .chart-heads { display: grid; grid-template-columns: 53.6% 1fr; margin-bottom: 10px; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #b9c8bf; }
+  & .chart-legend { display: flex; flex-wrap: wrap; gap: 6px 20px; margin-top: 14px; font-size: 0.9rem; color: #cfdbd3; }
+  & .chart-legend span { display: inline-flex; align-items: center; gap: 8px; }
+  & .chart-legend i { width: 12px; height: 12px; border-radius: 50%; }
   & .proof-note { margin-top: 26px; color: #93a59a; font-size: 0.92rem; max-width: 80ch; }
 
   /* ---------- thesis: the line the research adds up to ---------- */
