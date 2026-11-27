@@ -31,7 +31,7 @@ The order follows what the pilot teacher and her students hit first.
 | 9 | Slides editor | inside a room | 👀 | Your reports fixed: big decks import (150 MB limit, photos shrunk before upload, pictures upload 4 at a time, progress shown, the page never freezes), imported slides look like the original (master and layout styles, theme fonts and lighter/darker colors, italic, underline, centering, shrink-to-fit, picture and gradient backgrounds, rounded corners, outlines, see-through fills, rotation, the master's logos and bands), present mode covers the whole screen (no page scroll, no fullscreen flicker, click to advance, Home/End), the wizard shows import progress instead of freezing, and teachers can delete an assignment. Not yet: editing tools for the new styles (italic, align, font) in the slide editor. |
 | 10 | Sheets, forms, whiteboard | inside a room | 👀 | Works (sheet formulas and formats, charts, CSV/Excel, forms with every question type and the public link, whiteboard drawing synced live). Fixed: Cairn's colors (not hard-coded grays) in all three, real icons instead of symbols and emoji in the sheet toolbar, Share link shows the link when the browser blocks copying (it used to fail), Add a question is a visible row of every type, "Saves as you type" everywhere. |
 | 11 | Receipt and turn in, unsubmit, more time | modal in a room | 👀 | Works (receipt, teacher's view, turn in with a reflection question, unsubmit, asking for more time, the teacher seeing the request). Fixed: Escape closes the receipt, solo assignments say "you" and "Turn it in" (not the group), the reflection question sits at the top of turn-in where it can't be missed, Not yet and Turn it in on the right with a bigger button, a shorter note at the top, and "Asked for more time" shows after asking (until the teacher answers, or a day). |
-| 12 | Grading and Save & next | `/classes/:id/a/:aid/:room` | ⬜ | |
+| 12 | Grading and Save & next | `/classes/:id/a/:aid/:room` | 👀 | Works (scores, totals, Save & next through every turned-in student, all graded, group grades per student, Reopen, Return). Fixed: grading sits beside the work (Save & next always in view, the work record below it) instead of below the fold, solo grading no longer shows "Each student", rubric editing hides behind Edit rubric, the back link is the assignment's name, Previous/Next say student for solo work. |
 | 13 | Your rooms and Profile | `/dashboard`, `/profile` | ⬜ | |
 | 14 | Room settings | modal in a room | ⬜ | |
 | 15 | Landing page | `/` | ⬜ | |
@@ -52,7 +52,7 @@ The order follows what the pilot teacher and her students hit first.
 - ⬜ Docs, slides and sheets feel like 2015: bring the editors up to what people expect now (plan first)
 - ✅ Landing page: the "Cairn stack" timing is too slow (a stone every 3 s, was 12)
 - ✅ Animate the pebbles (they breathe, blink and wave, each on its own beat; hover to hop)
-- ⬜ Finish the screen pass (screens 12–16)
+- ⬜ Finish the screen pass (screens 13–16)
 - ⬜ Styling pass on the whole app, then get feedback
 - ⬜ Pricing: how Cairn makes money
 - ⬜ Marketing
