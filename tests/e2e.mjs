@@ -754,7 +754,7 @@ try {
   await park.getByTestId("welcome-next").click();
   await park.getByTestId("subject-social-studies").click();
   await park.getByTestId("welcome-next").click();
-  await park.getByTestId("welcome-title").getByText("One link per assignment.").waitFor();
+  await park.getByTestId("welcome-title").getByText("AI that helps them think.").waitFor();
   await park.getByTestId("welcome-next").click();
   await park.getByTestId("welcome-next").click();
   await park.getByTestId("welcome-next").getByText("Make my first class").click();
@@ -1006,7 +1006,7 @@ try {
     "a student who joined through a link gets the welcome later, without being asked teacher or student again",
   );
   await eve.getByTestId("welcome-next").click();
-  await eve.getByTestId("welcome-title").getByText("A tutor, not a ghostwriter.").waitFor();
+  await eve.getByTestId("welcome-title").getByText("Show your work.").waitFor();
   await eve.getByTestId("welcome-next").click();
   await eve.getByTestId("welcome-next").getByText("Let's go").click();
   await eve.waitForURL(/\/dashboard$/);
