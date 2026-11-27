@@ -1,7 +1,7 @@
 import { alertDialog, confirmDialog, promptDialog } from "../components/Dialogs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Ban, BookOpen, CalendarClock, Check, ChevronDown, CircleCheck, ClipboardList, Clock, Copy, CopyPlus, Download, Eye, File, FileText, Flag, FlaskConical, GraduationCap, KeyRound, MessagesSquare, Plus, Presentation, Upload, Users, X } from "lucide-react";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { ArrowLeft, ArrowRight, Ban, BookOpen, CalendarClock, Check, ChevronDown, CircleCheck, ClipboardList, Clock, Copy, CopyPlus, Download, Eye, File, FileText, Flag, FlaskConical, GraduationCap, KeyRound, MessagesSquare, Plus, Presentation, Upload, UserPlus, Users, X } from "lucide-react";
 import { OFFICE_ACCEPT, officeKind } from "../lib/officeFiles";
 import { getIdentity } from "../lib/identity";
 import type { Report } from "../../shared/protocol";
@@ -275,11 +275,11 @@ function AssignmentMore({ csv, onEditTimes, onMove, onCopy, onPreview }: { csv: 
   const item = "press flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-2";
   return (
     <span className="relative" ref={ref}>
-      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu" className="press inline-flex items-center gap-1 rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2" data-testid="assignment-more">
+      <button onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="menu" className="press inline-flex h-10 items-center gap-1 rounded-xl border border-line-strong px-3.5 text-sm font-semibold hover:bg-surface-2" data-testid="assignment-more">
         More <ChevronDown className="h-3.5 w-3.5" aria-hidden />
       </button>
       {open && (
-        <span className="pop absolute left-0 top-full z-20 mt-1 block w-64 rounded-xl border border-line bg-surface p-1 shadow-lg" role="menu" style={{ ["--origin" as string]: "top left" }}>
+        <span className="pop absolute right-0 top-full z-20 mt-1 block w-64 rounded-xl border border-line bg-surface p-1 shadow-lg" role="menu" style={{ ["--origin" as string]: "top right" }}>
           <button role="menuitem" className={item} onClick={() => (setOpen(false), onPreview())} data-testid="preview-student">
             <Eye className="h-4 w-4 text-fg-muted" /> Preview as a student
           </button>
@@ -303,6 +303,18 @@ function AssignmentMore({ csv, onEditTimes, onMove, onCopy, onPreview }: { csv: 
   );
 }
 
+type StatKey = "idle" | "working" | "turned" | "graded";
+const statKey = (g?: GroupInfo): StatKey => (!g ? "idle" : g.grade ? "graded" : g.status?.turnedInAt ? "turned" : g.status?.lastActivity ? "working" : "idle");
+const STATS: { key: StatKey; label: string }[] = [
+  { key: "idle", label: "Not started" },
+  { key: "working", label: "Working" },
+  { key: "turned", label: "To grade" },
+  { key: "graded", label: "Graded" },
+];
+const AI_SHORT: Record<string, string> = { off: "AI off", tutor: "AI tutor only", full: "Full AI help" };
+const shortWhen = (ms: number) => new Date(ms).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+/** One assignment, all of it: what it is, the one thing to do next, where everyone is, and the work. */
 function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView; reload: () => void }) {
   const nav = useNavigate();
   const names = Object.fromEntries(view.students.map((s) => [s.uid, s.name]));
@@ -313,6 +325,8 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
   const [editTimes, setEditTimes] = useState(false);
   const [copying, setCopying] = useState(false);
   const [preview, setPreview] = useState(false);
+  const [filter, setFilter] = useState<StatKey | null>(null);
+  useEffect(() => setFilter(null), [a.id]);
   const solo = a.mode === "solo";
   const timeUrl = (room: string) => `/api/classes/${view.class.id}/assignments/${a.id}/groups/${room}/time`;
   const link = `${location.origin}${assignmentPath(view.class.code, a.id)}`;
@@ -339,97 +353,141 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
   };
   const gradeUrl = (room: string) => `/classes/${view.class.id}/a/${a.id}/${room}`;
   const total = solo ? view.students.length : a.groups.length;
+  // Where everyone is: each student (solo) or group, counted once.
+  const units = solo ? view.students.map((s) => a.groups.find((x) => x.members.includes(s.uid))) : a.groups;
+  const counts: Record<StatKey, number> = { idle: 0, working: 0, turned: 0, graded: 0 };
+  units.forEach((g) => counts[statKey(g)]++);
+  const shown = (g?: GroupInfo) => !filter || statKey(g) === filter;
+  const secondary = "press inline-flex h-10 items-center gap-1.5 rounded-xl border border-line-strong px-3.5 text-sm font-semibold hover:bg-surface-2";
   return (
-    <section className="rounded-[20px] border border-line bg-surface p-4" data-testid="assignment">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-lg font-semibold tracking-tight">{a.title}</h3>
-        <span className="rounded-full border border-line px-2 py-0.5 text-[11px] font-medium text-fg-muted">{solo ? "Solo" : "Groups"}</span>
-        {due && <span className="text-xs text-fg-subtle">Due {due}</span>}
-        {a.project.schedule && <span className="text-xs text-fg-subtle" data-testid="schedule-summary">· {describeSchedule(a.project.schedule)}</span>}
-        <span className="text-xs text-fg-subtle" data-testid="turned-in-count">
-          · {turned} of {total} turned in
-        </span>
-        <span className="flex-1" />
-        {waiting.length > 0 && (
-          <Button size="sm" onClick={() => nav(gradeUrl(waiting[0].roomCode))} data-testid="start-grading">
-            Start grading ({waiting.length})
-          </Button>
-        )}
-        {toReturn.length > 0 && (
-          <Button size="sm" variant={waiting.length ? "secondary" : "primary"} onClick={() => void returnGrades()} data-testid="return-grades">
-            Return grades ({toReturn.length})
-          </Button>
-        )}
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <a
-          href={classroomShareUrl(link, a.title, `${solo ? "Open the link to start your own copy on Cairn." : "Open the link to join your group's room on Cairn."}${due ? ` Due ${due}.` : ""}`)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2"
-          data-testid="post-to-classroom"
-        >
-          <ClassroomMark /> Post to Google Classroom
-        </a>
-        <button
-          onClick={() => {
-            navigator.clipboard?.writeText(link).catch(() => {});
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
-          }}
-          className="press rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2"
-          data-link={link}
-          data-testid="copy-assignment-link"
-        >
-          {copied ? <Check className="mr-1 inline h-3.5 w-3.5" /> : <Copy className="mr-1 inline h-3.5 w-3.5" />} {copied ? "Copied" : "Copy link"}
-        </button>
-        {manage ? (
-          <button onClick={() => setManage(false)} className="press rounded-lg bg-fg px-2.5 py-1 text-xs font-semibold text-bg" data-testid="move-done">
-            Done moving
+    <section className="min-w-0" data-testid="assignment" aria-label={a.title}>
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-3">
+        <div className="min-w-[16rem] flex-1">
+          <h2 className="font-display text-[1.7rem] font-extrabold leading-tight tracking-[-0.02em] [overflow-wrap:anywhere]">{a.title}</h2>
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] text-fg-muted">
+            <span className="rounded-full border border-line-strong px-2 py-0.5 text-xs font-semibold text-fg">{solo ? "Solo" : `Groups of ${a.groupSize}`}</span>
+            {due && <span>Due {due}</span>}
+            {a.project.schedule && <span data-testid="schedule-summary">· {describeSchedule(a.project.schedule)}</span>}
+            <span>· {AI_SHORT[a.project.ai] ?? "AI tutor only"}</span>
+            <span data-testid="turned-in-count">
+              · {turned} of {total} turned in
+            </span>
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {waiting.length > 0 && (
+            <button onClick={() => nav(gradeUrl(waiting[0].roomCode))} className="ledge-btn h-11 px-5 text-[15px]" data-testid="start-grading">
+              Start grading ({waiting.length})
+            </button>
+          )}
+          {toReturn.length > 0 &&
+            (waiting.length ? (
+              <button onClick={() => void returnGrades()} className={secondary} data-testid="return-grades">
+                Return grades ({toReturn.length})
+              </button>
+            ) : (
+              <button onClick={() => void returnGrades()} className="ledge-btn h-11 px-5 text-[15px]" data-testid="return-grades">
+                Return grades ({toReturn.length})
+              </button>
+            ))}
+          <a
+            href={classroomShareUrl(link, a.title, `${solo ? "Open the link to start your own copy on Cairn." : "Open the link to join your group's room on Cairn."}${due ? ` Due ${due}.` : ""}`)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={secondary}
+            data-testid="post-to-classroom"
+          >
+            <ClassroomMark className="h-4 w-4" /> Post to Classroom
+          </a>
+          <button
+            onClick={() => {
+              navigator.clipboard?.writeText(link).catch(() => {});
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            }}
+            className={secondary}
+            data-link={link}
+            data-testid="copy-assignment-link"
+          >
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? "Copied" : "Copy link"}
           </button>
-        ) : (
-          <AssignmentMore
-            csv={`/api/classes/${view.class.id}/assignments/${a.id}/grades.csv`}
-            onEditTimes={() => setEditTimes(true)}
-            onMove={solo ? undefined : () => setManage(true)}
-            onCopy={() => setCopying(true)}
-            onPreview={() => setPreview(true)}
-          />
-        )}
+          {manage ? (
+            <button onClick={() => setManage(false)} className="press inline-flex h-10 items-center rounded-xl bg-fg px-3.5 text-sm font-semibold text-bg" data-testid="move-done">
+              Done moving
+            </button>
+          ) : (
+            <AssignmentMore
+              csv={`/api/classes/${view.class.id}/assignments/${a.id}/grades.csv`}
+              onEditTimes={() => setEditTimes(true)}
+              onMove={solo ? undefined : () => setManage(true)}
+              onCopy={() => setCopying(true)}
+              onPreview={() => setPreview(true)}
+            />
+          )}
+        </div>
+      </div>
+
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4" role="group" aria-label={`Show ${solo ? "students" : "groups"} by where they are`}>
+        {STATS.map((x) => {
+          const on = filter === x.key;
+          const hot = x.key === "turned" && counts.turned > 0;
+          return (
+            <button
+              key={x.key}
+              onClick={() => setFilter(on ? null : x.key)}
+              aria-pressed={on}
+              className={`press rounded-2xl border px-4 py-3 text-left transition-colors ${on ? "border-fg bg-surface" : hot ? "border-primary/50 bg-mint/50 hover:border-primary dark:bg-mint/10" : "border-line bg-surface hover:border-line-strong"}`}
+              data-testid={`stat-${x.key}`}
+            >
+              <span className="block text-sm text-fg-muted">{x.label}</span>
+              <span className="mt-0.5 block font-display text-[1.8rem] font-extrabold leading-none tabular-nums">{counts[x.key]}</span>
+            </button>
+          );
+        })}
       </div>
 
       <WorksheetRow a={a} classId={view.class.id} solo={solo} reload={reload} />
 
+      <div className="mt-7 flex items-center gap-3">
+        <h3 className="font-display text-lg font-bold tracking-[-0.01em]">{solo ? "Students" : "Groups"}</h3>
+        {filter && (
+          <button onClick={() => setFilter(null)} className="press inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-0.5 text-xs font-semibold text-fg-muted hover:text-fg" data-testid="clear-filter">
+            {STATS.find((x) => x.key === filter)?.label} <X className="h-3 w-3" aria-label="Show everyone" />
+          </button>
+        )}
+      </div>
       {solo ? (
-        <ul className="mt-3 divide-y divide-line rounded-xl border border-line" data-testid="student-list">
+        <ul className="mt-3 divide-y divide-line rounded-2xl border border-line bg-surface" data-testid="student-list">
           {view.students.map((s) => {
             const g = a.groups.find((x) => x.members.includes(s.uid));
+            if (!shown(g)) return null;
             const st = g ? statusOf(g) : STATUS.idle;
             const score = g?.grade ? gradeTotal(g.grade) : null;
             return (
-              <li key={s.uid} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-2.5 text-sm" data-testid="student-row">
-                <span className="min-w-[8rem] flex-1 font-medium">{s.name}</span>
-                <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${st.cls}`} data-testid="student-status">
+              <li key={s.uid} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3 text-[15px]" data-testid="student-row">
+                <span className="min-w-[9rem] flex-1 font-medium">{s.name}</span>
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${st.cls}`} data-testid="student-status">
                   {st.label}
                 </span>
-                <span className="w-28 text-xs text-fg-subtle">{g?.status?.lastActivity ? `active ${timeAgo(g.status.lastActivity)}` : ""}</span>
-                <span className="w-16 text-right text-sm font-semibold tabular">{score !== null && g?.grade ? `${score}/${rubricMax(g.grade.rows)}` : ""}</span>
+                <span className="w-32 text-sm text-fg-subtle">{g?.status?.lastActivity ? `active ${timeAgo(g.status.lastActivity)}` : ""}</span>
+                <span className="w-16 text-right font-semibold tabular">{score !== null && g?.grade ? `${score}/${rubricMax(g.grade.rows)}` : ""}</span>
                 {g && !isPending(g.roomCode) && !g.status?.turnedInAt && <MoreTime url={timeUrl(g.roomCode)} onDone={reload} />}
                 {g?.status?.turnedInAt ? (
-                  <Link to={gradeUrl(g.roomCode)} className="press rounded-lg bg-primary px-2.5 py-1 text-xs font-semibold text-primary-fg hover:bg-primary-hover" data-testid="grade-group">
+                  <Link to={gradeUrl(g.roomCode)} className="press rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover" data-testid="grade-group">
                     {g.grade ? "Review" : "Grade"}
                   </Link>
                 ) : (
-                  <span className="w-[3.25rem]" />
+                  <span className="w-[4.25rem]" />
                 )}
               </li>
             );
           })}
-          {!view.students.length && <li className="px-3.5 py-2.5 text-sm text-fg-subtle">No students yet. Share the class link.</li>}
+          {!view.students.length && <li className="px-4 py-3 text-[15px] text-fg-subtle">No students yet. Invite them with the class code.</li>}
+          {view.students.length > 0 && filter && counts[filter] === 0 && <li className="px-4 py-3 text-[15px] text-fg-subtle">Nobody here right now.</li>}
         </ul>
       ) : (
-        <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-          {a.groups.map((g) => (
+        <ul className="mt-3 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+          {a.groups.filter((g) => shown(g)).map((g) => (
             <GroupCard key={g.roomCode} g={g} names={names} gradeUrl={gradeUrl(g.roomCode)} timeUrl={isPending(g.roomCode) ? undefined : timeUrl(g.roomCode)} onChanged={reload} />
           ))}
         </ul>
@@ -492,6 +550,178 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
         />
       )}
     </section>
+  );
+}
+
+type Shelf = "needs" | "progress" | "done";
+/** Each assignment, where it stands: needs you (to grade or return), in progress, or done. */
+function shelve(view: ClassView, now = Date.now()) {
+  const rows = view.assignments.map((a) => {
+    const solo = a.mode === "solo";
+    const total = solo ? view.students.length : a.groups.length;
+    const turned = a.groups.filter((g) => g.status?.turnedInAt).length;
+    const toGrade = a.groups.filter((g) => g.status?.turnedInAt && !g.grade).length;
+    const toReturn = a.groups.filter((g) => g.grade && !g.grade.returnedAt).length;
+    const dueAt = a.project.dueAt;
+    const past = !!dueAt && dueAt < now;
+    const shelf: Shelf = toGrade || toReturn ? "needs" : past || (total > 0 && turned === total) ? "done" : "progress";
+    return { a, total, turned, toGrade, toReturn, dueAt, past, shelf };
+  });
+  const byDue = (x: { dueAt?: number }, y: { dueAt?: number }) => (x.dueAt ?? Infinity) - (y.dueAt ?? Infinity);
+  return {
+    needs: rows.filter((r) => r.shelf === "needs").sort((x, y) => (y.toGrade ? 1 : 0) - (x.toGrade ? 1 : 0) || byDue(x, y)),
+    progress: rows.filter((r) => r.shelf === "progress").sort(byDue),
+    done: rows.filter((r) => r.shelf === "done").sort((x, y) => (y.dueAt ?? 0) - (x.dueAt ?? 0)),
+  };
+}
+
+/** The left side of the Assignments tab: every assignment on one line, grouped by what it needs. */
+function AssignmentList({ view, selected, onPick }: { view: ClassView; selected?: string; onPick: (id: string) => void }) {
+  const shelves = shelve(view);
+  const sections: { id: Shelf; label: string }[] = [
+    { id: "needs", label: "Needs you" },
+    { id: "progress", label: "In progress" },
+    { id: "done", label: "Done" },
+  ];
+  return (
+    <nav aria-label="Assignments" className="space-y-5" data-testid="assignment-list">
+      {sections.map((sec) =>
+        shelves[sec.id].length ? (
+          <div key={sec.id}>
+            <h3 className="px-3 text-xs font-bold uppercase tracking-[0.08em] text-fg-subtle">{sec.label}</h3>
+            <ul className="mt-1.5 space-y-1">
+              {shelves[sec.id].map((r) => {
+                const on = r.a.id === selected;
+                const sub =
+                  sec.id === "needs"
+                    ? [r.toGrade ? `${r.toGrade} to grade` : "", r.toReturn ? `${r.toReturn} to return` : ""].filter(Boolean).join(" · ")
+                    : sec.id === "progress"
+                      ? `${r.dueAt ? `Due ${shortWhen(r.dueAt)}` : "No due date"} · ${r.turned} of ${r.total} in`
+                      : r.past && r.dueAt
+                        ? `Was due ${shortWhen(r.dueAt)}`
+                        : "Everyone turned it in";
+                return (
+                  <li key={r.a.id}>
+                    <button
+                      onClick={() => onPick(r.a.id)}
+                      aria-current={on ? "true" : undefined}
+                      className={`press block w-full rounded-xl px-3 py-2.5 text-left ${on ? "bg-surface shadow-[0_0_0_1px_var(--color-line-strong)]" : "hover:bg-surface-2"}`}
+                      data-testid="assignment-pick"
+                    >
+                      <span className={`block truncate text-[15px] ${on ? "font-semibold" : "font-medium"}`}>{r.a.title}</span>
+                      <span className={`block truncate text-sm ${sec.id === "needs" ? "font-semibold text-primary-hover dark:text-primary" : "text-fg-subtle"}`}>{sub}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null,
+      )}
+    </nav>
+  );
+}
+
+/** Every student's grade on every assignment, in one table. */
+function GradesTab({ view, onOpen }: { view: ClassView; onOpen: (id: string) => void }) {
+  const now = Date.now();
+  if (!view.assignments.length || !view.students.length)
+    return <p className="text-[15px] text-fg-muted">{!view.students.length ? "Grades show up here once students join and turn in work." : "Grades show up here once you make an assignment."}</p>;
+  const list = [...view.assignments].sort((x, y) => (x.project.dueAt ?? x.createdAt) - (y.project.dueAt ?? y.createdAt));
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-line bg-surface" data-testid="gradebook">
+      <table className="w-full min-w-[640px] border-collapse text-[15px]">
+        <thead>
+          <tr className="border-b border-line text-left">
+            <th scope="col" className="sticky left-0 bg-surface px-4 py-3 text-sm font-semibold">Student</th>
+            {list.map((a) => (
+              <th key={a.id} scope="col" className="min-w-[8.5rem] px-4 py-3 align-bottom text-sm font-semibold">
+                <button onClick={() => onOpen(a.id)} className="press line-clamp-2 text-left hover:underline">
+                  {a.title}
+                </button>
+                <span className="mt-0.5 flex items-center gap-2 text-xs font-normal text-fg-subtle">
+                  {a.project.dueAt ? `Due ${new Date(a.project.dueAt).toLocaleDateString([], { month: "short", day: "numeric" })}` : "No due date"}
+                  <a href={`/api/classes/${view.class.id}/assignments/${a.id}/grades.csv`} className="hover:text-fg" aria-label={`Download grades for ${a.title}`}>
+                    <Download className="h-3.5 w-3.5" />
+                  </a>
+                </span>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {view.students.map((s) => (
+            <tr key={s.uid} className="border-b border-line last:border-0" data-testid="gradebook-row">
+              <th scope="row" className="sticky left-0 bg-surface px-4 py-3 text-left font-medium">
+                {s.name}
+              </th>
+              {list.map((a) => {
+                const g = a.groups.find((x) => x.members.includes(s.uid));
+                const score = g?.grade ? (g.grade.students[s.uid] ?? gradeTotal(g.grade)) : null;
+                const late = !g?.status?.turnedInAt && !!a.project.dueAt && a.project.dueAt < now;
+                return (
+                  <td key={a.id} className="px-4 py-3 tabular">
+                    {score !== null && g?.grade ? (
+                      <span className="font-semibold">
+                        {score}
+                        <span className="text-sm font-normal text-fg-subtle">/{rubricMax(g.grade.rows)}</span>
+                        {!g.grade.returnedAt && <span className="ml-1.5 text-xs font-normal text-fg-subtle">not returned</span>}
+                      </span>
+                    ) : g?.status?.turnedInAt ? (
+                      <Link to={`/classes/${view.class.id}/a/${a.id}/${g.roomCode}`} className="text-sm font-semibold text-primary-hover hover:underline dark:text-primary">
+                        To grade
+                      </Link>
+                    ) : late ? (
+                      <span className="text-sm font-medium text-red-700 dark:text-red-300">Missing</span>
+                    ) : (
+                      <span className="text-fg-subtle">–</span>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** How students get in: the class code, the link, and sharing it to Google Classroom. */
+function InvitePanel({ view }: { view: ClassView }) {
+  const [copied, setCopied] = useState(false);
+  const link = `${location.origin}/c/${view.class.code}`;
+  return (
+    <div>
+      <div className="text-sm text-fg-muted">Class code</div>
+      <div className="mt-1 font-mono text-[2.2rem] font-semibold leading-none tracking-[0.16em]" data-testid="invite-code">
+        {formatCode(view.class.code)}
+      </div>
+      <p className="mt-3 text-[15px] text-fg-muted">Students open the link (or type the code on Cairn) and sign in with their school Google account.</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button
+          onClick={() => {
+            navigator.clipboard?.writeText(link).catch(() => {});
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1500);
+          }}
+          className="press inline-flex h-11 items-center gap-1.5 rounded-xl border border-line-strong px-4 text-[15px] font-semibold hover:bg-surface-2"
+          data-link={link}
+          data-testid="copy-class-link"
+        >
+          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />} {copied ? "Copied" : "Copy the class link"}
+        </button>
+        <a
+          href={classroomShareUrl(link, `Join ${view.class.name} on Cairn`, "Open the link and sign in with your school Google account. Your assignments will show up there.")}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="press inline-flex h-11 items-center gap-1.5 rounded-xl border border-line-strong px-4 text-[15px] font-semibold hover:bg-surface-2"
+          data-testid="share-class-to-classroom"
+        >
+          <ClassroomMark className="h-4 w-4" /> Share to Google Classroom
+        </a>
+      </div>
+    </div>
   );
 }
 
@@ -1227,7 +1457,7 @@ function ClassListSection({ view, onChange }: { view: ClassView; onChange: () =>
   };
   const invited = view.roster.filter((r) => !r.joined);
   return (
-    <section className="mt-12" data-testid="class-list" data-tour="class-list">
+    <section className="mt-8" data-testid="class-list">
       <div className="flex flex-wrap items-end gap-3">
         <div className="min-w-[14rem] flex-1">
           <h2 className="font-display text-xl font-bold tracking-[-0.01em]">Students</h2>
@@ -1324,7 +1554,7 @@ function ClassListSection({ view, onChange }: { view: ClassView; onChange: () =>
   );
 }
 
-function TimeRequestsSection({ classId, onChange }: { classId: string; onChange: () => void }) {
+function TimeRequestsSection({ classId, onChange, onCount, hidden }: { classId: string; onChange: () => void; onCount?: (n: number) => void; hidden?: boolean }) {
   const [list, setList] = useState<ClassTimeRequest[]>([]);
   const load = useCallback(() => {
     api<{ requests: ClassTimeRequest[] }>(`/api/classes/${classId}/time-requests`).then((d) => setList(d.requests ?? []));
@@ -1334,14 +1564,15 @@ function TimeRequestsSection({ classId, onChange }: { classId: string; onChange:
     const t = setInterval(load, 30_000);
     return () => clearInterval(t);
   }, [load]);
-  if (!list.length) return null;
+  useEffect(() => onCount?.(list.length), [list.length]);
+  if (!list.length || hidden) return null;
   const answer = async (r: ClassTimeRequest, approve: boolean) => {
     await api(`/api/classes/${classId}/assignments/${r.assignmentId}/groups/${r.room}/time-requests/${r.id}`, { method: "POST", body: JSON.stringify({ approve }) });
     load();
     onChange();
   };
   return (
-    <section id="time-requests" className="mt-6 scroll-mt-6 rounded-[20px] border border-line bg-surface p-4" data-testid="time-requests">
+    <section id="time-requests" className="mb-6 scroll-mt-6 rounded-[20px] border border-amber-300 bg-amber-50 p-5 dark:border-amber-900/60 dark:bg-amber-950/20" data-testid="time-requests">
       <h2 className="text-[15px] font-semibold">Asking for more time ({list.length})</h2>
       <ul className="mt-3 space-y-2">
         {list.map((r) => (
@@ -1375,7 +1606,7 @@ function TimeRequestsSection({ classId, onChange }: { classId: string; onChange:
 type ClassReport = Report & { assignment: string; group: string; room: string };
 
 /** Messages students reported to the teacher: the only chat a teacher ever sees. */
-function ReportsSection({ classId }: { classId: string }) {
+function ReportsSection({ classId, onCount, hidden }: { classId: string; onCount?: (n: number) => void; hidden?: boolean }) {
   const [reports, setReports] = useState<ClassReport[]>([]);
   const load = useCallback(() => {
     api<{ reports: ClassReport[] }>(`/api/classes/${classId}/reports`).then((d) => setReports(d.reports ?? []));
@@ -1385,7 +1616,8 @@ function ReportsSection({ classId }: { classId: string }) {
     const t = setInterval(load, 30_000);
     return () => clearInterval(t);
   }, [load]);
-  if (!reports.length) return null;
+  useEffect(() => onCount?.(reports.length), [reports.length]);
+  if (!reports.length || hidden) return null;
   return (
     <section id="reports" className="mt-6 scroll-mt-6 rounded-[20px] border border-amber-300 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/20" data-testid="reports">
       <h2 className="flex items-center gap-2 text-[15px] font-semibold text-amber-900 dark:text-amber-200">
@@ -1419,14 +1651,32 @@ function ReportsSection({ classId }: { classId: string }) {
   );
 }
 
-/** /classes/:id: the teacher's dashboard for one class. */
+type ClassTab = "assignments" | "students" | "grades" | "settings";
+const HASH_TAB: Record<string, ClassTab> = { waiting: "students", reports: "students", "time-requests": "assignments" };
+
+/** /classes/:id: the teacher's page for one class, in tabs: assignments, students, grades and settings. */
 export function ClassPage() {
   const { id = "" } = useParams();
   const account = useAccount();
+  const [params, setParams] = useSearchParams();
   const [view, setView] = useState<ClassView | null>(null);
   const [err, setErr] = useState("");
   const [newA, setNewA] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [reports, setReports] = useState(0);
+  const [timeReqs, setTimeReqs] = useState(0);
+  const known = useRef<Set<string> | null>(null);
+  const tab: ClassTab = (["students", "grades", "settings"] as const).find((t) => t === params.get("tab")) ?? HASH_TAB[location.hash.slice(1)] ?? "assignments";
+  const go = (next: { tab?: ClassTab; a?: string }) =>
+    setParams(
+      (p) => {
+        const q = new URLSearchParams(p);
+        if (next.tab) next.tab === "assignments" ? q.delete("tab") : q.set("tab", next.tab);
+        if (next.a) q.set("a", next.a);
+        return q;
+      },
+      { replace: true },
+    );
   const load = useCallback(() => {
     api<ClassView>(`/api/classes/${id}`).then((d) => (d.error ? setErr(d.error) : setView(d)));
   }, [id]);
@@ -1437,15 +1687,24 @@ export function ClassPage() {
     const t = setInterval(load, 30_000);
     return () => clearInterval(t);
   }, [account.user, load]);
-  const link = useMemo(() => (view ? `${location.origin}/c/${view.class.code}` : ""), [view]);
+  // A new assignment opens by itself once it's made.
+  useEffect(() => {
+    if (!view) return;
+    const ids = new Set(view.assignments.map((a) => a.id));
+    if (known.current) {
+      const made = view.assignments.find((a) => !known.current!.has(a.id));
+      if (made) go({ tab: "assignments", a: made.id });
+    }
+    known.current = ids;
+  }, [view]);
   useAutoTour("teacher-class", !!view && account.user?.role === "teacher", account.user?.tours, true);
-  // Arriving from Today's "Answer": bring that section into view (it loads a moment later).
+  // Arriving from Today's "Answer": open the right tab and bring that section into view.
   useEffect(() => {
     if (!view || !location.hash) return;
-    const id = location.hash.slice(1);
+    const hash = location.hash.slice(1);
     let n = 0;
     const t = setInterval(() => {
-      const el = document.getElementById(id);
+      const el = document.getElementById(hash);
       if (el || ++n > 10) {
         clearInterval(t);
         el?.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
@@ -1457,100 +1716,152 @@ export function ClassPage() {
   if (account.user.role === "student") return <TeacherShell><StudentOnly /></TeacherShell>;
   if (err) return <TeacherShell back={{ to: "/classes", label: "Today" }}><p className="p-8 text-sm text-fg-muted">{err}</p></TeacherShell>;
   if (!view) return <TeacherShell back={{ to: "/classes", label: "Today" }}><p className="p-8 text-sm text-fg-subtle">Loading…</p></TeacherShell>;
+  const shelves = shelve(view);
+  const ordered = [...shelves.needs, ...shelves.progress, ...shelves.done];
+  const current = view.assignments.find((a) => a.id === params.get("a")) ?? ordered[0]?.a;
+  const toGrade = shelves.needs.reduce((t, r) => t + r.toGrade, 0);
+  const toReturn = shelves.needs.reduce((t, r) => t + r.toReturn, 0);
+  const tabs: { id: ClassTab; label: string; badge?: string; tone?: "go" | "alert"; tour?: string }[] = [
+    { id: "assignments", label: "Assignments", badge: toGrade ? `${toGrade} to grade` : timeReqs ? `${timeReqs} asking for time` : toReturn ? `${toReturn} to return` : undefined, tone: timeReqs && !toGrade ? "alert" : "go" },
+    {
+      id: "students",
+      label: "Students",
+      badge: view.waiting.length ? `${view.waiting.length} waiting` : reports ? `${reports} reported` : undefined,
+      tone: "alert",
+      tour: "class-list",
+    },
+    { id: "grades", label: "Grades" },
+    { id: "settings", label: "Settings" },
+  ];
   return (
-    <TeacherShell back={{ to: "/classes", label: "Today" }}>
-      <div className="mx-auto max-w-4xl px-4 pb-16 pt-8 sm:px-8">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="min-w-[15rem] flex-1">
-            <h1 className="font-display text-[2rem] font-extrabold leading-tight tracking-[-0.03em] [overflow-wrap:anywhere]" data-testid="class-name">{view.class.name}</h1>
-            <p className="mt-1 text-sm text-fg-muted">{view.students.length} student{view.students.length === 1 ? "" : "s"} joined</p>
-          </div>
-          <div className="rounded-2xl border border-line px-4 py-2.5" data-tour="class-code">
-            <div className="text-sm font-semibold text-fg">Invite students <span className="font-normal text-fg-subtle">· class code</span></div>
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-lg font-semibold tracking-[0.14em]" data-testid="class-code">{formatCode(view.class.code)}</span>
-              <button
-                onClick={() => {
-                  navigator.clipboard?.writeText(link).catch(() => {});
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
-                }}
-                className="press rounded-lg p-1 text-fg-muted hover:bg-surface-2 hover:text-fg"
-                aria-label="Copy the class link"
-                data-link={link}
-                data-testid="copy-class-link"
-              >
-                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              </button>
+    <TeacherShell>
+      <div className="flex min-h-full flex-col">
+        <header className="border-b border-line px-5 pt-6 sm:px-8 lg:px-10">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[14rem] flex-1">
+              <h1 className="font-display text-[2.1rem] font-extrabold leading-tight tracking-[-0.03em] [overflow-wrap:anywhere]" data-testid="class-name">
+                {view.class.name}
+              </h1>
+              <p className="mt-1 text-[15px] text-fg-muted">
+                {view.students.length} student{view.students.length === 1 ? "" : "s"} · class code{" "}
+                <span className="font-mono font-semibold tracking-[0.12em] text-fg" data-testid="class-code">
+                  {formatCode(view.class.code)}
+                </span>
+              </p>
             </div>
-            <a
-              href={classroomShareUrl(link, `Join ${view.class.name} on Cairn`, "Open the link and sign in with your school Google account. Your assignments will show up there.")}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="press mt-1.5 inline-flex items-center gap-1.5 text-xs font-medium text-fg-muted hover:text-fg"
-              data-testid="share-class-to-classroom"
-            >
-              <ClassroomMark /> Share to Google Classroom
-            </a>
-          </div>
-        </div>
-
-        <ReportsSection classId={view.class.id} />
-        <WaitingSection view={view} onChange={load} />
-        <TimeRequestsSection classId={view.class.id} onChange={load} />
-
-        <div className="mt-8 flex items-center gap-2">
-          <h2 className="font-display text-xl font-bold tracking-[-0.01em]">Assignments</h2>
-          <span className="flex-1" />
-          {view.assignments.length > 0 && (
-            <Button onClick={() => setNewA(true)} data-testid="new-assignment-btn" data-tour="new-assignment">
+            <button onClick={() => setInviting(true)} className="press inline-flex h-11 items-center gap-1.5 rounded-xl border border-line-strong px-4 text-[15px] font-semibold hover:bg-surface-2" data-testid="invite-students" data-tour="class-code">
+              <UserPlus className="h-4 w-4" /> Invite students
+            </button>
+            <button onClick={() => setNewA(true)} className="ledge-btn h-11 px-5 text-[15px]" data-testid="new-assignment-btn" data-tour="new-assignment">
               <Plus className="h-4 w-4" /> New assignment
-            </Button>
+            </button>
+          </div>
+          <div role="tablist" aria-label="Class" className="-mb-px mt-5 flex gap-1 overflow-x-auto">
+            {tabs.map((t) => {
+              const on = tab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  role="tab"
+                  aria-selected={on}
+                  aria-controls={`panel-${t.id}`}
+                  id={`tab-${t.id}`}
+                  onClick={() => go({ tab: t.id })}
+                  className={`press flex shrink-0 items-center gap-2 border-b-[3px] px-3 pb-3 pt-1 text-[15px] ${on ? "border-fg font-semibold text-fg" : "border-transparent font-medium text-fg-muted hover:text-fg"}`}
+                  data-testid={`tab-${t.id}`}
+                  data-tour={t.tour}
+                >
+                  {t.label}
+                  {t.badge && (
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-xs font-semibold ${t.tone === "alert" ? "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300" : "bg-mint text-ink dark:bg-mint/15 dark:text-mint"}`}
+                      data-testid="tab-badge"
+                    >
+                      {t.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </header>
+
+        <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`} className="flex-1 px-5 pb-16 pt-6 sm:px-8 lg:px-10">
+          {tab === "assignments" && (
+            <>
+              <TimeRequestsSection classId={view.class.id} onChange={load} onCount={setTimeReqs} />
+              {!view.assignments.length ? (
+                <div className="mx-auto mt-6 max-w-xl rounded-[24px] border border-dashed border-line-strong px-6 py-10 text-center" data-testid="no-assignments">
+                  <RockArt className="mx-auto mb-3 h-20 w-20" body={TEAL} pose="carry" prop="pencil" />
+                  <p className="font-display text-xl font-bold">Make your first assignment</p>
+                  <p className="mx-auto mt-1 max-w-sm text-[15px] text-fg-muted">Post its link in Google Classroom, and students join the class just by opening it.</p>
+                  <button onClick={() => setNewA(true)} className="ledge-btn mx-auto mt-5 h-11 px-5 text-[15px]" data-testid="new-assignment-empty">
+                    <Plus className="h-4 w-4" /> New assignment
+                  </button>
+                </div>
+              ) : (
+                <div className="grid gap-8 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)]">
+                  <div className="lg:sticky lg:top-6 lg:self-start">
+                    <AssignmentList view={view} selected={current?.id} onPick={(a) => go({ a })} />
+                  </div>
+                  {current && <AssignmentSection key={current.id} a={current} view={view} reload={load} />}
+                </div>
+              )}
+            </>
+          )}
+          {tab === "students" && (
+            <div className="max-w-5xl">
+              <ReportsSection classId={view.class.id} onCount={setReports} />
+              <WaitingSection view={view} onChange={load} />
+              <ClassListSection view={view} onChange={load} />
+            </div>
+          )}
+          {/* Counts for the badges even while another tab is open. */}
+          {tab !== "students" && <ReportsSection classId={view.class.id} onCount={setReports} hidden />}
+          {tab !== "assignments" && <TimeRequestsSection classId={view.class.id} onChange={load} onCount={setTimeReqs} hidden />}
+          {tab === "grades" && <GradesTab view={view} onOpen={(a) => go({ tab: "assignments", a })} />}
+          {tab === "settings" && (
+            <div className="max-w-3xl space-y-6">
+              <section className="rounded-[20px] border border-line bg-surface p-6" data-testid="invite-settings">
+                <h2 className="font-display text-xl font-bold tracking-[-0.01em]">Invite students</h2>
+                <div className="mt-4">
+                  <InvitePanel view={view} />
+                </div>
+                <p className="mt-4 text-sm text-fg-subtle">Who can join (only your list, or anyone with the code) is on the Students tab.</p>
+              </section>
+              <section className="rounded-[20px] border border-red-200 p-6 dark:border-red-900/50">
+                <h2 className="text-[17px] font-semibold">Erase this class</h2>
+                <p className="mt-1 text-[15px] text-fg-muted">Deletes all your students' work (chats, files and uploads), the student list and all grades. This can't be undone. Download grades first.</p>
+                <button
+                  onClick={async () => {
+                    const typed = await promptDialog({
+                      title: `Erase ${view.class.name}?`,
+                      message: "This permanently erases the class and all of its students' work. It can't be undone.",
+                      label: "Type the class name to confirm",
+                      placeholder: view.class.name,
+                      mustMatch: view.class.name,
+                      confirmLabel: "Erase class",
+                      danger: true,
+                    });
+                    if (typed?.trim() !== view.class.name) return;
+                    const d = await api(`/api/classes/${view.class.id}`, { method: "DELETE" });
+                    if (!d.error) location.href = "/classes";
+                  }}
+                  className="press mt-3 rounded-xl border border-red-300 px-4 py-2 text-[15px] font-semibold text-red-700 hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30"
+                  data-testid="erase-class"
+                >
+                  Erase class
+                </button>
+              </section>
+            </div>
           )}
         </div>
-        {!view.assignments.length && (
-          <div className="mt-3 rounded-[20px] border border-dashed border-line-strong px-5 py-8 text-center" data-testid="no-assignments">
-            <RockArt className="mx-auto mb-3 h-20 w-20" body={TEAL} pose="carry" prop="pencil" />
-            <p className="font-display text-lg font-bold">No assignments yet</p>
-            <p className="mx-auto mt-1 max-w-sm text-sm text-fg-muted">Make one, post its link in Google Classroom, and students join the class just by opening it.</p>
-            <Button className="mt-4" onClick={() => setNewA(true)} data-testid="new-assignment-btn" data-tour="new-assignment">
-              <Plus className="h-4 w-4" /> Make your first assignment
-            </Button>
-          </div>
-        )}
-        <div className="mt-3 space-y-4">
-          {view.assignments.map((a) => (
-            <AssignmentSection key={a.id} a={a} view={view} reload={load} />
-          ))}
-        </div>
-
-        <ClassListSection view={view} onChange={load} />
-
-        <section className="mt-12 rounded-[20px] border border-line p-4">
-          <h2 className="text-sm font-semibold">Erase this class</h2>
-          <p className="mt-0.5 text-xs text-fg-subtle">Deletes all your students' work (chats, files and uploads), the student list and all grades. This can't be undone. Download grades first.</p>
-          <button
-            onClick={async () => {
-              const typed = await promptDialog({
-                title: `Erase ${view.class.name}?`,
-                message: "This permanently erases the class and all of its students' work. It can't be undone.",
-                label: "Type the class name to confirm",
-                placeholder: view.class.name,
-                mustMatch: view.class.name,
-                confirmLabel: "Erase class",
-                danger: true,
-              });
-              if (typed?.trim() !== view.class.name) return;
-              const d = await api(`/api/classes/${view.class.id}`, { method: "DELETE" });
-              if (!d.error) location.href = "/classes";
-            }}
-            className="press mt-2 rounded-lg border border-red-300 px-3 py-1 text-sm font-medium text-red-700 hover:bg-red-50 dark:border-red-900/60 dark:text-red-300 dark:hover:bg-red-950/30"
-            data-testid="erase-class"
-          >
-            Erase class
-          </button>
-        </section>
       </div>
+      {inviting && (
+        <Modal size="md" title={`Invite students to ${view.class.name}`} onClose={() => setInviting(false)} testId="invite-dialog">
+          <InvitePanel view={view} />
+        </Modal>
+      )}
       {newA && (
         <NewAssignmentDialog
           classId={view.class.id}

@@ -699,8 +699,8 @@ try {
   const samRow = sam.getByTestId("receipt-person").filter({ hasText: "Sam" });
   await samRow.getByTestId("receipt-work").getByText("6 words").waitFor({ timeout: 20000 });
   ok(true, "the receipt credits Sam with the 6 words Sam wrote");
-  ok(/asked the AI to make or change files 1 time/.test(await samRow.innerText()), "AI-made work is credited as AI help to whoever asked");
-  ok(/Researcher/.test(await samRow.innerText()) && /Tasks: 1 of 1 done/.test(await samRow.innerText()), "the receipt shows each person's role and tasks");
+  ok(/Asked the AI to write or change files 1 time/.test(await samRow.innerText()), "AI-made work is credited as AI help to whoever asked");
+  ok(/Researcher/.test(await samRow.innerText()) && /Did 1 of 1 task/.test(await samRow.innerText()), "the receipt shows each person's role and tasks");
   ok(/Cairn AI wrote/.test(await sam.getByTestId("receipt").innerText()), "the receipt shows what Cairn AI wrote separately");
   ok((await sam.getByTestId("receipt-person").filter({ hasText: "Ms. Lee" }).count()) === 0, "the teacher isn't listed on the receipt");
   await sam.getByTestId("receipt-note").fill("I wrote the conclusion and found two sources.");
@@ -797,13 +797,32 @@ try {
   await park.getByTestId("create-class").click();
   await park.waitForURL(/\/classes\/[a-z0-9]+$/);
   const classUrl = park.url();
+  // One page, in tabs: Assignments, Students, Grades, Settings. The class link is under Invite students.
+  await park.getByTestId("tab-assignments").waitFor();
+  ok((await park.getByRole("tab").allInnerTexts()).map((x) => x.trim()).join("|").startsWith("Assignments|Students|Grades|Settings"), "the class page is split into tabs");
+  await park.getByTestId("invite-students").click();
   const classLink = await park.getByTestId("copy-class-link").getAttribute("data-link");
   ok(/\/c\/[A-Z0-9]{6}$/.test(classLink), "a teacher creates a class and gets a class link");
   const share = new URL(await park.getByTestId("share-class-to-classroom").getAttribute("href"));
+  await park.keyboard.press("Escape");
+  // Who's in the class lives on the Students tab.
+  const studentsTab = async () => {
+    await park.getByTestId("tab-students").click();
+    await park.getByTestId("class-list").waitFor();
+  };
+  // Assignments: pick one in the list on the left, and it opens on the right.
+  const openAssignment = async (title) => {
+    await park.getByTestId("tab-assignments").click();
+    await park.getByTestId("assignment-pick").filter({ hasText: title }).first().click();
+    const sec = park.getByTestId("assignment").filter({ hasText: title });
+    await sec.waitFor();
+    return sec;
+  };
   ok(share.origin === "https://classroom.google.com" && share.searchParams.get("url") === classLink, "Share to Google Classroom posts the class link");
   const RUN = Date.now() % 1000000;
   const emailOf = (n) => `${n.toLowerCase()}.${RUN}@school.test`;
   // Emails become pills: Enter makes one, a typed list makes several, a typo stays with a note.
+  await studentsTab();
   const rosterBox = park.getByTestId("roster-input");
   await rosterBox.fill(emailOf("Ava"));
   await rosterBox.press("Enter");
@@ -878,7 +897,8 @@ try {
   await park.getByTestId("show-sidebar").click();
   await park.getByTestId("app-sidebar").getByTestId("nav-rooms").waitFor();
   ok(true, "it stays hidden after a reload, and the show button brings it back");
-  await park.getByTestId("no-assignments").getByTestId("new-assignment-btn").click();
+  await park.getByTestId("tab-assignments").click();
+  await park.getByTestId("no-assignments").getByTestId("new-assignment-empty").click();
   await park.getByTestId("a-template-presentation").click();
   await park.getByTestId("wizard-next").click();
   ok((await park.getByRole("alert").innerText()).includes("title"), "the wizard asks for a title before going on");
@@ -994,7 +1014,7 @@ try {
   ok(/Due/.test(await park.getByTestId("due-date").innerText()) || /·/.test(await park.getByTestId("due-date").innerText()), "the due date is picked with Cairn's date picker");
   await park.getByTestId("create-assignment").click();
   await park.getByTestId("wizard-done").click();
-  const soloSection = park.getByTestId("assignment").filter({ hasText: "Reading response" });
+  const soloSection = await openAssignment("Reading response");
   await soloSection.getByTestId("student-row").first().waitFor();
   ok(
     (await soloSection.getByTestId("student-row").count()) === 4 && (await soloSection.getByTestId("student-status").filter({ hasText: "Not started" }).count()) === 4,
@@ -1016,6 +1036,7 @@ try {
   ok(/^\/c\/[A-Z0-9]{6}$/.test((await kids[0].getByTestId("room-back").getAttribute("href")) ?? ""), "a class room has a clear way back to the class");
   // A student who wasn't in the class yet joins from the assignment link and still gets a room.
   await park.goto(classUrl);
+  await studentsTab();
   await park.getByTestId("access-code").click();
   await park.getByTestId("class-list").getByText(/Anyone who signs in/).waitFor();
   const eve = await (await browser.newContext({ viewport: { width: 1200, height: 900 }, as: "Eve", email: emailOf("Eve"), fresh: true })).newPage();
@@ -1092,6 +1113,7 @@ try {
   await kids[0].getByTestId("confirm-turn-in").click();
   await kids[0].getByTestId("turned-in").waitFor();
   await park.goto(classUrl);
+  await openAssignment("Reading response");
   await soloSection.getByTestId("start-grading").getByText("Start grading (2)").waitFor();
   await soloSection.getByTestId("start-grading").click();
   await park.getByTestId("grader").waitFor();
@@ -1145,7 +1167,7 @@ try {
   ok(true, "the wizard's last step can preview what students see, then come back");
   await park.getByTestId("wizard-done").click();
   await park.getByTestId("assignment").filter({ hasText: "Cell worksheet (cells and organelles)" }).waitFor();
-  ok((await park.getByTestId("assignment").filter({ hasText: "Cell worksheet" }).count()) === 1, "going back and forward saves to the same assignment, not a second one");
+  ok((await park.getByTestId("assignment-pick").filter({ hasText: "Cell worksheet" }).count()) === 1, "going back and forward saves to the same assignment, not a second one");
   const wsSection = park.getByTestId("assignment").filter({ hasText: "Cell worksheet" });
   await wsSection.getByTestId("has-key").waitFor();
   ok((await wsSection.getByTestId("worksheet-files").innerText()).includes("Cell worksheet"), "the class page shows the worksheet and that it has an answer key");
@@ -1173,6 +1195,7 @@ try {
   );
   // Preview as a student: the AI rule in student words and the worksheet, read-only, without the key.
   await park.goto(classUrl);
+  await openAssignment("Cell worksheet");
   await wsSection.getByTestId("assignment-more").click();
   await park.getByTestId("preview-student").click();
   await park.getByTestId("student-preview").getByTestId("doc-editor").locator("h1", { hasText: "Cell Worksheet" }).waitFor({ timeout: 15000 });
@@ -1221,6 +1244,7 @@ try {
   await cara.getByTestId("confirm-turn-in").click();
   await cara.getByTestId("turned-in").waitFor();
   await park.goto(classUrl);
+  await openAssignment("Cell worksheet");
   await wsSection.getByTestId("start-grading").click();
   await park.getByTestId("answer-key-tab").click();
   await park.getByTestId("answer-key").getByText("The nucleus holds the cell's DNA.").waitFor({ timeout: 15000 });
@@ -1253,7 +1277,7 @@ try {
     return (await r.json()).id;
   }, classId);
   await park.goto(classUrl);
-  const timedSection = park.getByTestId("assignment").filter({ hasText: "Timed quiz" });
+  const timedSection = await openAssignment("Timed quiz");
   await timedSection.getByTestId("schedule-summary").waitFor();
   ok(/9:00am–9:50am/.test(await timedSection.getByTestId("schedule-summary").innerText()), "the class page shows when a timed assignment is open");
   const cam = kids[2];
@@ -1281,7 +1305,7 @@ try {
   ok(true, "a student asks for more time and the teacher's approval opens it right away");
   // The teacher can also extend a due date without a request.
   await park.reload();
-  const camRow = park.getByTestId("assignment").filter({ hasText: "Timed quiz" }).getByTestId("student-row").filter({ hasText: "Cam" });
+  const camRow = (await openAssignment("Timed quiz")).getByTestId("student-row").filter({ hasText: "Cam" });
   await camRow.getByTestId("more-time").click();
   await camRow.getByTestId("time-extend-1").click();
   await cam.getByTestId("due-label").getByText("(extended)").waitFor({ timeout: 15000 });
@@ -1307,6 +1331,9 @@ try {
   await partner.getByTestId("dialog-confirm").click();
   await partner.getByTestId("toast").getByText(/Reported to your teacher/).waitFor();
   await park.goto(classUrl);
+  await park.getByTestId("tab-students").getByTestId("tab-badge").getByText(/reported/).waitFor({ timeout: 35000 });
+  ok(true, "the Students tab shows a badge when a message is reported");
+  await studentsTab();
   const report = park.getByTestId("report").first();
   await report.getByText("this is a mean message").waitFor();
   ok(/Not nice to me/.test(await report.innerText()), "a student can report one message, and the teacher sees only that message and why");
@@ -1333,7 +1360,8 @@ try {
   }, classLink);
   ok(noAge === 400, "joining a class without confirming 13+ is refused");
 
-  // Erasing a class deletes its rooms and records.
+  // Erasing a class deletes its rooms and records (from the Settings tab).
+  await park.getByTestId("tab-settings").click();
   await park.getByTestId("erase-class").click();
   ok(await park.getByTestId("dialog-confirm").isDisabled(), "erasing a class needs its name typed first");
   await park.getByTestId("dialog-input").fill("Period 3 History");

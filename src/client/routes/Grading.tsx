@@ -237,7 +237,7 @@ export default function Grading() {
     return () => clearInterval(t);
   }, [pendingSummary, id, aid, room]);
   const me = useMemo(() => getIdentity(), []);
-  const back = { to: `/classes/${id}`, label: "Class" };
+  const back = { to: `/classes/${id}?a=${aid}`, label: "Class" };
   useAutoTour("teacher-grading", !!view && account.user?.role === "teacher", account.user?.tours, true);
   if (!account.user) return <TeacherShell back={back}><SignInFirst /></TeacherShell>;
   if (account.user.role === "student") return <TeacherShell back={back}><StudentOnly /></TeacherShell>;
