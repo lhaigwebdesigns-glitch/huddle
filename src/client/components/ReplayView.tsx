@@ -65,11 +65,11 @@ function Shell({ onClose, children, bar }: { onClose: () => void; children: Reac
 function Player({ log, onClose }: { log: ReplayLog; onClose: () => void }) {
   const n = log.entries.length;
   const builder = useMemo(() => new ReplayBuilder(log), [log]);
-  const [pos, setPos] = useState(0);
-  const [doc, setDoc] = useState(() => builder.at(0));
+  const [pos, setPos] = useState(n);
+  const [doc, setDoc] = useState(() => builder.at(n));
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(4);
-  const posRef = useRef(0);
+  const posRef = useRef(n);
   const delays = useMemo(() => stepDelays(log.entries, speed), [log, speed]);
   const parts = useMemo(() => sessions(log.entries), [log]);
   const pastes = useMemo(() => log.entries.map((e, i) => (e.chars >= PASTE_STEP && e.by && e.by !== "ai" ? i : -1)).filter((i) => i >= 0), [log]);

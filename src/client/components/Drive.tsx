@@ -153,6 +153,7 @@ export function Drive({
   send,
   onImport,
   aiFiles = true,
+  defaultTitle,
 }: {
   files: RoomFile[];
   openId: string | null;
@@ -164,6 +165,8 @@ export function Drive({
   onImport?: (file: File) => void;
   /** The AI can make files here (it can't when it's off or tutor only). */
   aiFiles?: boolean;
+  /** A new file's name before "Untitled …": the assignment's title in a class room. */
+  defaultTitle?: string;
 }) {
   const [q, setQ] = useState("");
   const [newMenu, setNewMenu] = useState(false);
@@ -190,7 +193,8 @@ export function Drive({
                 className={ITEM}
                 onClick={() => {
                   setNewMenu(false);
-                  send({ t: "new_file", kind: k, title: FILE_INFO[k].untitled });
+                  const named = defaultTitle && !files.some((f) => f.title === defaultTitle) ? defaultTitle : FILE_INFO[k].untitled;
+                  send({ t: "new_file", kind: k, title: named });
                 }}
               >
                 <FileIcon kind={k} className="h-4 w-4 text-fg-muted" /> {FILE_INFO[k].label}

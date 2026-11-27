@@ -2,6 +2,7 @@ import { alertDialog, promptDialog } from "./Dialogs";
 import { useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import Collaboration from "@tiptap/extension-collaboration";
+import { Placeholder } from "@tiptap/extensions";
 import CollaborationCaret from "@tiptap/extension-collaboration-caret";
 import { docExtensions } from "../lib/docExtensions";
 import * as Y from "yjs";
@@ -17,9 +18,8 @@ import {
   Bold,
   Code2,
   Download,
-  Heading1,
-  Heading2,
-  Heading3,
+  ChevronDown,
+  Plus,
   Highlighter,
   ImagePlus,
   Italic,
@@ -54,6 +54,64 @@ function Btn({ on, active, children, title, testId }: { on: () => void; active?:
   );
 }
 
+/** A toolbar dropdown: shows the current choice, opens a short list. */
+function Pick({ label, title, items, testId }: { label: React.ReactNode; title: string; items: { label: React.ReactNode; active: boolean; on: () => void; title: string; testId?: string }[]; testId?: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLSpanElement>(null);
+  // Close on a click anywhere else, or Escape (the button never takes focus, so the editor keeps its selection).
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", away);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+  return (
+    <span className="relative" ref={ref}>
+      <button
+        type="button"
+        title={title}
+        aria-label={title}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((o) => !o)}
+        className={`press flex h-8 items-center gap-1 rounded-md px-2 text-sm text-fg-muted hover:bg-accent-soft hover:text-fg ${open ? "bg-accent-soft text-fg" : ""}`}
+        data-testid={testId}
+      >
+        {label}
+        <ChevronDown className="h-3.5 w-3.5" aria-hidden />
+      </button>
+      {open && (
+        <span className="pop absolute left-0 top-full z-20 mt-1 block min-w-[11rem] rounded-xl border border-line bg-surface p-1 shadow-lg [--origin:top_left]" role="menu">
+          {items.map((it, i) => (
+            <button
+              key={i}
+              type="button"
+              role="menuitemradio"
+              aria-checked={it.active}
+              title={it.title}
+              data-testid={it.testId}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                it.on();
+                setOpen(false);
+              }}
+              className={`press flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left hover:bg-surface-2 ${it.active ? "bg-surface-2 font-semibold" : ""}`}
+            >
+              {it.label}
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
+  );
+}
+
 const ic = "h-4 w-4";
 const COLORS = ["#18181b", "#dc2626", "#ea580c", "#16a34a", "#2563eb", "#7c3aed", "#db2777"];
 const SMALL = "press rounded-md px-1.5 py-1 text-fg-muted hover:bg-accent-soft hover:text-fg";
@@ -61,7 +119,7 @@ const SMALL = "press rounded-md px-1.5 py-1 text-fg-muted hover:bg-accent-soft h
 function Toolbar({ editor, onImage }: { editor: Editor; onImage: () => void }) {
   const c = () => editor.chain().focus();
   const [colors, setColors] = useState(false);
-  const sep = <span className="mx-1 my-1.5 w-px bg-line" aria-hidden />;
+  const sep = <span className="mx-0.5 my-1.5 w-px bg-line" aria-hidden />;
   const inTable = editor.isActive("table");
   const setLink = async () => {
     const prev = (editor.getAttributes("link").href as string | undefined) ?? "";
@@ -77,9 +135,17 @@ function Toolbar({ editor, onImage }: { editor: Editor; onImage: () => void }) {
       <Btn title="Undo" on={() => c().undo().run()}><Undo2 className={ic} /></Btn>
       <Btn title="Redo" on={() => c().redo().run()}><Redo2 className={ic} /></Btn>
       {sep}
-      <Btn title="Heading 1" active={editor.isActive("heading", { level: 1 })} on={() => c().toggleHeading({ level: 1 }).run()}><Heading1 className={ic} /></Btn>
-      <Btn title="Heading 2" active={editor.isActive("heading", { level: 2 })} on={() => c().toggleHeading({ level: 2 }).run()}><Heading2 className={ic} /></Btn>
-      <Btn title="Heading 3" active={editor.isActive("heading", { level: 3 })} on={() => c().toggleHeading({ level: 3 }).run()}><Heading3 className={ic} /></Btn>
+      <Pick
+        title="Text style"
+        testId="doc-style"
+        label={<span className="text-left">{editor.isActive("heading", { level: 1 }) ? "Title" : editor.isActive("heading", { level: 2 }) ? "Heading" : editor.isActive("heading", { level: 3 }) ? "Subheading" : "Normal text"}</span>}
+        items={[
+          { title: "Normal text", label: "Normal text", active: editor.isActive("paragraph"), on: () => c().setParagraph().run() },
+          { title: "Heading 1", label: <span className="font-display text-lg font-extrabold">Title</span>, active: editor.isActive("heading", { level: 1 }), on: () => c().setHeading({ level: 1 }).run() },
+          { title: "Heading 2", label: <span className="text-base font-bold">Heading</span>, active: editor.isActive("heading", { level: 2 }), on: () => c().setHeading({ level: 2 }).run() },
+          { title: "Heading 3", label: <span className="text-sm font-bold">Subheading</span>, active: editor.isActive("heading", { level: 3 }), on: () => c().setHeading({ level: 3 }).run() },
+        ]}
+      />
       {sep}
       <Btn title="Bold" active={editor.isActive("bold")} on={() => c().toggleBold().run()}><Bold className={ic} /></Btn>
       <Btn title="Italic" active={editor.isActive("italic")} on={() => c().toggleItalic().run()}><Italic className={ic} /></Btn>
@@ -88,18 +154,32 @@ function Toolbar({ editor, onImage }: { editor: Editor; onImage: () => void }) {
       <Btn title="Text color" active={colors} on={() => setColors((o) => !o)}><Palette className={ic} /></Btn>
       <Btn title="Link" active={editor.isActive("link")} on={setLink}><Link2 className={ic} /></Btn>
       {sep}
-      <Btn title="Align left" active={editor.isActive({ textAlign: "left" })} on={() => c().setTextAlign("left").run()}><AlignLeft className={ic} /></Btn>
-      <Btn title="Align center" active={editor.isActive({ textAlign: "center" })} on={() => c().setTextAlign("center").run()}><AlignCenter className={ic} /></Btn>
-      <Btn title="Align right" active={editor.isActive({ textAlign: "right" })} on={() => c().setTextAlign("right").run()}><AlignRight className={ic} /></Btn>
+      <Pick
+        title="Align"
+        testId="doc-align"
+        label={editor.isActive({ textAlign: "center" }) ? <AlignCenter className={ic} /> : editor.isActive({ textAlign: "right" }) ? <AlignRight className={ic} /> : <AlignLeft className={ic} />}
+        items={[
+          { title: "Align left", label: <><AlignLeft className={ic} /> Left</>, active: !editor.isActive({ textAlign: "center" }) && !editor.isActive({ textAlign: "right" }), on: () => c().setTextAlign("left").run() },
+          { title: "Align center", label: <><AlignCenter className={ic} /> Center</>, active: editor.isActive({ textAlign: "center" }), on: () => c().setTextAlign("center").run() },
+          { title: "Align right", label: <><AlignRight className={ic} /> Right</>, active: editor.isActive({ textAlign: "right" }), on: () => c().setTextAlign("right").run() },
+        ]}
+      />
       {sep}
       <Btn title="Bullet list" active={editor.isActive("bulletList")} on={() => c().toggleBulletList().run()}><List className={ic} /></Btn>
       <Btn title="Numbered list" active={editor.isActive("orderedList")} on={() => c().toggleOrderedList().run()}><ListOrdered className={ic} /></Btn>
       <Btn title="Checklist" active={editor.isActive("taskList")} on={() => c().toggleTaskList().run()} testId="doc-checklist"><ListChecks className={ic} /></Btn>
-      <Btn title="Quote" active={editor.isActive("blockquote")} on={() => c().toggleBlockquote().run()}><Quote className={ic} /></Btn>
-      <Btn title="Code block" active={editor.isActive("codeBlock")} on={() => c().toggleCodeBlock().run()}><Code2 className={ic} /></Btn>
       {sep}
-      <Btn title="Insert image" on={onImage} testId="doc-image"><ImagePlus className={ic} /></Btn>
-      <Btn title="Insert table" active={inTable} on={() => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()} testId="doc-table"><TableIcon className={ic} /></Btn>
+      <Pick
+        title="Insert"
+        testId="doc-insert"
+        label={<><Plus className={ic} /> Insert</>}
+        items={[
+          { title: "Insert image", testId: "doc-image", label: <><ImagePlus className={ic} /> Image</>, active: false, on: onImage },
+          { title: "Insert table", testId: "doc-table", label: <><TableIcon className={ic} /> Table</>, active: inTable, on: () => c().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+          { title: "Quote", label: <><Quote className={ic} /> Quote</>, active: editor.isActive("blockquote"), on: () => c().toggleBlockquote().run() },
+          { title: "Code block", label: <><Code2 className={ic} /> Code block</>, active: editor.isActive("codeBlock"), on: () => c().toggleCodeBlock().run() },
+        ]}
+      />
       {inTable && (
         <span className="flex items-center gap-0.5 text-xs" data-testid="table-tools">
           <button type="button" onMouseDown={keep} onClick={() => c().addRowAfter().run()} className={SMALL}>+ Row</button>
@@ -206,6 +286,7 @@ export function DocEditor({
     {
       extensions: [
         ...docExtensions(),
+        Placeholder.configure({ placeholder: readOnly ? "" : "Start writing… (pick a style like Title or Heading from the toolbar)" }),
         Collaboration.configure({ document: ydoc }),
         // Keep uid in the presence "user" field: the server uses it to credit edits on the receipt.
         CollaborationCaret.configure({ provider, user: { name: me.name, color: me.color, uid: me.uid } }),
@@ -258,7 +339,7 @@ export function DocEditor({
       <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-1.5 text-xs text-fg-subtle">
         <span className="flex items-center gap-1.5">
           <span className={`h-1.5 w-1.5 rounded-full ${synced ? "bg-green" : "bg-fg-subtle"}`} aria-hidden />
-          {uploadNote || (synced ? (readOnly ? "Read-only" : "Live, edits sync for everyone") : "Connecting…")}
+          {uploadNote || (synced ? (readOnly ? "Read-only" : "Saves as you type") : "Connecting…")}
         </span>
         <span className="flex gap-2">
           <button className="press inline-flex items-center gap-1 rounded px-1 hover:text-fg" onClick={() => exportPaper("pdf")} data-testid="doc-pdf">
