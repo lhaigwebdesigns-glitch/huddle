@@ -462,8 +462,10 @@ try {
 
   // Accounts (dev sign-in, local only): signing in lands on the dashboard, which lists your rooms.
   const erin = await (await browser.newContext()).newPage();
-  await erin.goto(`${BASE}/api/auth/login/dev?name=Erin&onboarded=1&tours=off&return=/`);
+  await erin.goto(`${BASE}/api/auth/login/dev?name=Erin&key=erin-${Date.now()}&onboarded=1&tours=off&return=/`);
   await erin.waitForURL(/\/dashboard$/);
+  await erin.getByTestId("dash-rooms").getByText("No rooms yet").waitFor();
+  ok((await erin.getByTestId("dash-greeting").innerText()) === "Welcome, Erin", "a brand-new account is greeted with Welcome, not Welcome back");
   await erin.getByPlaceholder("New room name").fill("Erin's room");
   await erin.getByRole("button", { name: /Start a room/ }).click();
   await erin.waitForURL(/\/r\/[A-Z0-9]{6}$/);

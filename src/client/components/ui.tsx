@@ -69,7 +69,7 @@ const THEMES: { id: ThemeChoice; label: string; Icon: typeof Sun }[] = [
 ];
 
 /** Segmented light / dark / system switch. */
-export function ThemeToggle({ className }: { className?: string }) {
+export function ThemeToggle({ className, labeled }: { className?: string; labeled?: boolean }) {
   const [theme, setTheme] = useTheme();
   return (
     <div role="radiogroup" aria-label="Theme" className={cx("inline-flex rounded-full border border-line p-0.5", className)}>
@@ -82,11 +82,12 @@ export function ThemeToggle({ className }: { className?: string }) {
           title={label}
           onClick={() => setTheme(id)}
           className={cx(
-            "press flex h-7 w-7 items-center justify-center rounded-full",
+            labeled ? "press flex h-8 items-center justify-center gap-1.5 rounded-full px-3 text-sm font-medium" : "press flex h-7 w-7 items-center justify-center rounded-full",
             theme === id ? "bg-surface-2 text-fg" : "text-fg-subtle hover:text-fg",
           )}
         >
           <Icon className="h-3.5 w-3.5" strokeWidth={2} />
+          {labeled && label}
         </button>
       ))}
     </div>

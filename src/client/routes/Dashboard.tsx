@@ -16,6 +16,7 @@ import {
   X,
 } from "lucide-react";
 import { needsWelcome, useAccount, signInUrl } from "../lib/account";
+import { greetName } from "../lib/greet";
 import { AppShell, tint, useMyClasses } from "../components/AppShell";
 import { ProfilePanel } from "../components/ProfilePanel";
 import { NewProjectDialog } from "../components/NewProjectDialog";
@@ -152,8 +153,8 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
           </div>
         ) : (
         <div className="mx-auto w-full max-w-4xl flex-1 px-4 pb-16 pt-8 sm:px-8 sm:pt-10">
-          <h1 className="rise font-display text-[2rem] font-extrabold leading-tight tracking-[-0.03em]">Welcome back, {account.user.name.split(" ")[0]}</h1>
-          <p className="rise rise-1 mt-1 text-[1.0625rem] text-fg-muted">Your rooms, wherever you left them.</p>
+          <h1 className="rise font-display text-[2rem] font-extrabold leading-tight tracking-[-0.03em]" data-testid="dash-greeting">{rooms?.length === 0 ? "Welcome" : "Welcome back"}, {greetName(account.user.name)}</h1>
+          <p className="rise rise-1 mt-1 text-[1.0625rem] text-fg-muted">{rooms?.length === 0 ? "Start a room for any group work, or join one with a code." : "Your rooms, wherever you left them."}</p>
           {account.user.role === "student" && <MyClassCards />}
 
           {/* Start a room */}
@@ -163,19 +164,21 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
               <Plus className="h-4 w-4" /> {busy ? "Starting…" : "Start a room"}
             </Button>
           </form>
-          <button
-            type="button"
-            onClick={() => setNewProject(true)}
-            className="press rise rise-2 mt-2 flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-fg-muted hover:bg-accent-soft hover:text-fg"
-            data-testid="new-project"
-          >
-            <GraduationCap className="h-4 w-4" /> One group project
-          </button>
-          {account.user.role !== "student" && (
-            <Link to="/classes" className="press rise rise-2 mt-1 flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-fg-muted hover:bg-accent-soft hover:text-fg" data-testid="classes-link">
-              <Users className="h-4 w-4" /> {account.user.role === "teacher" ? "Go to your classes" : "Teacher? Set up a class and assign projects to every group"}
-            </Link>
-          )}
+          <div className="rise rise-2 mt-2 flex flex-wrap items-center gap-x-1 gap-y-1">
+            <button
+              type="button"
+              onClick={() => setNewProject(true)}
+              className="press flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-fg-muted hover:bg-accent-soft hover:text-fg"
+              data-testid="new-project"
+            >
+              <GraduationCap className="h-4 w-4" /> One group project
+            </button>
+            {account.user.role !== "student" && (
+              <Link to="/classes" className="press flex w-fit items-center gap-1.5 rounded-lg px-2 py-1 text-sm text-fg-muted hover:bg-accent-soft hover:text-fg" data-testid="classes-link">
+                <Users className="h-4 w-4" /> {account.user.role === "teacher" ? "Go to your classes" : "Teacher? Set up a class"}
+              </Link>
+            )}
+          </div>
           {newProject && (
             <NewProjectDialog
               uid={account.user.uid}
@@ -188,20 +191,20 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
           )}
           {/* Mobile: join + filter */}
           <form onSubmit={join} className="mt-3 flex max-w-md gap-2">
-            <Input aria-label="Party code" placeholder="Have a code? K7Q-29F" value={code} onChange={(e) => setCode(formatCode(e.target.value))} className="font-mono" />
+            <Input aria-label="Party code" placeholder="Have a code? e.g. K7Q-29F" value={code} onChange={(e) => setCode(formatCode(e.target.value))} className="font-mono placeholder:font-sans" />
             <Button type="submit" variant="secondary">Join</Button>
           </form>
           {err && <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">{err}</p>}
 
-          <div className="mt-8 flex items-center gap-3">
+          <div className="mt-8 flex flex-wrap items-center gap-3">
             <div className="flex gap-1" role="tablist" aria-label="Which rooms">
               {(["all", "hosting", "joined"] as const).map((f) => (
-                <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)} className={`press rounded-full px-3.5 py-1.5 text-sm font-semibold ${filter === f ? "bg-fg text-bg" : "text-fg-muted hover:bg-accent-soft"}`}>
+                <button key={f} role="tab" aria-selected={filter === f} onClick={() => setFilter(f)} className={`press whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm font-semibold ${filter === f ? "bg-fg text-bg" : "text-fg-muted hover:bg-accent-soft"}`}>
                   {f === "all" ? "All" : f === "hosting" ? "Hosting" : "Joined"} <span className="tabular opacity-70">{counts[f]}</span>
                 </button>
               ))}
             </div>
-            <div className="relative ml-auto w-full max-w-56">
+            <div className="relative w-full sm:ml-auto sm:max-w-56">
               <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" />
               <Input aria-label="Search rooms" placeholder="Search" value={q} onChange={(e) => setQ(e.target.value)} className="h-9 pl-8" />
             </div>
@@ -219,7 +222,7 @@ export default function Dashboard({ view = "rooms" }: { view?: "rooms" | "profil
               <li className="px-6 py-14 text-center">
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-accent-soft"><Users className="h-5 w-5 text-fg-muted" /></div>
                 <p className="mt-3 font-medium">{rooms.length ? "No rooms match" : "No rooms yet"}</p>
-                <p className="mt-1 text-sm text-fg-muted">{rooms.length ? "Try another search or filter." : "Start one above and share the code with your friends."}</p>
+                <p className="mt-1 text-sm text-fg-muted">{rooms.length ? "Try another search or filter." : "Start one above, then share its code with your group."}</p>
               </li>
             )}
             {shown.map((r, i) => (
