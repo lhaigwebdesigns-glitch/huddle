@@ -1,7 +1,7 @@
 import { confirmDialog } from "./Dialogs";
 import { Modal } from "./Modal";
 import { useState } from "react";
-import { BookOpen, CalendarClock, Clock, Info, ListChecks, Lock, ReceiptText, RotateCcw, Send, Sparkles } from "lucide-react";
+import { CalendarClock, Clock, Info, ListChecks, Lock, ReceiptText, RotateCcw, Send, Sparkles } from "lucide-react";
 import { dueFor } from "../../shared/schedule";
 import type { ClientMsg, ProjectSettings, TaskBoard } from "../../shared/protocol";
 import { TaskPanel } from "./TaskPanel";
@@ -29,6 +29,7 @@ export function ProjectBar({
   send,
   onReceipt,
   onDetails,
+  solo = false,
   board,
   meUid,
 }: {
@@ -42,6 +43,8 @@ export function ProjectBar({
   onReceipt: (mode: "view" | "turnin") => void;
   /** Open the assignment details (instructions, rubric and rules) in the big modal. */
   onDetails: () => void;
+  /** A student's own room: tasks are steps, with no roles or owners. */
+  solo?: boolean;
 }) {
   const [tasksOpen, setTasksOpen] = useState(false);
   const tasks = board?.tasks ?? [];
@@ -53,10 +56,8 @@ export function ProjectBar({
   // Students can ask for more time on a timed assignment or once it's nearly (or already) due.
   const canAsk = !isHost && !project.turnedInAt && (!!project.schedule || (!!due && due - Date.now() < 2 * 86_400_000));
   return (
-    <div className="mx-auto mt-2 w-[calc(100%-1.5rem)] max-w-3xl rounded-2xl border border-line bg-surface" data-testid="project-bar">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5">
-        <BookOpen className="h-4 w-4 shrink-0 text-fg-muted" aria-hidden />
-        <span className="min-w-0 truncate text-sm font-semibold">{title}</span>
+    <div className="mx-auto mt-2 w-[calc(100%-1.5rem)] max-w-4xl rounded-2xl border border-line bg-surface" data-testid="project-bar" aria-label={`Assignment: ${title}`}>
+      <div className="flex flex-wrap items-center gap-x-2.5 gap-y-2 px-4 py-2.5">
         {due && (
           <span className={`flex items-center gap-1 text-xs tabular ${overdue ? "font-medium text-red-600 dark:text-red-400" : "text-fg-muted"}`} data-testid="due-label">
             <CalendarClock className="h-3.5 w-3.5" aria-hidden />
@@ -95,7 +96,7 @@ export function ProjectBar({
             data-tour="room-tasks"
           >
             <ListChecks className="h-3.5 w-3.5" aria-hidden />
-            Tasks {tasks.length > 0 && <span className="tabular">{tasks.filter((t) => t.done).length}/{tasks.length}</span>}
+            {solo ? "Steps" : "Tasks"} {tasks.length > 0 && <span className="tabular">{tasks.filter((t) => t.done).length}/{tasks.length}</span>}
             {mineLeft > 0 && <span className="rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-fg">{mineLeft} yours</span>}
           </button>
         )}
@@ -162,7 +163,7 @@ export function ProjectBar({
         ) : (
           <button
             onClick={() => onReceipt("turnin")}
-            className="press flex items-center gap-1 rounded-lg bg-primary px-3 py-1 text-xs font-semibold text-primary-fg hover:bg-primary-hover"
+            className="press flex items-center gap-1.5 rounded-lg bg-primary px-3.5 py-1.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover"
             data-testid="turn-in"
             data-tour="room-turnin"
           >
@@ -172,7 +173,7 @@ export function ProjectBar({
       </div>
       {tasksOpen && board && (
         <div className="max-h-[45vh] overflow-y-auto border-t border-line px-4 py-3">
-          <TaskPanel board={board} meUid={meUid} locked={!!project.turnedInAt || status?.open === false} send={send} />
+          <TaskPanel board={board} meUid={meUid} locked={!!project.turnedInAt || status?.open === false} send={send} solo={solo} />
         </div>
       )}
       {asking && <TimeRequestDialog closed={status?.open === false && status.reason === "schedule"} send={send} onClose={() => setAsking(false)} />}

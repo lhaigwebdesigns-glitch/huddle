@@ -152,6 +152,7 @@ export function Drive({
   onOpen,
   send,
   onImport,
+  aiFiles = true,
 }: {
   files: RoomFile[];
   openId: string | null;
@@ -161,6 +162,8 @@ export function Drive({
   send: (m: ClientMsg) => void;
   /** Bring in a Word or PowerPoint file as a new doc or slides. */
   onImport?: (file: File) => void;
+  /** The AI can make files here (it can't when it's off or tutor only). */
+  aiFiles?: boolean;
 }) {
   const [q, setQ] = useState("");
   const [newMenu, setNewMenu] = useState(false);
@@ -246,7 +249,7 @@ export function Drive({
         </label>
       )}
       <ul className="mt-1 max-h-64 space-y-px overflow-y-auto">
-        {files.length === 0 && <li className="px-2.5 py-1.5 text-[13px] leading-snug text-fg-subtle">No files yet. Make one, or ask the AI.</li>}
+        {files.length === 0 && <li className="px-2.5 py-1.5 text-[13px] leading-snug text-fg-subtle">{aiFiles ? "No files yet. Make one, or ask the AI." : "No files yet. Make one with New file."}</li>}
         {files.length > 0 && shown.length === 0 && <li className="px-2.5 py-1.5 text-[13px] text-fg-subtle">No files match “{q}”.</li>}
         {shown.map((f) => (
           <FileRow key={f.id} f={f} open={openId === f.id} canDelete={isHost || f.createdBy === myUid} onOpen={() => onOpen(f.id)} send={send} />

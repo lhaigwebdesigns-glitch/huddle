@@ -1034,6 +1034,7 @@ try {
   await kids[0].waitForURL(/\/r\/[A-Z0-9]{6}$/, { timeout: 20000 });
   ok(kids[0].url().endsWith(soloRooms[0]), "opening the link again goes back to the same room");
   ok(/^\/c\/[A-Z0-9]{6}$/.test((await kids[0].getByTestId("room-back").getAttribute("href")) ?? ""), "a class room has a clear way back to the class");
+  ok((await kids[0].getByTestId("party-code").count()) === 0 && (await kids[0].getByTestId("members").count()) === 0 && /all yours/.test(await kids[0].getByRole("log").innerText()), "a student's own room has no party code or members list, and says it's theirs");
   // A student who wasn't in the class yet joins from the assignment link and still gets a room.
   await park.goto(classUrl);
   await studentsTab();

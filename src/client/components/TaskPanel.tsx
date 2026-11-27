@@ -16,7 +16,7 @@ const dateInput = (ms?: number) => {
 const fromDateInput = (v: string) => fromLocalInput(v ? `${v}T23:59` : "");
 
 /** The group's task list and roles: who does what, and when it's due. */
-export function TaskPanel({ board, meUid, locked, send }: { board: TaskBoard; meUid: string; locked: boolean; send: (m: ClientMsg) => void }) {
+export function TaskPanel({ board, meUid, locked, send, solo = false }: { board: TaskBoard; meUid: string; locked: boolean; send: (m: ClientMsg) => void; solo?: boolean }) {
   const people = board.people ?? {};
   const uids = Object.keys(people).sort((a, b) => people[a].localeCompare(people[b]));
   const nameOf = (uid?: string) => (uid ? (people[uid] ?? "Someone") : "");
@@ -50,6 +50,7 @@ export function TaskPanel({ board, meUid, locked, send }: { board: TaskBoard; me
 
   return (
     <div className="space-y-4" data-testid="task-panel">
+      {!solo && (
       <section>
         <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">Roles</h3>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
@@ -90,12 +91,15 @@ export function TaskPanel({ board, meUid, locked, send }: { board: TaskBoard; me
           </form>
         </div>
       </section>
+      )}
 
       <section>
         <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">
-          Tasks {board.tasks.length > 0 && <span className="font-normal normal-case tracking-normal">({done} of {board.tasks.length} done)</span>}
+          {solo ? "Steps" : "Tasks"} {board.tasks.length > 0 && <span className="font-normal normal-case tracking-normal">({done} of {board.tasks.length} done)</span>}
         </h3>
-        {board.tasks.length === 0 && <p className="mt-1.5 text-sm text-fg-subtle">No tasks yet. Add them below, or ask the AI to split up the work.</p>}
+        {board.tasks.length === 0 && (
+          <p className="mt-1.5 text-sm text-fg-subtle">{solo ? "No steps yet. Break the work into steps you can check off as you go." : "No tasks yet. Add them below, or ask the AI to split up the work."}</p>
+        )}
         <ul className="mt-1.5 divide-y divide-line">
           {board.tasks.map((t) => {
             const overdue = !t.done && !!t.dueAt && t.dueAt < Date.now();
@@ -112,7 +116,7 @@ export function TaskPanel({ board, meUid, locked, send }: { board: TaskBoard; me
                 <span className={`min-w-0 flex-1 text-sm ${t.done ? "text-fg-subtle line-through" : ""}`} data-testid="task-title">
                   {t.title}
                 </span>
-                {ownerSelect(t.ownerUid ?? "", (v) => send({ t: "task_update", id: t.id, ownerUid: v || null }), `Owner of ${t.title}`)}
+                {!solo && ownerSelect(t.ownerUid ?? "", (v) => send({ t: "task_update", id: t.id, ownerUid: v || null }), `Owner of ${t.title}`)}
                 <DateField
                   compact
                   label={`Due date for ${t.title}`}
@@ -141,12 +145,12 @@ export function TaskPanel({ board, meUid, locked, send }: { board: TaskBoard; me
               value={title}
               maxLength={TASK_LIMITS.title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Add a task (e.g. Find 3 sources)"
+              placeholder={solo ? "Add a step (e.g. Write my thesis)" : "Add a task (e.g. Find 3 sources)"}
               aria-label="New task"
               className="min-w-[10rem] flex-1 rounded-lg border border-line-strong bg-transparent px-2.5 py-1 text-sm outline-none focus:border-fg/40"
               data-testid="new-task"
             />
-            {ownerSelect(owner, setOwner, "Owner of the new task")}
+            {!solo && ownerSelect(owner, setOwner, "Owner of the new task")}
             <button type="submit" className="press flex items-center gap-1 rounded-lg bg-primary px-2.5 py-1 text-xs font-medium text-primary-fg hover:bg-primary-hover" data-testid="add-task">
               <Plus className="h-3.5 w-3.5" /> Add
             </button>
