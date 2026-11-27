@@ -201,7 +201,7 @@ export const TOOL_DEFS: ToolDef[] = [
     function: {
       name: "create_form",
       description:
-        "Create a form (like Google Forms) with a public link anyone can fill in. Question: {type: short|long|choice|checkbox|scale|date, title, required, options (for choice/checkbox), max (for scale, default 5)}.",
+        "Create a form (like Google Forms) with a public link anyone can fill in. Question: {type: short|long|choice|checkbox|dropdown|scale|date, title, required, options (for choice/checkbox/dropdown; use dropdown for long lists like states or class periods), max (for scale, default 5)}.",
       parameters: {
         type: "object",
         properties: { title: { type: "string" }, description: { type: "string" }, questions: { type: "array", items: { type: "object" } } },

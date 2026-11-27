@@ -2,17 +2,18 @@ import * as Y from "yjs";
 
 /**
  * Form storage:
- *   Y.Array "questions": Y.Map { id, type, title, required, options: string[], max }
+ *   Y.Array "questions": Y.Map { id, type, title, required, options: string[], max, image }
  *   Y.Map "formMeta":    description, accepting (bool)
  *   Y.Array "responses": { id, at, answers: { [questionId]: string | string[] | number } }
  */
-export const QUESTION_TYPES = ["short", "long", "choice", "checkbox", "scale", "date"] as const;
+export const QUESTION_TYPES = ["short", "long", "choice", "checkbox", "dropdown", "scale", "date"] as const;
 export type QuestionType = (typeof QUESTION_TYPES)[number];
 export const QUESTION_LABEL: Record<QuestionType, string> = {
   short: "Short answer",
   long: "Paragraph",
   choice: "Multiple choice",
   checkbox: "Checkboxes",
+  dropdown: "Dropdown",
   scale: "Linear scale",
   date: "Date",
 };
@@ -24,6 +25,8 @@ export interface Question {
   required?: boolean;
   options?: string[];
   max?: number; // scale: 1..max
+  /** A picture shown with the question (an uploaded room file, so it has its own URL). */
+  image?: string;
 }
 
 export interface FormResponse {
@@ -45,7 +48,10 @@ export const questionsOf = (doc: Y.Doc) => doc.getArray<Y.Map<any>>("questions")
 export const formMetaOf = (doc: Y.Doc) => doc.getMap<any>("formMeta");
 export const responsesOf = (doc: Y.Doc) => doc.getArray<FormResponse>("responses");
 
-const hasOptions = (t: QuestionType) => t === "choice" || t === "checkbox";
+/** Question types that offer a list of options. */
+export const hasOptions = (t: QuestionType) => t === "choice" || t === "checkbox" || t === "dropdown";
+/** Only Cairn's own uploaded files: a form is public, so it never loads pictures from other sites. */
+export const safeImage = (u: unknown) => (typeof u === "string" && /^\/api\/rooms\/[A-Z0-9]{6}\/blobs\/[a-z0-9]{16}$/.test(u) ? u : undefined);
 
 export function makeQuestion(q: Partial<Question>): Y.Map<any> {
   const m = new Y.Map<any>();
@@ -56,6 +62,8 @@ export function makeQuestion(q: Partial<Question>): Y.Map<any> {
   m.set("required", !!q.required);
   m.set("options", hasOptions(type) ? (q.options?.length ? q.options : ["Option 1", "Option 2"]).map((o) => String(o).slice(0, 120)).slice(0, 20) : []);
   if (type === "scale") m.set("max", Math.max(2, Math.min(10, Math.round(Number(q.max) || 5))));
+  const image = safeImage(q.image);
+  if (image) m.set("image", image);
   return m;
 }
 
@@ -67,6 +75,7 @@ export function readQuestion(m: Y.Map<any>): Question {
     required: !!m.get("required"),
     options: m.get("options") ?? [],
     max: m.get("max") ?? 5,
+    image: safeImage(m.get("image")),
   };
 }
 
@@ -97,6 +106,7 @@ export function validateAnswers(questions: Question[], input: unknown): { ok: tr
         answers[q.id] = String(v).slice(0, q.type === "short" ? 500 : 5000);
         break;
       case "choice":
+      case "dropdown":
         if (!q.options?.includes(String(v))) return { ok: false, error: `Pick one of the options for "${q.title}".` };
         answers[q.id] = String(v);
         break;
@@ -152,7 +162,7 @@ export function summarize(doc: Y.Doc): string {
   const lines = [`${rs.length} response${rs.length === 1 ? "" : "s"}.`];
   for (const q of qs) {
     const vals = rs.map((r) => r.answers[q.id]).filter((v) => v !== undefined);
-    if (q.type === "choice" || q.type === "checkbox") {
+    if (hasOptions(q.type)) {
       const counts = new Map<string, number>((q.options ?? []).map((o) => [o, 0]));
       for (const v of vals) for (const o of Array.isArray(v) ? v : [v]) counts.set(String(o), (counts.get(String(o)) ?? 0) + 1);
       lines.push(`${q.title}: ${[...counts].map(([o, n]) => `${o} ${n}`).join(", ")}`);

@@ -1,7 +1,9 @@
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import { TableKit } from "@tiptap/extension-table";
-import { Color, TextStyle } from "@tiptap/extension-text-style";
+import { Color, FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
+import { CharacterCount } from "@tiptap/extensions";
+import { ParagraphFormat } from "./paragraphFormat";
 import Highlight from "@tiptap/extension-highlight";
 import { TaskItem, TaskList } from "@tiptap/extension-list";
 import TextAlign from "@tiptap/extension-text-align";
@@ -14,6 +16,10 @@ export function docExtensions() {
     TableKit.configure({ table: { resizable: false } }),
     TextStyle,
     Color,
+    FontFamily,
+    FontSize,
+    ParagraphFormat,
+    CharacterCount,
     Highlight,
     TaskList,
     TaskItem.configure({ nested: true }),
