@@ -309,6 +309,7 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
         send={send}
         onImport={state.settings.project?.turnedInAt ? undefined : startImport}
         aiFiles={!state.settings.project || state.settings.project.ai === "full"}
+        defaultTitle={classLink ? state.settings.title.replace(` · ${classLink.group}`, "") : undefined}
         onOpen={(id) => {
           setOpenFile(id);
           setShowSidebar(false);

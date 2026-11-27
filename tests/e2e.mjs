@@ -1372,7 +1372,7 @@ try {
   await park.getByTestId("return-one").click();
   await park.getByTestId("grade-returned").waitFor();
   await benG.goto(classLink);
-  const benRubric = benG.getByTestId("student-done").getByTestId("assignment-rubric");
+  const benRubric = benG.getByTestId("student-done").getByTestId("student-assignment").filter({ hasText: "Grid response" }).getByTestId("assignment-rubric");
   await benRubric.waitFor({ timeout: 15000 });
   ok(/Focus\s*You've got it\s*3\/3/.test(await benRubric.innerText()) && /Quotations\s*Almost there\s*2\/3/.test(await benRubric.innerText()), "once returned, the student sees which box they landed in on each row");
 
@@ -1457,6 +1457,7 @@ try {
   const doc1 = ed1.getByTestId("doc-editor");
   await doc1.getByText("This doc was written by the").waitFor({ timeout: 15000 });
   await ed1.evaluate(() => document.querySelector('[data-testid="doc-editor"]').editor.commands.focus("end"));
+  await ed1.getByTestId("doc-insert").click();
   await ed1.getByTestId("doc-table").click();
   await doc1.locator("table").waitFor();
   ok((await doc1.locator("table th").count()) === 3, "a table with a header row can be added to a doc");

@@ -427,3 +427,15 @@ input, textarea { caret-color: var(--fg); }
 .settings-cols { column-gap: 48px; }
 @media (min-width: 1024px) { .settings-cols { columns: 2; } }
 .settings-cols > *, .settings-cols > fieldset > * { break-inside: avoid; margin-bottom: 28px; }
+
+/* Doc tables */
+.prose .tableWrapper { overflow-x: auto; margin: 1.25em 0; }
+.prose table { border-collapse: collapse; width: 100%; margin: 0; table-layout: fixed; }
+.prose table td,
+.prose table th { border: 1px solid var(--color-line-strong); padding: 0.45em 0.7em; vertical-align: top; min-width: 3em; }
+.prose table th { background: var(--color-surface-2); font-weight: 600; text-align: left; }
+.prose table td > p,
+.prose table th > p { margin: 0; }
+.prose table .selectedCell { background: color-mix(in srgb, var(--color-primary) 18%, transparent); }
+/* Empty doc hint */
+.ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--color-fg-subtle); float: left; height: 0; pointer-events: none; }
