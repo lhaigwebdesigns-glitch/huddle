@@ -13,9 +13,11 @@ const newContextRaw = browser.newContext.bind(browser);
 // stay signed out. `as` is the account name, `email` the school email (for class lists).
 let testers = 0;
 browser.newContext = async (opts = {}) => {
-  const { askAge, as, email, signedOut, fresh, ...rest } = opts;
+  const { askAge, as, email, signedOut, fresh, brief, ...rest } = opts;
   const ctx = await newContextRaw(rest);
   if (!askAge) await ctx.addInitScript(() => localStorage.setItem("huddle.age13", "1"));
+  // The assignment brief pops up the first time a student opens a room; only the test about it sees it.
+  if (!brief) await ctx.addInitScript(() => localStorage.setItem("cairn.brief.seen", "*"));
   if (!signedOut) {
     const uid = crypto.randomUUID();
     await ctx.addInitScript((u) => {
@@ -580,13 +582,27 @@ try {
   });
   await teach.goto(`${BASE}/r/${projCode}`);
   await teach.getByTestId("project-bar").waitFor();
-  const sam = await (await browser.newContext({ viewport: { width: 1400, height: 900 }, as: "Sam" })).newPage();
+  const sam = await (await browser.newContext({ viewport: { width: 1400, height: 900 }, as: "Sam", brief: true })).newPage();
   await sam.goto(`${BASE}/r/${projCode}`);
+  // The first time in, the assignment pops up: what to do, how it's graded, and the rules.
+  const brief = sam.getByTestId("assignment-brief");
+  await brief.getByTestId("brief-instructions").getByText("Make 5 slides on one cause of WWI.").waitFor();
+  ok(
+    (await brief.getByTestId("brief-rubric").innerText()).includes("50 pts") &&
+      (await brief.getByTestId("brief-ai").innerText()).includes("No AI") &&
+      (await brief.getByTestId("brief-paste").count()) === 1,
+    "the first time a student opens an assignment, it pops up with the task, the rubric and the rules",
+  );
+  await brief.getByTestId("brief-start").click();
+  await brief.waitFor({ state: "detached" });
+  await sam.reload();
   await sam.getByTestId("ai-chip").getByText("AI off").waitFor();
-  ok(true, "a student sees the project bar with the AI setting");
+  ok((await sam.getByTestId("assignment-brief").count()) === 0, "a student sees the project bar with the AI setting, and the brief only pops up the first time");
   await sam.getByTestId("project-details-toggle").click();
-  await sam.getByTestId("project-details").getByText("Sources 50%").waitFor();
-  ok(true, "instructions and rubric show in the project bar");
+  await sam.getByTestId("assignment-brief").getByText("Sources").waitFor();
+  await sam.keyboard.press("Escape");
+  await sam.getByTestId("assignment-brief").waitFor({ state: "detached" });
+  ok(true, "Instructions & rubric opens the assignment again");
 
   await sam.getByTestId("composer").fill("@ai write our slides");
   await sam.getByTestId("composer").press("Enter");

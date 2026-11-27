@@ -13,6 +13,7 @@ import { SettingsDialog } from "../components/SettingsDialog";
 import { PersonAvatar } from "../components/PersonAvatar";
 import { FeedbackDialog } from "../components/FeedbackDialog";
 import { ProjectBar } from "../components/ProjectBar";
+import { AssignmentBrief, briefSeen, markBriefSeen } from "../components/AssignmentBrief";
 import { ReceiptDialog } from "../components/ReceiptDialog";
 import { usePasteGuard } from "../lib/pasteGuard";
 import { ArrowLeft, ArrowRight, Check, Cloud, Copy, Cpu, DoorOpen, Link2, Menu, MessageSquare, Settings, Trash2, X } from "lucide-react";
@@ -152,6 +153,14 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
   const [showSettings, setShowSettings] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
   const [receiptMode, setReceiptMode] = useState<"view" | "turnin" | null>(null);
+  const [briefOpen, setBriefOpen] = useState(false);
+  // The first time a student opens an assignment, it tells them what it is and the rules.
+  const briefFor = state.settings?.project && state.you && state.settings.hostId !== state.you.uid ? code : null;
+  useEffect(() => {
+    if (!briefFor || briefSeen(briefFor)) return;
+    markBriefSeen(briefFor);
+    setBriefOpen(true);
+  }, [briefFor]);
   const [showSidebar, setShowSidebar] = useState(false);
   const sidebarHidden = useSidebarHidden();
   const [copied, setCopied] = useState(false);
@@ -448,7 +457,16 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
         )}
         {state.settings.worksheet && <WorksheetBanner ws={state.settings.worksheet} />}
         {state.settings.project && (
-          <ProjectBar project={state.settings.project} title={state.settings.title} isHost={isHost} send={send} onReceipt={setReceiptMode} board={state.board} meUid={state.you.uid} />
+          <ProjectBar project={state.settings.project} title={state.settings.title} isHost={isHost} send={send} onReceipt={setReceiptMode} onDetails={() => setBriefOpen(true)} board={state.board} meUid={state.you.uid} />
+        )}
+        {briefOpen && state.settings.project && (
+          <AssignmentBrief
+            project={state.settings.project}
+            title={state.settings.classLink ? state.settings.title.replace(` · ${state.settings.classLink.group}`, "") : state.settings.title}
+            group={state.settings.classLink?.group}
+            solo={!!state.settings.classLink && (!!state.settings.classLink.solo || state.settings.classLink.group === state.you.name)}
+            onClose={() => setBriefOpen(false)}
+          />
         )}
         <Chat
           messages={state.messages}

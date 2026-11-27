@@ -124,7 +124,7 @@ export interface RoomSettings {
   project?: ProjectSettings;
   /** Set when the room is a group's room in a teacher's class. */
   /** classCode: the class page students get back to (rooms made before it was added have none). */
-  classLink?: { classId: string; assignmentId: string; group: string; classCode?: string };
+  classLink?: { classId: string; assignmentId: string; group: string; classCode?: string; solo?: boolean };
   /**
    * Set when the room is an assignment's worksheet: only the teacher comes in. Every file in it
    * except the answer key is copied into each student's (or group's) room when they first open it.

@@ -1131,7 +1131,7 @@ export class Room extends Server<Env> {
 
   // ---------- RPC for the teacher's class pages (counts and turned-in work only, never the chat) ----------
 
-  async setClassLink(link: { classId: string; assignmentId: string; group: string; classCode?: string }) {
+  async setClassLink(link: { classId: string; assignmentId: string; group: string; classCode?: string; solo?: boolean }) {
     if (!this.settings) return { ok: false };
     this.settings.classLink = link;
     await this.ctx.storage.put("settings", this.settings);
