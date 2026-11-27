@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { gridToText, PROJECT_LIMITS, type AiSetting, type Member, type ProjectSettings, type RubricGrid } from "../../shared/protocol";
 import { newGrid, RubricGridEditor } from "./RubricGrid";
+import { parseRubricGrid } from "../../shared/rubricPaste";
 import { DAY_NAMES, type Schedule } from "../../shared/schedule";
 import { DateTimeField, TimeField } from "./DateTimePicker";
 
@@ -132,6 +133,8 @@ export function ProjectEditor({
   compact?: boolean;
 }) {
   const set = (p: Partial<ProjectDraft>) => onChange({ ...value, ...p });
+  // The text a teacher pasted that we turned into a grid (so "Keep it as text" can put it back).
+  const [pasted, setPasted] = useState<string | null>(null);
   const students = members.filter((m) => m.uid !== hostId);
   return (
     <div className="space-y-4" data-testid="project-editor">
@@ -188,6 +191,22 @@ export function ProjectEditor({
         </div>
         {value.rubricGrid ? (
           <>
+            {pasted !== null && (
+              <p className="mb-2 mt-1 flex flex-wrap items-center gap-x-2 rounded-xl bg-mint/50 px-3 py-2 text-sm dark:bg-mint/10" role="status" data-testid="rubric-pasted">
+                We turned the rubric you pasted into a grid. Check it below.
+                <button
+                  type="button"
+                  onClick={() => {
+                    set({ rubricGrid: null, rubric: pasted });
+                    setPasted(null);
+                  }}
+                  className="press font-semibold underline underline-offset-2"
+                  data-testid="rubric-paste-undo"
+                >
+                  Keep it as text
+                </button>
+              </p>
+            )}
             <p className="mb-3 mt-1 text-xs text-fg-subtle">Students see this grid when they open the assignment. When you grade, you click one box per row.</p>
             <RubricGridEditor value={value.rubricGrid} onChange={(g) => set({ rubricGrid: g })} />
           </>
@@ -197,10 +216,34 @@ export function ProjectEditor({
             value={value.rubric}
             maxLength={PROJECT_LIMITS.rubric}
             rows={3}
-            placeholder="How it will be graded (e.g. Research 40%, Slides 30%, Presentation 30%)."
+            placeholder="How it will be graded (e.g. Research 40%, Slides 30%, Presentation 30%). Paste a rubric table or a Google Classroom rubric to make it a grid."
             onChange={(e) => set({ rubric: e.target.value })}
+            onPaste={(e) => {
+              // A pasted rubric that's really a grid (a table, or copied from Google Classroom) becomes one.
+              const text = e.clipboardData.getData("text/plain");
+              const grid = parseRubricGrid(text);
+              if (!grid) return;
+              e.preventDefault();
+              setPasted(text);
+              set({ rubricGrid: grid, rubric: gridToText(grid) });
+            }}
             className={FIELD}
+            data-testid="rubric-text"
           />
+        )}
+        {!value.rubricGrid && parseRubricGrid(value.rubric) && (
+          <button
+            type="button"
+            onClick={() => {
+              const grid = parseRubricGrid(value.rubric)!;
+              setPasted(value.rubric);
+              set({ rubricGrid: grid, rubric: gridToText(grid) });
+            }}
+            className="press mt-1.5 text-sm font-semibold text-fg-muted underline underline-offset-2 hover:text-fg"
+            data-testid="rubric-to-grid"
+          >
+            This looks like a rubric grid. Turn it into one
+          </button>
         )}
       </div>
       </>
