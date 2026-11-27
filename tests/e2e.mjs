@@ -411,6 +411,10 @@ try {
   await bob.getByRole("button", { name: /Room settings/ }).click();
   await bob.getByTestId("memory-list").getByText("The bake sale deadline is Friday.").waitFor();
   ok(true, "room memory saved and visible to everyone");
+  ok(
+    (await bob.getByTestId("settings-who").innerText()).includes("Only the host") && (await bob.getByTestId("toggle-memory").count()) === 0 && (await bob.getByTestId("settings-advanced").count()) === 0,
+    "someone who isn't the host sees who can change the room, not a wall of locked settings",
+  );
   await bob.getByRole("button", { name: "Close settings" }).click();
 
   // Uploads: a CSV becomes searchable knowledge and opens as a sheet; an image shows inline.
