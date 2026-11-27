@@ -57,6 +57,25 @@ function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: (
           Save & next
         </Button>
         {status && <span className="text-xs text-fg-subtle" role="status">{status}</span>}
+        {initial &&
+          (initial.returnedAt ? (
+            <span className="rounded-full bg-mint px-2 py-0.5 text-[11px] font-semibold text-ink dark:bg-mint/15 dark:text-mint" data-testid="grade-returned">
+              Returned: they see it
+            </span>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={async () => {
+                const d = await api(`/api/classes/${view.class.id}/assignments/${view.assignment.id}/return`, { method: "POST", body: JSON.stringify({ room: view.group.roomCode }) });
+                if (!d.error) onSaved();
+              }}
+              title="Students only see a grade once you return it"
+              data-testid="return-one"
+            >
+              Return {view.assignment.mode === "solo" ? "to the student" : "to the group"}
+            </Button>
+          ))}
       </div>
       <ul className="mt-3 space-y-2">
         {rows.map((r, i) => (
@@ -257,9 +276,9 @@ export default function Grading() {
               onClick={async () => {
                 if (
                   !(await confirmDialog({
-                    title: "Send it back?",
+                    title: "Reopen it for changes?",
                     message: "Their files unlock so they can make changes, and they'll turn it in again.",
-                    confirmLabel: "Send back",
+                    confirmLabel: "Reopen",
                   }))
                 )
                   return;
@@ -269,7 +288,7 @@ export default function Grading() {
               className="press flex items-center gap-1 rounded-lg border border-line-strong px-2.5 py-1 text-xs font-medium hover:bg-surface-2"
               data-testid="teacher-reopen"
             >
-              <RotateCcw className="h-3.5 w-3.5" /> Send back
+              <RotateCcw className="h-3.5 w-3.5" /> Reopen for changes
             </button>
           )}
           <button disabled={!prev} onClick={() => prev && nav(`/classes/${id}/a/${aid}/${prev}`)} className="press rounded-lg p-1.5 text-fg-muted hover:bg-surface-2 disabled:opacity-30" aria-label="Previous group">
@@ -357,7 +376,7 @@ export default function Grading() {
                 <Link to={`/classes/${id}`} className="font-medium underline underline-offset-2">
                   Back to the class
                 </Link>{" "}
-                to download the grades.
+                to return the grades and download them.
               </div>
             )}
             <RubricGrader key={room} view={view} onSaved={load} onNext={() => void goNext()} />

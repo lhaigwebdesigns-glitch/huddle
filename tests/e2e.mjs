@@ -828,6 +828,13 @@ try {
   const studentMakesClass = await kids[0].evaluate(async () => (await fetch("/api/classes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Sneaky class" }) })).status);
   const studentPicksTeacher = await kids[0].evaluate(async () => (await fetch("/api/auth/role", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ role: "teacher" }) })).status);
   ok(studentMakesClass === 403 && studentPicksTeacher === 409, "a student account can't make classes or switch itself to a teacher account");
+  // A wrong code isn't a dead end: the student can type the right one.
+  await kids[0].goto(`${BASE}/c/ZZZZZZ`);
+  await kids[0].getByTestId("class-not-found").getByText("No class with that code").waitFor();
+  await kids[0].getByTestId("retry-code").fill(classLink.split("/c/")[1]);
+  await kids[0].getByTestId("retry-join").click();
+  await kids[0].getByText("You're in this class").waitFor();
+  ok(true, "a wrong class code says so and lets the student type the right one");
   await kids[0].goto(classLink);
   await kids[0].getByText("You're in this class").waitFor();
   await park.reload();
@@ -928,6 +935,17 @@ try {
   await park.getByRole("status").getByText("Saved").waitFor();
   await first.getByTestId("unsubmit").waitFor({ state: "detached", timeout: 10000 });
   ok((await first.getByTestId("turned-in").count()) === 1, "once it's graded, the student can't unsubmit it any more");
+  // A saved grade is private until the teacher returns it; then the student sees it and the comment.
+  const firstClass = await first.context().newPage();
+  await firstClass.goto(classLink);
+  await firstClass.getByTestId("student-done").waitFor();
+  ok((await firstClass.getByTestId("assignment-comment").count()) === 0 && (await firstClass.getByTestId("assignment-grade").count()) === 0, "students don't see a grade until the teacher returns it");
+  await park.getByTestId("return-one").click();
+  await park.getByTestId("grade-returned").waitFor();
+  await firstClass.reload();
+  await firstClass.getByTestId("student-done").getByTestId("assignment-comment").getByText("Great sources.").waitFor({ timeout: 15000 });
+  ok(/\/ 100/.test(await firstClass.getByTestId("student-done").getByTestId("assignment-grade").first().innerText()), "the student sees their grade and the teacher's comment on the class page");
+  await firstClass.close();
   await park.goto(classUrl);
   await park.getByTestId("assignment-more").first().click();
   const href = await park.getByTestId("export-csv").getAttribute("href");
@@ -935,8 +953,8 @@ try {
   const text = await park.evaluate(async (u) => (await fetch(u)).text(), href);
   const lines = text.trim().split(/\r\n/);
   ok(lines.length === 5 && lines.some((l) => /,90,100,Great sources\.$/.test(l)) && lines.some((l) => /,100,100,100,Great sources\.$/.test(l)), "the grades CSV has every student, with per-student grades");
-  await park.getByTestId("group-status").getByText("Graded").waitFor();
-  ok(true, "graded groups show as Graded");
+  await park.getByTestId("group-status").getByText("Returned").waitFor();
+  ok(true, "returned groups show as Returned");
   await park.goto(`${BASE}/classes`);
   await park.getByTestId("all-caught-up").waitFor({ timeout: 20000 });
   ok((await park.getByTestId("getting-started").count()) === 0, "once everything is graded, Today says you are all caught up and the getting-started steps go away");
@@ -1067,6 +1085,12 @@ try {
   await park.getByTestId("save-next").click();
   await park.getByTestId("all-graded").waitFor();
   ok(true, "Start grading → Save & next walks through every turned-in student, then says all are graded");
+  // Return them all at once from the class page.
+  await park.goto(classUrl);
+  await soloSection.getByTestId("return-grades").click();
+  await park.getByTestId("dialog-confirm").click();
+  await soloSection.getByTestId("return-grades").waitFor({ state: "detached" });
+  ok((await soloSection.getByTestId("student-status").getByText("Returned").count()) === 2, "Return grades sends every graded one back to the students at once");
   await eve.close();
 
   // ---------- Worksheets: a starter every student gets a copy of, and an answer key only the teacher sees ----------

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { ArrowRight, BookOpen, Check } from "lucide-react";
 import { ageConfirmed, confirmAge, getIdentity, setName } from "../lib/identity";
 import { AgeCheck } from "./RoomPage";
-import { signInUrl, useAccount } from "../lib/account";
+import { signInUrl, signOut, useAccount } from "../lib/account";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
 import { PERI, RockArt } from "../components/Rocks";
 import { HumanCheck, SignInGate } from "../components/SignInGate";
@@ -15,6 +15,78 @@ import { assignmentPath, type AssignmentMode, type StudentClassView } from "../.
 type AssignmentInfo = { className: string; title: string; mode: AssignmentMode; dueAt?: number };
 
 const dueText = (ms?: number) => (ms ? ` · due ${new Date(ms).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}` : "");
+
+type StudentAssignment = StudentClassView["assignments"][number];
+const shortDate = (ms: number) => new Date(ms).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+/** One assignment on the student's class page: where it stands, when it's due, and (once graded) the grade and comment. */
+function AssignmentRow({ x, code, isNext, teacher, tour }: { x: StudentAssignment; code: string; isNext: boolean; teacher?: string; tour: boolean }) {
+  const late = !x.turnedIn && !!x.dueAt && x.dueAt < Date.now();
+  const graded = !!x.grade;
+  const status = graded ? "Graded" : x.turnedIn ? "Turned in" : late ? "Late" : x.roomCode ? "Working" : "Not started";
+  const chip = graded
+    ? "bg-primary text-ink"
+    : x.turnedIn
+      ? "bg-mint text-ink dark:bg-mint/15 dark:text-mint"
+      : late
+        ? "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300"
+        : x.roomCode
+          ? "bg-peri/35 text-ink dark:bg-peri/20 dark:text-fg"
+          : "bg-surface-2 text-fg-muted";
+  return (
+    <li
+      className={`grid grid-cols-[minmax(0,1fr)] items-center gap-x-5 gap-y-3 rounded-[20px] border px-5 py-4 sm:grid-cols-[auto_minmax(0,1fr)_auto] ${isNext ? "border-fg/20 bg-surface shadow-[0_10px_30px_-18px_rgba(10,16,13,0.35)]" : "border-line"}`}
+      data-testid="student-assignment"
+    >
+      <BookOpen className="hidden h-5 w-5 text-fg-muted sm:block" aria-hidden="true" />
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="text-[1.05rem] font-semibold">{x.title}</span>
+          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${chip}`} data-testid="assignment-status">
+            {status}
+          </span>
+          {isNext && !late && <span className="text-xs font-semibold text-fg-muted">Up next</span>}
+        </div>
+        <p className="mt-0.5 text-sm text-fg-subtle">
+          {x.mode === "solo" ? "Your own work" : (x.groupName ?? "Group project")}
+          {x.dueAt && (
+            <span className={late ? "font-medium text-red-700 dark:text-red-300" : ""}>
+              {" · "}
+              {late ? "was due " : "due "}
+              {shortDate(x.dueAt)}
+            </span>
+          )}
+        </p>
+      </div>
+      <div className="flex items-center gap-4 sm:justify-end">
+        {x.grade && x.grade.score !== null && (
+          <span className="font-display text-xl font-extrabold tabular-nums" data-testid="assignment-grade">
+            {x.grade.score}
+            <span className="text-sm font-semibold text-fg-subtle"> / {x.grade.max}</span>
+          </span>
+        )}
+        <Link
+          to={assignmentPath(code, x.id)}
+          className={
+            isNext
+              ? "ledge-btn h-11 flex-1 px-5 text-[15px] sm:flex-none"
+              : "press inline-flex h-10 flex-1 items-center justify-center gap-1.5 rounded-xl border border-line-strong px-4 text-sm font-semibold hover:bg-surface-2 sm:flex-none"
+          }
+          data-testid="open-group-room"
+          data-tour={tour ? "open-work" : undefined}
+        >
+          {x.turnedIn ? "View" : x.mode === "solo" ? "Open your work" : "Open your group's room"} <ArrowRight className="h-4 w-4" />
+        </Link>
+      </div>
+      {x.grade?.comment && (
+        <blockquote className="rounded-xl bg-surface-2 px-4 py-3 text-[15px] sm:col-start-2 sm:col-end-4" data-testid="assignment-comment">
+          <span className="block text-xs font-semibold text-fg-subtle">{teacher ? `${teacher} wrote` : "Your teacher wrote"}</span>
+          <span className="mt-0.5 block whitespace-pre-wrap">{x.grade.comment}</span>
+        </blockquote>
+      )}
+    </li>
+  );
+}
 
 /**
  * /c/:code: a student joins a class with its code, then sees their assignments.
@@ -36,6 +108,7 @@ export default function StudentClass() {
   const account = useAccount();
   const signedIn = !!account.user;
   const [human, setHuman] = useState("");
+  const [retry, setRetry] = useState("");
   const opened = useRef(false);
   // The class page tour: once they're in and there's something to open.
   useAutoTour("student-class", !aid && !!view?.joined && view.assignments.length > 0, account.user?.tours ?? [], signedIn);
@@ -115,8 +188,50 @@ export default function StudentClass() {
       />
     );
 
+  // Signed in with a personal account by mistake? Switch to the school one.
+  const switchAccount = account.user?.email ? (
+    <p className="mt-4 text-sm text-fg-subtle">
+      Signed in as {account.user.email}.{" "}
+      <button
+        type="button"
+        onClick={async () => {
+          await signOut();
+          location.reload();
+        }}
+        className="font-semibold text-fg-muted underline underline-offset-2 hover:text-fg"
+        data-testid="switch-account"
+      >
+        Use a different account
+      </button>
+    </p>
+  ) : null;
+
   const card = (() => {
-    if (err && !view) return <p className="text-sm text-fg-muted">{err}</p>;
+    if (err && !view)
+      return (
+        <div className="text-center" data-testid="class-not-found">
+          <RockArt className="mx-auto h-20 w-20" body={PERI} pose="hold" prop="book" />
+          <h1 className="mt-2 text-2xl font-extrabold tracking-tight">{err.includes("doesn't match") ? "No class with that code" : "Couldn't open this class"}</h1>
+          <p className="mt-2 text-[15px] text-fg-muted">{err.includes("doesn't match") ? "Check the code with your teacher. It's 6 letters and numbers." : err}</p>
+          <form
+            className="mt-5 flex gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const next = normalizeCode(retry);
+              if (next.length === 6) {
+                setErr("");
+                setView(null);
+                nav(`/c/${next}`);
+              }
+            }}
+          >
+            <Input value={retry} onChange={(e) => setRetry(e.target.value)} placeholder="Class code" aria-label="Class code" maxLength={8} className="h-11 flex-1 text-center font-mono uppercase tracking-[0.2em]" data-testid="retry-code" />
+            <Button size="lg" disabled={normalizeCode(retry).length !== 6} data-testid="retry-join">
+              Go <ArrowRight className="h-4 w-4" />
+            </Button>
+          </form>
+        </div>
+      );
     if (!view || (aid && !info && !err)) return <p className="text-sm text-fg-subtle">Loading…</p>;
     if (view.status === "waiting")
       return (
@@ -126,7 +241,7 @@ export default function StudentClass() {
           <p className="mt-2 text-[15px] text-fg-muted">
             Your email isn't on the class list for {view.name} yet, so we asked your teacher to let you in. This page opens by itself as soon as they do.
           </p>
-          {account.user?.email && <p className="mt-3 text-sm text-fg-subtle">Signed in as {account.user.email}</p>}
+          {switchAccount}
         </div>
       );
     if (view.status === "denied")
@@ -137,6 +252,7 @@ export default function StudentClass() {
           <p className="mt-2 text-[15px] text-fg-muted">
             If that's a mistake, ask them to add {account.user?.email ?? "your school email"} to the class list for {view.name}, then open the link again.
           </p>
+          {switchAccount}
         </div>
       );
     if (!view.joined)
@@ -184,9 +300,10 @@ export default function StudentClass() {
           </Link>
         </div>
       );
-    // In the class: a real page. The next thing due gets the one green button.
-    const open = view.assignments.filter((x) => !x.turnedIn);
-    const next = [...open].sort((x, y) => (x.dueAt ?? Infinity) - (y.dueAt ?? Infinity))[0];
+    // In the class: a real page. To do (soonest first, late at the top), then done. The next thing due gets the one green button.
+    const todo = view.assignments.filter((x) => !x.turnedIn).sort((x, y) => (x.dueAt ?? Infinity) - (y.dueAt ?? Infinity));
+    const done = view.assignments.filter((x) => x.turnedIn).sort((x, y) => (y.dueAt ?? 0) - (x.dueAt ?? 0));
+    const next = todo[0];
     return (
       <div>
         <h1 className="font-display text-[2rem] font-extrabold leading-tight tracking-[-0.03em]" data-testid="student-class-name">{view.name}</h1>
@@ -194,7 +311,7 @@ export default function StudentClass() {
           <span className="inline-flex items-center gap-1.5">
             <Check className="h-4 w-4 text-primary" /> You're in this class
           </span>
-          {view.teacher && <span>· {view.teacher}</span>}
+          {view.teacher && <span>· Teacher: {view.teacher}</span>}
         </p>
         {account.user === null && !account.requireSignIn && account.providers.includes("google") && (
           <p className="mt-2 text-xs text-fg-subtle">
@@ -205,7 +322,7 @@ export default function StudentClass() {
             to keep this class everywhere.
           </p>
         )}
-        <h2 className="mt-10 font-display text-xl font-bold tracking-[-0.01em]">Your assignments</h2>
+        {view.assignments.length === 0 && <h2 className="mt-10 font-display text-xl font-bold tracking-[-0.01em]">Your assignments</h2>}
         {view.assignments.length === 0 && (
           <div className="mt-3 rounded-[20px] border border-dashed border-line-strong px-6 py-10 text-center">
             <RockArt className="mx-auto h-16 w-16" body={PERI} pose="sit" prop="book" />
@@ -213,45 +330,23 @@ export default function StudentClass() {
             <p className="mt-1 text-sm text-fg-muted">Your teacher's assignments will show up here.</p>
           </div>
         )}
-        <ul className="mt-4 space-y-3" data-tour="assignments">
-          {view.assignments.map((x, i) => {
-            const isNext = x.id === next?.id;
-            const status = x.turnedIn ? "Turned in" : x.roomCode ? "Working" : "Not started";
-            const chip = x.turnedIn ? "bg-mint text-ink dark:bg-mint/15 dark:text-mint" : x.roomCode ? "bg-peri/35 text-ink dark:bg-peri/20 dark:text-fg" : "bg-surface-2 text-fg-muted";
-            return (
-              <li
-                key={x.id}
-                className={`flex flex-wrap items-center gap-x-5 gap-y-3 rounded-[20px] border px-5 py-4 ${isNext ? "border-fg/20 bg-surface shadow-[0_10px_30px_-18px_rgba(10,16,13,0.35)]" : "border-line"}`}
-                data-testid="student-assignment"
-              >
-                <BookOpen className="h-5 w-5 shrink-0 text-fg-muted" aria-hidden="true" />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[1.05rem] font-semibold">{x.title}</span>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${chip}`}>{status}</span>
-                    {isNext && <span className="text-xs font-semibold text-fg-muted">Up next</span>}
-                  </div>
-                  <p className="mt-0.5 text-sm text-fg-subtle">
-                    {x.mode === "solo" ? "Your own work" : (x.groupName ?? "Group project")}
-                    {dueText(x.dueAt)}
-                  </p>
-                </div>
-                <Link
-                  to={assignmentPath(code, x.id)}
-                  className={
-                    isNext
-                      ? "ledge-btn h-11 px-5 text-[15px]"
-                      : "press inline-flex h-10 items-center gap-1.5 rounded-xl border border-line-strong px-4 text-sm font-semibold hover:bg-surface-2"
-                  }
-                  data-testid="open-group-room"
-                  data-tour={i === 0 ? "open-work" : undefined}
-                >
-                  {x.turnedIn ? "View" : x.mode === "solo" ? "Open your work" : "Open your group's room"} <ArrowRight className="h-4 w-4" />
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+        {[
+          { label: "To do", items: todo, id: "todo" },
+          { label: "Done", items: done, id: "done" },
+        ]
+          .filter((s) => s.items.length)
+          .map((s, si) => (
+            <section key={s.id} className={si === 0 ? "mt-10" : "mt-12"} data-testid={`student-${s.id}`}>
+              <h2 className="font-display text-xl font-bold tracking-[-0.01em]">
+                {s.label} <span className="ml-1 text-base font-semibold text-fg-subtle">{s.items.length}</span>
+              </h2>
+              <ul className="mt-4 space-y-3" data-tour={si === 0 ? "assignments" : undefined}>
+                {s.items.map((x, i) => (
+                  <AssignmentRow key={x.id} x={x} code={code} isNext={x.id === next?.id} teacher={view.teacher} tour={si === 0 && i === 0} />
+                ))}
+              </ul>
+            </section>
+          ))}
       </div>
     );
   })();

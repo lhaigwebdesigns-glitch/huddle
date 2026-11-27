@@ -70,6 +70,8 @@ function ensureClassTables(db: D1Database) {
     )
     // Added in Build 14: the worksheet room (starter files and answer key) for an assignment.
     .then(() => db.prepare(`ALTER TABLE assignments ADD COLUMN worksheet TEXT`).run().catch(() => {}))
+    // Grades stay private until the teacher returns them.
+    .then(() => db.prepare(`ALTER TABLE grades ADD COLUMN returned_at INTEGER`).run().catch(() => {}))
     .then(() => undefined)
     .catch((e) => {
       ready = null;
@@ -124,8 +126,11 @@ async function loadGroups(db: D1Database, assignmentId: string): Promise<GroupIn
 }
 
 async function loadGrade(db: D1Database, assignmentId: string, room: string): Promise<GradeData | undefined> {
-  const row = await db.prepare(`SELECT data, graded_at FROM grades WHERE assignment_id = ? AND room_code = ?`).bind(assignmentId, room).first<{ data: string; graded_at: number }>();
-  return row ? { ...(JSON.parse(row.data) as GradeData), gradedAt: row.graded_at } : undefined;
+  const row = await db
+    .prepare(`SELECT data, graded_at, returned_at FROM grades WHERE assignment_id = ? AND room_code = ?`)
+    .bind(assignmentId, room)
+    .first<{ data: string; graded_at: number; returned_at: number | null }>();
+  return row ? { ...(JSON.parse(row.data) as GradeData), gradedAt: row.graded_at, ...(row.returned_at ? { returnedAt: row.returned_at } : {}) } : undefined;
 }
 
 const toAssignment = (a: AssignmentRow, groups: GroupInfo[]): Assignment => ({
@@ -639,12 +644,29 @@ classes.put("/:id/assignments/:aid/groups/:room/grade", async (c) => {
   for (const [uid, v] of Object.entries(body.students ?? {}))
     if (g.group.members.includes(uid) && typeof v === "number" && Number.isFinite(v)) students[uid] = Math.max(0, Math.min(max, v));
   const data: GradeData = { rows, scores, students, comment: String(body.comment ?? "").slice(0, 2000) };
-  await c.env.DB!.prepare(`INSERT OR REPLACE INTO grades (assignment_id, room_code, data, graded_at) VALUES (?, ?, ?, ?)`)
+  // Saving again keeps it returned (or not): returning is its own step.
+  await c.env.DB!.prepare(
+    `INSERT INTO grades (assignment_id, room_code, data, graded_at) VALUES (?, ?, ?, ?) ON CONFLICT (assignment_id, room_code) DO UPDATE SET data = excluded.data, graded_at = excluded.graded_at`,
+  )
     .bind(g.assignment.id, g.group.roomCode, JSON.stringify(data), Date.now())
     .run();
   // Graded work can't be unsubmitted by the students any more.
   await (await getServerByName(c.env.Room, g.group.roomCode)).setGraded(Date.now()).catch(() => null);
   return c.json({ ok: true, total: gradeTotal(data), max });
+});
+
+/** Return grades to students (all graded work not returned yet, or one room's): only then do they see the grade and comment. */
+classes.post("/:id/assignments/:aid/return", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  const a = await c.env.DB!.prepare(`SELECT id FROM assignments WHERE id = ? AND class_id = ?`).bind(c.req.param("aid"), t.cls.id).first<{ id: string }>();
+  if (!a) return c.json({ error: "Assignment not found." }, 404);
+  const body = await c.req.json<{ room?: string }>().catch(() => ({}) as { room?: string });
+  const now = Date.now();
+  const r = body.room
+    ? await c.env.DB!.prepare(`UPDATE grades SET returned_at = ? WHERE assignment_id = ? AND room_code = ? AND returned_at IS NULL`).bind(now, a.id, String(body.room)).run()
+    : await c.env.DB!.prepare(`UPDATE grades SET returned_at = ? WHERE assignment_id = ? AND returned_at IS NULL`).bind(now, a.id).run();
+  return c.json({ ok: true, returned: r.meta?.changes ?? 0 });
 });
 
 classes.post("/:id/assignments/:aid/groups/:room/reopen", async (c) => {
@@ -841,17 +863,23 @@ classes.get("/join/:code", async (c) => {
       const group = a.groups.find((g) => g.members.includes(uid));
       const ready = group && !isPending(group.roomCode) ? group : undefined;
       let turnedIn = false;
+      let dueAt = a.project.dueAt;
+      let grade: StudentClassView["assignments"][number]["grade"];
       if (ready) {
         const status = (await (await getServerByName(c.env.Room, ready.roomCode)).groupStatus([]).catch(() => null)) as GroupStatus | null;
         turnedIn = !!status?.turnedInAt;
+        if (status?.dueAt) dueAt = status.dueAt;
+        const g = await loadGrade(c.env.DB!, a.id, ready.roomCode);
+        if (g?.returnedAt) grade = { score: g.students[uid] ?? gradeTotal(g), max: rubricMax(g.rows), comment: g.comment };
       }
       view.assignments.push({
         id: a.id,
         title: a.title,
         mode: a.mode,
-        ...(a.project.dueAt ? { dueAt: a.project.dueAt } : {}),
+        ...(dueAt ? { dueAt } : {}),
         ...(group && a.mode === "groups" ? { groupName: group.name } : {}),
         ...(ready ? { roomCode: ready.roomCode, turnedIn } : {}),
+        ...(grade ? { grade } : {}),
       });
     }
   }
