@@ -29,7 +29,7 @@ The order follows what the pilot teacher and her students hit first.
 | 7 | Room: sidebar, chat and tutor, project bar, tasks | `/r/:code` | 👀 | Works (solo and group rooms, tutor, tasks, turn in, teacher view, plain rooms). Fixed: class rooms have no party code or Leave room, solo rooms say they're yours (no members list, Steps instead of roles and owners), the title shows once with no tech labels, the assignment bar is one row with Turn in last, the message box says who you're talking to, no empty gap under AI replies, file hint fits tutor rooms. |
 | 8 | Doc editor: writing, replay, import | inside a room | 👀 | Works (writing, formatting, lists, tables, images, paste blocking, version history, replay, export, two people at once, read-only after turn-in). Fixed: toolbar fits one row (Text style and Align dropdowns, an Insert menu for image, table, quote and code), tables have visible borders and a header row, a hint in an empty doc, new files in a class room are named after the assignment, "Saves as you type" instead of "sync for everyone", Replay opens on the finished doc. |
 | 9 | Slides editor | inside a room | 👀 | Your reports fixed: big decks import (150 MB limit, photos shrunk before upload, pictures upload 4 at a time, progress shown, the page never freezes), imported slides look like the original (master and layout styles, theme fonts and lighter/darker colors, italic, underline, centering, shrink-to-fit, picture and gradient backgrounds, rounded corners, outlines, see-through fills, rotation, the master's logos and bands), present mode covers the whole screen (no page scroll, no fullscreen flicker, click to advance, Home/End), the wizard shows import progress instead of freezing, and teachers can delete an assignment. Not yet: editing tools for the new styles (italic, align, font) in the slide editor. |
-| 10 | Sheets, forms, whiteboard | inside a room | ⬜ | |
+| 10 | Sheets, forms, whiteboard | inside a room | 👀 | Works (sheet formulas and formats, charts, CSV/Excel, forms with every question type and the public link, whiteboard drawing synced live). Fixed: Cairn's colors (not hard-coded grays) in all three, real icons instead of symbols and emoji in the sheet toolbar, Share link shows the link when the browser blocks copying (it used to fail), Add a question is a visible row of every type, "Saves as you type" everywhere. |
 | 11 | Receipt and turn in, unsubmit, more time | modal in a room | ⬜ | |
 | 12 | Grading and Save & next | `/classes/:id/a/:aid/:room` | ⬜ | |
 | 13 | Your rooms and Profile | `/dashboard`, `/profile` | ⬜ | |
@@ -52,7 +52,7 @@ The order follows what the pilot teacher and her students hit first.
 - ⬜ Docs, slides and sheets feel like 2015: bring the editors up to what people expect now (plan first)
 - ✅ Landing page: the "Cairn stack" timing is too slow (a stone every 3 s, was 12)
 - ✅ Animate the pebbles (they breathe, blink and wave, each on its own beat; hover to hop)
-- ⬜ Finish the screen pass (screens 10–16)
+- ⬜ Finish the screen pass (screens 11–16; 10 done)
 - ⬜ Styling pass on the whole app, then get feedback
 - ⬜ Pricing: how Cairn makes money
 - ⬜ Marketing

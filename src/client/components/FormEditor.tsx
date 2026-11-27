@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { AlignLeft, CalendarDays, Check, CircleDot, ExternalLink, Link2, Minus, Plus, SlidersHorizontal, SquareCheck } from "lucide-react";
+import { promptDialog } from "./Dialogs";
 import * as Y from "yjs";
 import type { EditorProps } from "./FilePanel";
 import { useYObserve } from "../lib/useYDoc";
@@ -18,15 +20,15 @@ import { toCsv } from "../../shared/sheet-model";
 import { download, safeName } from "../lib/download";
 import { sendFromEditor } from "../lib/editorBridge";
 
-const input = "w-full rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900";
+const input = "w-full rounded-md border border-line-strong bg-surface px-2 py-1 text-sm";
 
 function QuestionCard({ q, ymap, index, total, onMove, onDelete }: { q: Question; ymap: Y.Map<any>; index: number; total: number; onMove: (d: -1 | 1) => void; onDelete: () => void }) {
   const options = q.options ?? [];
   const setOptions = (next: string[]) => ymap.set("options", next.slice(0, 20));
   return (
-    <li className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm dark:border-zinc-800 dark:bg-zinc-900" data-testid="form-question">
+    <li className="rounded-xl border border-line bg-surface p-3 shadow-sm" data-testid="form-question">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs font-semibold text-zinc-400">{index + 1}</span>
+        <span className="text-xs font-semibold text-fg-subtle">{index + 1}</span>
         <input
           aria-label={`Question ${index + 1}`}
           className={`${input} min-w-0 flex-1 font-medium`}
@@ -36,7 +38,7 @@ function QuestionCard({ q, ymap, index, total, onMove, onDelete }: { q: Question
         />
         <select
           aria-label="Question type"
-          className="rounded-md border border-zinc-300 bg-white px-1 py-1 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          className="rounded-md border border-line-strong bg-surface px-1 py-1 text-sm"
           value={q.type}
           onChange={(e) => {
             const type = e.target.value as QuestionType;
@@ -56,14 +58,14 @@ function QuestionCard({ q, ymap, index, total, onMove, onDelete }: { q: Question
         <ul className="mt-2 space-y-1 pl-5">
           {options.map((o, i) => (
             <li key={i} className="flex items-center gap-2">
-              <span className="text-zinc-400" aria-hidden>{q.type === "choice" ? "○" : "☐"}</span>
+              <span className="text-fg-subtle" aria-hidden>{q.type === "choice" ? "○" : "☐"}</span>
               <input
                 aria-label={`Option ${i + 1}`}
                 className={input}
                 value={o}
                 onChange={(e) => setOptions(options.map((x, j) => (j === i ? e.target.value.slice(0, 120) : x)))}
               />
-              <button onClick={() => setOptions(options.filter((_, j) => j !== i))} disabled={options.length <= 1} className="px-1 text-zinc-400 hover:text-red-600 disabled:opacity-30" aria-label={`Remove option ${i + 1}`}>
+              <button onClick={() => setOptions(options.filter((_, j) => j !== i))} disabled={options.length <= 1} className="px-1 text-fg-subtle hover:text-red-600 disabled:opacity-30" aria-label={`Remove option ${i + 1}`}>
                 ✕
               </button>
             </li>
@@ -76,22 +78,22 @@ function QuestionCard({ q, ymap, index, total, onMove, onDelete }: { q: Question
         </ul>
       )}
       {q.type === "scale" && (
-        <label className="mt-2 flex items-center gap-2 pl-5 text-sm text-zinc-500">
+        <label className="mt-2 flex items-center gap-2 pl-5 text-sm text-fg-muted">
           1 to
-          <select aria-label="Scale maximum" className="rounded border border-zinc-300 bg-white px-1 dark:border-zinc-700 dark:bg-zinc-900" value={q.max ?? 5} onChange={(e) => ymap.set("max", Number(e.target.value))}>
+          <select aria-label="Scale maximum" className="rounded border border-line-strong bg-surface px-1" value={q.max ?? 5} onChange={(e) => ymap.set("max", Number(e.target.value))}>
             {[3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
               <option key={n}>{n}</option>
             ))}
           </select>
         </label>
       )}
-      <div className="mt-2 flex items-center gap-3 border-t border-zinc-100 pt-2 text-xs text-zinc-500 dark:border-zinc-800">
+      <div className="mt-2 flex items-center gap-3 border-t border-line pt-2 text-xs text-fg-muted">
         <label className="flex items-center gap-1">
           <input type="checkbox" checked={!!q.required} onChange={(e) => ymap.set("required", e.target.checked)} /> Required
         </label>
         <span className="flex-1" />
-        <button onClick={() => onMove(-1)} disabled={index === 0} className="rounded px-1 hover:bg-zinc-100 disabled:opacity-30 dark:hover:bg-zinc-800" aria-label="Move question up">↑</button>
-        <button onClick={() => onMove(1)} disabled={index === total - 1} className="rounded px-1 hover:bg-zinc-100 disabled:opacity-30 dark:hover:bg-zinc-800" aria-label="Move question down">↓</button>
+        <button onClick={() => onMove(-1)} disabled={index === 0} className="rounded px-1 hover:bg-surface-2 disabled:opacity-30" aria-label="Move question up">↑</button>
+        <button onClick={() => onMove(1)} disabled={index === total - 1} className="rounded px-1 hover:bg-surface-2 disabled:opacity-30" aria-label="Move question down">↓</button>
         <button onClick={onDelete} className="rounded px-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40">Delete</button>
       </div>
     </li>
@@ -102,13 +104,15 @@ function Bar({ label, n, total }: { label: string; n: number; total: number }) {
   return (
     <div className="flex items-center gap-2 text-sm">
       <span className="w-32 shrink-0 truncate" title={label}>{label}</span>
-      <span className="h-3 flex-1 overflow-hidden rounded bg-zinc-100 dark:bg-zinc-800">
+      <span className="h-3 flex-1 overflow-hidden rounded bg-surface-2">
         <span className="block h-full rounded bg-primary" style={{ width: `${total ? (n / total) * 100 : 0}%` }} />
       </span>
-      <span className="w-14 text-right text-xs text-zinc-500">{n} ({total ? Math.round((n / total) * 100) : 0}%)</span>
+      <span className="w-14 text-right text-xs text-fg-muted">{n} ({total ? Math.round((n / total) * 100) : 0}%)</span>
     </div>
   );
 }
+
+const QUESTION_ICON: Record<(typeof QUESTION_TYPES)[number], typeof Plus> = { short: Minus, long: AlignLeft, choice: CircleDot, checkbox: SquareCheck, scale: SlidersHorizontal, date: CalendarDays };
 
 export default function FormEditor({ ydoc, room, file, synced }: EditorProps) {
   const qArr = questionsOf(ydoc);
@@ -134,16 +138,16 @@ export default function FormEditor({ ydoc, room, file, synced }: EditorProps) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-testid="form-editor">
-      <div className="flex flex-wrap items-center gap-2 border-b border-zinc-200 px-3 py-1.5 text-xs text-zinc-500 dark:border-zinc-800">
-        <span>{synced ? "● Live" : "Connecting…"}</span>
-        <div className="ml-2 flex rounded-lg bg-zinc-100 p-0.5 dark:bg-zinc-800" role="tablist">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-1.5 text-xs text-fg-muted">
+        <span>{synced ? "Saves as you type" : "Connecting…"}</span>
+        <div className="ml-2 flex rounded-lg bg-surface-2 p-0.5 " role="tablist">
           {(["questions", "responses"] as const).map((t) => (
             <button
               key={t}
               role="tab"
               aria-selected={tab === t}
               onClick={() => setTab(t)}
-              className={`rounded-md px-2 py-0.5 text-sm ${tab === t ? "bg-white font-medium text-zinc-900 shadow-sm dark:bg-zinc-900 dark:text-zinc-100" : ""}`}
+              className={`rounded-md px-2 py-0.5 text-sm ${tab === t ? "bg-surface font-medium text-fg shadow-sm" : ""}`}
               data-testid={`form-tab-${t}`}
             >
               {t === "questions" ? "Questions" : `Responses (${responses.length})`}
@@ -155,20 +159,25 @@ export default function FormEditor({ ydoc, room, file, synced }: EditorProps) {
           <input type="checkbox" checked={accepting} onChange={(e) => meta.set("accepting", e.target.checked)} /> Accepting responses
         </label>
         <button
-          onClick={() => {
-            navigator.clipboard.writeText(link);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 1500);
+          onClick={async () => {
+            // Copy it; when the browser won't let us, show it so it can be copied by hand.
+            try {
+              await navigator.clipboard.writeText(link);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1500);
+            } catch {
+              await promptDialog({ title: "Share this form", message: "Copy this link and send it to the people who should fill it in.", label: "Form link", defaultValue: link, confirmLabel: "Done" });
+            }
           }}
-          className="rounded-md bg-primary px-2.5 py-1 font-semibold text-primary-fg hover:bg-primary-hover"
+          className="press inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-fg hover:bg-primary-hover"
           data-testid="form-share"
           data-link={link}
         >
-          {copied ? "Link copied!" : "🔗 Share link"}
+          {copied ? <><Check className="h-4 w-4" /> Link copied</> : <><Link2 className="h-4 w-4" /> Share link</>}
         </button>
-        <a href={link} target="_blank" rel="noreferrer" className="hover:text-zinc-900 dark:hover:text-zinc-100">Open ↗</a>
+        <a href={link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-fg">Open <ExternalLink className="h-3.5 w-3.5" /></a>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto bg-zinc-50 p-4 dark:bg-zinc-950">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-bg p-4">
         {tab === "questions" ? (
           <div className="mx-auto max-w-2xl">
             <textarea
@@ -192,25 +201,27 @@ export default function FormEditor({ ydoc, room, file, synced }: EditorProps) {
                 />
               ))}
             </ol>
-            <details className="mt-3">
-              <summary className="cursor-pointer rounded-xl border border-dashed border-zinc-300 py-2 text-center text-sm text-zinc-500 hover:bg-white dark:border-zinc-700 dark:hover:bg-zinc-900" data-testid="add-question">
-                + Add question
-              </summary>
-              <div className="mt-2 grid grid-cols-2 gap-1 sm:grid-cols-3">
-                {QUESTION_TYPES.map((t) => (
-                  <button
-                    key={t}
-                    onClick={(e) => {
-                      (e.currentTarget.closest("details") as HTMLDetailsElement).open = false;
-                      ydoc.transact(() => qArr.push([makeQuestion({ type: t, title: "" })]), "user");
-                    }}
-                    className="rounded-lg border border-zinc-200 bg-white px-2 py-1.5 text-sm hover:border-line-strong dark:border-zinc-800 dark:bg-zinc-900"
-                  >
-                    {QUESTION_LABEL[t]}
-                  </button>
-                ))}
+            {/* Adding a question: every kind, one click each. */}
+            <div className="mt-4 rounded-2xl border border-dashed border-line-strong p-3" data-testid="add-question">
+              <div className="mb-2 flex items-center gap-1.5 text-sm font-semibold text-fg-muted">
+                <Plus className="h-4 w-4" /> Add a question
               </div>
-            </details>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                {QUESTION_TYPES.map((t) => {
+                  const Icon = QUESTION_ICON[t];
+                  return (
+                    <button
+                      key={t}
+                      onClick={() => ydoc.transact(() => qArr.push([makeQuestion({ type: t, title: "" })]), "user")}
+                      className="press flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-left text-sm hover:border-line-strong"
+                      data-testid={`add-${t}`}
+                    >
+                      <Icon className="h-4 w-4 shrink-0 text-fg-muted" /> {QUESTION_LABEL[t]}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         ) : (
           <div className="mx-auto max-w-2xl space-y-4" data-testid="form-responses">
@@ -218,27 +229,27 @@ export default function FormEditor({ ydoc, room, file, synced }: EditorProps) {
               <button
                 disabled={!responses.length}
                 onClick={() => download(`${safeName(file.title, "form")} responses.csv`, "text/csv", toCsv(responseRows(ydoc)))}
-                className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-md border border-line-strong bg-surface px-2 py-1 text-sm disabled:opacity-40"
               >
                 ⬇ CSV
               </button>
               <button
                 disabled={!responses.length}
                 onClick={() => sendFromEditor({ t: "form_to_sheet", id: file.id })}
-                className="rounded-md border border-zinc-300 bg-white px-2 py-1 text-sm disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900"
+                className="rounded-md border border-line-strong bg-surface px-2 py-1 text-sm disabled:opacity-40"
                 data-testid="form-to-sheet"
               >
                 📊 Send to a sheet
               </button>
             </div>
-            {!responses.length && <p className="text-sm text-zinc-500">No responses yet. Share the link and they'll show up here live.</p>}
+            {!responses.length && <p className="text-sm text-fg-muted">No responses yet. Share the link and they'll show up here live.</p>}
             {!!responses.length &&
               questions.map((q) => {
                 const vals = responses.map((r) => r.answers[q.id]).filter((v) => v !== undefined);
                 return (
-                  <section key={q.id} className="rounded-xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                  <section key={q.id} className="rounded-xl border border-line bg-surface p-3">
                     <h3 className="font-medium">{q.title || "Untitled question"}</h3>
-                    <p className="mb-2 text-xs text-zinc-500">{vals.length} answer{vals.length === 1 ? "" : "s"}</p>
+                    <p className="mb-2 text-xs text-fg-muted">{vals.length} answer{vals.length === 1 ? "" : "s"}</p>
                     {q.type === "choice" || q.type === "checkbox" ? (
                       <div className="space-y-1">
                         {(q.options ?? []).map((o) => (
@@ -250,14 +261,14 @@ export default function FormEditor({ ydoc, room, file, synced }: EditorProps) {
                         {Array.from({ length: q.max ?? 5 }, (_, i) => i + 1).map((n) => (
                           <Bar key={n} label={String(n)} n={vals.filter((v) => Number(v) === n).length} total={vals.length} />
                         ))}
-                        <p className="text-xs text-zinc-500">
+                        <p className="text-xs text-fg-muted">
                           Average {vals.length ? (vals.reduce((a: number, v) => a + Number(v), 0) / vals.length).toFixed(1) : "–"}
                         </p>
                       </div>
                     ) : (
                       <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
                         {vals.slice(-50).reverse().map((v, i) => (
-                          <li key={i} className="rounded bg-zinc-50 px-2 py-1 dark:bg-zinc-800">{String(v)}</li>
+                          <li key={i} className="rounded bg-bg px-2 py-1 ">{String(v)}</li>
                         ))}
                       </ul>
                     )}
