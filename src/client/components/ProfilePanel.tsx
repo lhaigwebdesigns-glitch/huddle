@@ -120,7 +120,7 @@ export function ProfilePanel({ user, onChange }: { user: Account; onChange: (u: 
         </Section>
 
         <Section title="Appearance">
-          <ThemeToggle />
+          <ThemeToggle labeled />
         </Section>
 
         <Section title="Account" sub={`Signed in with ${PROVIDER_LABEL[user.provider] ?? user.provider}.`}>
