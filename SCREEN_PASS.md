@@ -37,7 +37,7 @@ The order follows what the pilot teacher and her students hit first.
 | 15 | Landing page | `/` | ⬜ | |
 | 16 | Small pages: shared chat, public form, privacy, terms, admin | various | ⬜ | |
 
-## Ideas worth building (found during the pass, not built yet)
+## Ideas worth building (found during the pass)
 
-- **Copy an assignment to my other classes.** Teachers teach the same lesson to several periods; today they rebuild the assignment and its worksheet in each class.
-- **Preview as a student.** See exactly what a student gets (worksheet copy, AI setting, instructions) before posting the link.
+- ✅ **Copy an assignment to my other classes.** Built: More → Copy to another class. Teachers teach the same lesson to several periods; today they rebuild the assignment and its worksheet in each class.
+- ✅ **Preview as a student.** Built: More → Preview as a student, and on the wizard's last step. See exactly what a student gets (worksheet copy, AI setting, instructions) before posting the link.
