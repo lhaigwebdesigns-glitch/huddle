@@ -35,6 +35,9 @@ function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: (
   const [students, setStudents] = useState<Record<string, number>>(initial?.students ?? {});
   const [comment, setComment] = useState(initial?.comment ?? "");
   const [status, setStatus] = useState("");
+  // Changing the rubric itself (names, points, rows) is rare: it hides behind "Edit rubric".
+  const [editing, setEditing] = useState(false);
+  const solo = view.assignment.mode === "solo";
   const max = rubricMax(rows);
   const total = gradeTotal({ scores });
   const setRow = (i: number, patch: Partial<RubricRow>) => setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
@@ -52,42 +55,44 @@ function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: (
     else onSaved();
   };
   return (
-    <section className="max-h-[55vh] overflow-y-auto border-t border-line bg-surface px-4 py-4 sm:px-6" aria-label="Grade" data-testid="grader" data-tour="grade-save">
-      <div className="flex flex-wrap items-center gap-3">
-        <h2 className="text-base font-semibold">
-          Score <span className="text-sm font-normal text-fg-subtle">(optional: a comment alone is fine)</span>
-        </h2>
-        <span className="text-sm text-fg-muted tabular" data-testid="grade-total">
-          {total ?? "–"} / {max}
-        </span>
-        <span className="flex-1" />
-        <Button size="sm" variant="secondary" onClick={() => save()} data-testid="save-grade">
-          Save
-        </Button>
-        <Button size="sm" onClick={() => save(true)} data-testid="save-next">
-          Save & next
-        </Button>
-        {status && <span className="text-xs text-fg-subtle" role="status">{status}</span>}
-        {initial &&
-          (initial.returnedAt ? (
-            <span className="rounded-full bg-mint px-2 py-0.5 text-[11px] font-semibold text-ink dark:bg-mint/15 dark:text-mint" data-testid="grade-returned">
-              Returned: they see it
-            </span>
-          ) : (
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={async () => {
-                const d = await api(`/api/classes/${view.class.id}/assignments/${view.assignment.id}/return`, { method: "POST", body: JSON.stringify({ room: view.group.roomCode }) });
-                if (!d.error) onSaved();
-              }}
-              title="Students only see a grade once you return it"
-              data-testid="return-one"
-            >
-              Return {view.assignment.mode === "solo" ? "to the student" : "to the group"}
-            </Button>
-          ))}
+    <section className="bg-surface" aria-label="Grade" data-testid="grader" data-tour="grade-save">
+      <div className="sticky top-0 z-10 border-b border-line bg-surface px-5 py-3">
+        <div className="flex items-baseline gap-2">
+          <h2 className="font-display text-lg font-bold">Grade</h2>
+          <span className="font-display text-lg font-bold tabular-nums" data-testid="grade-total">
+            {total ?? "–"} / {max}
+          </span>
+          <span className="text-xs text-fg-subtle">a score is optional</span>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button onClick={() => save(true)} data-testid="save-next">
+            Save & next
+          </Button>
+          <Button variant="secondary" onClick={() => save()} data-testid="save-grade">
+            Save
+          </Button>
+          {initial &&
+            (initial.returnedAt ? (
+              <span className="rounded-full bg-mint px-2 py-0.5 text-[11px] font-semibold text-ink dark:bg-mint/15 dark:text-mint" data-testid="grade-returned">
+                Returned: they see it
+              </span>
+            ) : (
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  const d = await api(`/api/classes/${view.class.id}/assignments/${view.assignment.id}/return`, { method: "POST", body: JSON.stringify({ room: view.group.roomCode }) });
+                  if (!d.error) onSaved();
+                }}
+                title="Students only see a grade once you return it"
+                data-testid="return-one"
+              >
+                Return {solo ? "to the student" : "to the group"}
+              </Button>
+            ))}
+          {status && <span className="text-xs text-fg-subtle" role="status">{status}</span>}
+        </div>
       </div>
+      <div className="px-5 py-4">
       {grid ? (
         <div className="mt-3">
           <RubricGridView grid={grid} picks={picks} onPick={pick} />
@@ -96,13 +101,20 @@ function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: (
       <>
       <ul className="mt-3 space-y-2">
         {rows.map((r, i) => (
-          <li key={i} className="flex flex-wrap items-center gap-2" data-testid="rubric-row">
-            <input
-              aria-label={`Rubric row ${i + 1} name`}
-              value={r.label}
-              onChange={(e) => setRow(i, { label: e.target.value })}
-              className="min-w-[8rem] flex-1 rounded-lg border border-transparent bg-transparent px-1.5 py-1 text-sm font-medium hover:border-line focus:border-line-strong"
-            />
+          <li key={i} className="flex flex-wrap items-center gap-x-2 gap-y-1.5 rounded-xl border border-line px-3 py-2.5" data-testid="rubric-row">
+            {editing ? (
+              <input
+                aria-label={`Rubric row ${i + 1} name`}
+                value={r.label}
+                onChange={(e) => setRow(i, { label: e.target.value })}
+                className="w-full rounded-lg border border-line-strong bg-transparent px-2 py-1 text-sm font-medium"
+              />
+            ) : (
+              <div className="flex w-full items-baseline gap-2 text-sm">
+                <span className="font-semibold">{r.label}</span>
+                <span className="text-fg-subtle">of {r.max}</span>
+              </div>
+            )}
             <div className="flex gap-1" role="group" aria-label={`Score for ${r.label}`}>
               {STEPS.map((f) => {
                 const v = Math.round(r.max * f * 100) / 100;
@@ -128,8 +140,10 @@ function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: (
               min={0}
               max={r.max}
               onChange={(e) => setScore(i, e.target.value === "" ? null : Number(e.target.value))}
+              placeholder="exact"
               className="w-16 rounded-lg border border-line-strong bg-transparent px-2 py-1 text-xs tabular"
             />
+            {editing && (<>
             <span className="text-xs text-fg-subtle">of</span>
             <input
               type="number"
@@ -151,24 +165,33 @@ function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: (
                 <X className="h-3.5 w-3.5" />
               </button>
             )}
+            </>)}
           </li>
         ))}
       </ul>
-      <button
-        onClick={() => {
-          setRows((r) => [...r, { label: "New row", max: 10 }]);
-          setScores((s) => [...s, null]);
-        }}
-        className="press mt-2 flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-fg-muted hover:bg-surface-2 hover:text-fg"
-      >
-        <Plus className="h-3.5 w-3.5" /> Add a row
-      </button>
+      <div className="mt-2 flex items-center gap-1">
+        {editing && (
+          <button
+            onClick={() => {
+              setRows((r) => [...r, { label: "New row", max: 10 }]);
+              setScores((s) => [...s, null]);
+            }}
+            className="press flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-fg-muted hover:bg-surface-2 hover:text-fg"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add a row
+          </button>
+        )}
+        <button onClick={() => setEditing((e) => !e)} className="press rounded-lg px-2 py-1 text-xs text-fg-muted underline underline-offset-2 hover:text-fg" data-testid="edit-rubric">
+          {editing ? "Done editing the rubric" : "Edit rubric"}
+        </button>
+      </div>
       </>
       )}
 
-      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <div className="mt-5 space-y-5">
+        {!solo && (
         <div>
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">Each student</h3>
+          <h3 className="text-sm font-semibold">Each student</h3>
           <p className="mt-0.5 text-xs text-fg-subtle">Everyone gets the group grade unless you set a different one.</p>
           <ul className="mt-2 space-y-1.5">
             {view.group.members.map((uid) => (
@@ -197,8 +220,9 @@ function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: (
             ))}
           </ul>
         </div>
+        )}
         <label className="block">
-          <span className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">{view.assignment.mode === "solo" ? "Comment" : "Comment for the group"}</span>
+          <span className="text-sm font-semibold">{solo ? "Comment" : "Comment for the group"}</span>
           <textarea
             value={comment}
             maxLength={2000}
@@ -208,6 +232,7 @@ function RubricGrader({ view, onSaved, onNext }: { view: GradingView; onSaved: (
             data-testid="grade-comment"
           />
         </label>
+      </div>
       </div>
     </section>
   );
@@ -269,11 +294,13 @@ export default function Grading() {
   const roomFile: RoomFile | undefined = file && { id: file.id, title: file.title, kind: file.kind as FileKind, createdAt: 0, createdBy: "" };
   const turnedIn = !!view.group.status?.turnedInAt;
   return (
-    <TeacherShell back={back}>
+    <TeacherShell>
       <div className="flex min-h-full flex-col">
         <div className="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3 sm:px-6">
           <div className="min-w-0 flex-1">
-            <div className="text-xs text-fg-subtle">{view.assignment.title}</div>
+            <Link to={back.to} className="press -ml-1 inline-flex items-center gap-1 rounded-md px-1 text-sm text-fg-muted hover:text-fg" data-testid="back-link">
+              <ChevronLeft className="h-4 w-4" /> {view.assignment.title}
+            </Link>
             <h1 className="text-xl font-semibold tracking-tight" data-testid="grading-title">
               {view.assignment.mode === "solo"
                 ? view.group.members.map((u) => view.names[u] ?? "Someone").join(", ") || view.group.name
@@ -310,10 +337,10 @@ export default function Grading() {
               <RotateCcw className="h-3.5 w-3.5" /> Reopen for changes
             </button>
           )}
-          <button disabled={!prev} onClick={() => prev && nav(`/classes/${id}/a/${aid}/${prev}`)} className="press rounded-lg p-1.5 text-fg-muted hover:bg-surface-2 disabled:opacity-30" aria-label="Previous group">
+          <button disabled={!prev} onClick={() => prev && nav(`/classes/${id}/a/${aid}/${prev}`)} className="press rounded-lg p-1.5 text-fg-muted hover:bg-surface-2 disabled:opacity-30" aria-label={view.assignment.mode === "solo" ? "Previous student" : "Previous group"}>
             <ChevronLeft className="h-4 w-4" />
           </button>
-          <button disabled={!next} onClick={() => next && nav(`/classes/${id}/a/${aid}/${next}`)} className="press rounded-lg p-1.5 text-fg-muted hover:bg-surface-2 disabled:opacity-30" aria-label="Next group" data-testid="next-group">
+          <button disabled={!next} onClick={() => next && nav(`/classes/${id}/a/${aid}/${next}`)} className="press rounded-lg p-1.5 text-fg-muted hover:bg-surface-2 disabled:opacity-30" aria-label={view.assignment.mode === "solo" ? "Next student" : "Next group"} data-testid="next-group">
             <ChevronRight className="h-4 w-4" />
           </button>
         </div>
@@ -331,7 +358,16 @@ export default function Grading() {
         ) : (
           <>
             {/* Fixed-height panes that scroll inside; the page itself scrolls on small screens. */}
-            <div className="grid lg:h-[calc(100vh-15rem)] lg:min-h-[420px] lg:grid-cols-[minmax(0,1fr)_380px]">
+            {allDone && (
+              <div className="border-b border-line bg-mint px-4 py-3 text-sm text-ink dark:bg-mint/15 dark:text-mint sm:px-6" role="status" data-testid="all-graded">
+                All turned-in work is graded.{" "}
+                <Link to={back.to} className="font-medium underline underline-offset-2">
+                  Back to the class
+                </Link>{" "}
+                to return the grades and download them.
+              </div>
+            )}
+            <div className="grid lg:h-[calc(100vh-6.5rem)] lg:min-h-[480px] lg:grid-cols-[minmax(0,1fr)_460px]">
               <div className="flex h-[65vh] min-w-0 flex-col border-line lg:h-auto lg:min-h-0 lg:border-r" data-tour="grade-work">
                 <div className="flex gap-1 overflow-x-auto border-b border-line px-3 py-2" role="tablist" aria-label="Files">
                   {view.files.map((f) => (
@@ -351,7 +387,9 @@ export default function Grading() {
                   {roomFile && <FilePanel key={roomFile.id} room={room} file={roomFile} me={me} onClose={() => setFileId(null)} onRename={() => {}} locked />}
                 </div>
               </div>
-              <aside className="flex h-[70vh] min-w-0 flex-col overflow-hidden border-t border-line lg:h-auto lg:min-h-0 lg:border-t-0" data-tour="grade-record">
+              <aside className="min-w-0 border-t border-line lg:min-h-0 lg:overflow-y-auto lg:border-t-0" data-tour="grade-record">
+                <RubricGrader key={room} view={view} onSaved={load} onNext={() => void goNext()} />
+                <div className="border-t-8 border-surface-2">
                 {view.answerKey && (
                   <div className="flex shrink-0 gap-1 border-b border-line px-3 py-2" role="tablist" aria-label="Beside the work">
                     {(
@@ -373,7 +411,7 @@ export default function Grading() {
                     ))}
                   </div>
                 )}
-                <div className="min-h-0 flex-1 overflow-y-auto">
+                <div>
                   {side === "key" && view.answerKey ? (
                     <div className="px-5 py-4" data-testid="answer-key">
                       <p className="text-xs text-fg-subtle">Only you see this. Edit it from the worksheet on the class page.</p>
@@ -387,18 +425,10 @@ export default function Grading() {
                     <p className="p-6 text-sm text-fg-subtle">No receipt was saved for this group.</p>
                   )}
                 </div>
+                </div>
               </aside>
             </div>
-            {allDone && (
-              <div className="border-t border-line bg-mint px-4 py-3 text-sm text-ink dark:bg-mint/15 dark:text-mint sm:px-6" role="status" data-testid="all-graded">
-                All turned-in work is graded.{" "}
-                <Link to={`/classes/${id}`} className="font-medium underline underline-offset-2">
-                  Back to the class
-                </Link>{" "}
-                to return the grades and download them.
-              </div>
-            )}
-            <RubricGrader key={room} view={view} onSaved={load} onNext={() => void goNext()} />
+
           </>
         )}
       </div>
