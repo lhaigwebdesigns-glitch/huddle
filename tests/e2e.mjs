@@ -1312,6 +1312,55 @@ try {
   await cam.getByTestId("due-label").getByText("(extended)").waitFor({ timeout: 15000 });
   ok(true, "the teacher can extend one student's due date from the dashboard");
 
+  // ---------- Rubric grids: students see the boxes; the teacher grades by clicking one per row ----------
+  await park.goto(classUrl);
+  await park.getByTestId("new-assignment-btn").click();
+  await park.getByTestId("rubric-mode-grid").click();
+  await park.getByTestId("grid-row-title").first().fill("Focus");
+  await park.getByTestId("grid-add-row").click();
+  ok((await park.getByTestId("grid-row").count()) === 2 && (await park.getByTestId("grid-level-name").count()) === 3, "a teacher can build a rubric grid in the wizard (3 levels to start, rows added)");
+  await park.getByTestId("rubric-mode-text").click();
+  ok((await park.getByLabel("Project rubric").inputValue()).includes("Focus: 3 pts"), "switching back to typing keeps the grid as text");
+  await park.keyboard.press("Escape");
+  const gridAid = await park.evaluate(async (cid) => {
+    const grid = {
+      rows: [
+        { title: "Focus", levels: [{ label: "You've got it", points: 3, desc: "Focused on one idea." }, { label: "Almost there", points: 2, desc: "Mostly focused." }, { label: "Needs work", points: 1, desc: "Not focused." }] },
+        { title: "Quotations", levels: [{ label: "You've got it", points: 3, desc: "Well chosen." }, { label: "Almost there", points: 2, desc: "One or two errors." }, { label: "Needs work", points: 1, desc: "Missing." }] },
+      ],
+    };
+    const r = await fetch(`/api/classes/${cid}/assignments`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "Grid response", mode: "solo", project: { instructions: "Respond to the reading.", ai: "tutor", rubricGrid: grid } }) });
+    return (await r.json()).id;
+  }, classId);
+  const gridView = await park.evaluate(async (cid) => (await fetch(`/api/classes/${cid}`)).json(), classId);
+  const gridA = gridView.assignments.find((x) => x.id === gridAid);
+  ok(gridA?.project.rubricGrid?.rows.length === 2 && /Focus: 3 pts/.test(gridA.project.rubric), "the grid is saved with the assignment, with a text version for everything else");
+  const benG = kids[1];
+  await benG.goto(`${classLink}/a/${gridAid}`);
+  await benG.waitForURL(/\/r\/[A-Z0-9]{6}$/, { timeout: 20000 });
+  await benG.getByTestId("project-details-toggle").click();
+  await benG.getByTestId("assignment-brief").getByTestId("rubric-grid").getByText("One or two errors.").waitFor();
+  ok(true, "students see the rubric grid in the assignment pop-up");
+  await benG.keyboard.press("Escape");
+  await benG.getByTestId("turn-in").click();
+  await benG.getByTestId("receipt-note").fill("Done.");
+  await benG.getByTestId("confirm-turn-in").click();
+  await benG.getByTestId("turned-in").waitFor();
+  const gridSec = await openAssignment("Grid response");
+  await gridSec.getByTestId("start-grading").click();
+  await park.getByTestId("grader").getByTestId("rubric-grid").waitFor();
+  await park.getByTestId("grader").getByTestId("grid-level").nth(0).click();
+  await park.getByTestId("grader").getByTestId("grid-level").nth(4).click();
+  ok((await park.getByTestId("grade-total").innerText()).startsWith("5 / 6"), "clicking one box per row adds up the score");
+  await park.getByTestId("save-grade").click();
+  await park.getByRole("status").getByText("Saved").waitFor();
+  await park.getByTestId("return-one").click();
+  await park.getByTestId("grade-returned").waitFor();
+  await benG.goto(classLink);
+  const benRubric = benG.getByTestId("student-done").getByTestId("assignment-rubric");
+  await benRubric.waitFor({ timeout: 15000 });
+  ok(/Focus\s*You've got it\s*3\/3/.test(await benRubric.innerText()) && /Quotations\s*Almost there\s*2\/3/.test(await benRubric.innerText()), "once returned, the student sees which box they landed in on each row");
+
 
 
   // Report: a student sends one message from the group chat to the teacher.

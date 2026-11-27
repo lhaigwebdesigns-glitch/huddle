@@ -1,6 +1,6 @@
 import { confirmDialog } from "./Dialogs";
 import { Modal } from "./Modal";
-import type { Ban, ClientMsg, Member, RoomSettings, SkillInfo } from "../../shared/protocol";
+import type { Ban, ClientMsg, Member, RoomSettings, RubricGrid, SkillInfo } from "../../shared/protocol";
 import { PartyLists } from "./PartyLists";
 import { hasWebGPU, LOCAL_MODELS } from "../lib/local-llm";
 import { useState } from "react";
@@ -17,7 +17,7 @@ function ProjectSection({ settings, members, send }: { settings: RoomSettings; m
   const [msg, setMsg] = useState("");
   const save = (d: ProjectDraft) => {
     // null clears a due date or schedule that was removed.
-    send({ t: "settings", patch: { project: { ...d, dueAt: (d.dueAt ?? null) as number | undefined, schedule: (d.schedule ?? null) as Schedule | undefined } } });
+    send({ t: "settings", patch: { project: { ...d, dueAt: (d.dueAt ?? null) as number | undefined, schedule: (d.schedule ?? null) as Schedule | undefined, rubricGrid: (d.rubricGrid ?? null) as RubricGrid | undefined } } });
     setMsg("Saved");
     setTimeout(() => setMsg(""), 1500);
   };

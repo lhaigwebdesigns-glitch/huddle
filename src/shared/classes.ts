@@ -82,6 +82,8 @@ export interface GradeData {
   rows: RubricRow[];
   /** One score per rubric row. */
   scores: (number | null)[];
+  /** Rubric grids: which box (level) the teacher picked in each row. */
+  picks?: (number | null)[];
   /** uid → a different grade for that student (out of the rubric total), if the teacher set one. */
   students: Record<string, number>;
   comment: string;
@@ -101,7 +103,7 @@ export interface GroupInfo {
 export interface Assignment {
   id: string;
   title: string;
-  project: Pick<ProjectSettings, "instructions" | "rubric" | "ai" | "dueAt" | "pasteGuard" | "reflection" | "schedule">;
+  project: Pick<ProjectSettings, "instructions" | "rubric" | "rubricGrid" | "ai" | "dueAt" | "pasteGuard" | "reflection" | "schedule">;
   template?: string;
   createdAt: number;
   /** Solo: every student gets their own room. Groups: students share a room. */
@@ -193,8 +195,8 @@ export interface StudentClassView {
     roomCode?: string;
     groupName?: string;
     turnedIn?: boolean;
-    /** Once the teacher grades it: this student's score and the teacher's comment. */
-    grade?: { score: number | null; max: number; comment: string };
+    /** Once the teacher returns it: this student's score (if there is one), the comment, and where they landed on each rubric row. */
+    grade?: { score: number | null; max: number; comment: string; rows?: { title: string; level?: string; points: number | null; max: number }[] };
   }[];
 }
 

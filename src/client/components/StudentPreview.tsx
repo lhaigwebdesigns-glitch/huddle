@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Bot, CalendarClock, FileText, Presentation, User, Users } from "lucide-react";
-import type { RoomFile } from "../../shared/protocol";
+import type { RoomFile, RubricGrid } from "../../shared/protocol";
+import { RubricGridView } from "./RubricGrid";
 import { getIdentity } from "../lib/identity";
 import { FilePanel } from "./FilePanel";
 import { Modal } from "./Modal";
@@ -23,6 +24,7 @@ export function StudentPreview({
   ai,
   instructions,
   rubric,
+  rubricGrid,
   worksheetRoom,
   files,
   onClose,
@@ -33,6 +35,7 @@ export function StudentPreview({
   ai: string;
   instructions?: string;
   rubric?: string;
+  rubricGrid?: RubricGrid | null;
   worksheetRoom?: string | null;
   files: RoomFile[];
   onClose: () => void;
@@ -71,11 +74,20 @@ export function StudentPreview({
               {instructions?.trim() || "No instructions."}
             </p>
           </div>
-          {rubric?.trim() && (
+          {rubricGrid ? (
             <div>
               <div className="text-sm font-semibold">How it's graded</div>
-              <p className="mt-1 whitespace-pre-wrap text-[15px] text-fg-muted">{rubric}</p>
+              <div className="mt-2">
+                <RubricGridView grid={rubricGrid} />
+              </div>
             </div>
+          ) : (
+            rubric?.trim() && (
+              <div>
+                <div className="text-sm font-semibold">How it's graded</div>
+                <p className="mt-1 whitespace-pre-wrap text-[15px] text-fg-muted">{rubric}</p>
+              </div>
+            )
           )}
         </aside>
         <section className="flex min-h-[380px] flex-col overflow-hidden rounded-2xl border border-line">

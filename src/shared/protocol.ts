@@ -137,9 +137,58 @@ import { cleanSchedule, type AccessOverride, type AccessState, type Schedule } f
 
 export type AiSetting = "off" | "tutor" | "full";
 
+/** One box in a rubric grid: "Almost there, 2 pts: Your response is mostly focused…". */
+export interface RubricLevel {
+  label: string;
+  points: number;
+  desc: string;
+}
+/** One row of a rubric grid (a criterion), with its levels from best to lowest. */
+export interface RubricCriterion {
+  title: string;
+  desc?: string;
+  levels: RubricLevel[];
+}
+/** A rubric as a grid of boxes: students see where the bar is, teachers grade by clicking a box per row. */
+export interface RubricGrid {
+  rows: RubricCriterion[];
+}
+export const GRID_LIMITS = { rows: 12, levels: 6, title: 80, label: 40, desc: 400 } as const;
+export const DEFAULT_LEVELS: RubricLevel[] = [
+  { label: "You've got it", points: 3, desc: "" },
+  { label: "Almost there", points: 2, desc: "" },
+  { label: "Needs work", points: 1, desc: "" },
+];
+
+/** Check and clamp a rubric grid from a client; undefined if there's nothing usable. */
+export function cleanRubricGrid(input: unknown): RubricGrid | undefined {
+  if (!input || typeof input !== "object" || !Array.isArray((input as RubricGrid).rows)) return undefined;
+  const rows = (input as RubricGrid).rows.slice(0, GRID_LIMITS.rows).flatMap((r) => {
+    if (!r || typeof r !== "object" || !Array.isArray(r.levels)) return [];
+    const title = String(r.title ?? "").trim().slice(0, GRID_LIMITS.title);
+    const levels = r.levels.slice(0, GRID_LIMITS.levels).map((l) => ({
+      label: String(l?.label ?? "").trim().slice(0, GRID_LIMITS.label),
+      points: Math.max(0, Math.min(1000, Math.round(Number(l?.points) * 100) / 100 || 0)),
+      desc: String(l?.desc ?? "").trim().slice(0, GRID_LIMITS.desc),
+    }));
+    if (!title || levels.length < 2) return [];
+    const desc = String(r.desc ?? "").trim().slice(0, GRID_LIMITS.desc);
+    return [{ title, ...(desc ? { desc } : {}), levels }];
+  });
+  return rows.length ? { rows } : undefined;
+}
+
+/** The most points a criterion can get. */
+export const criterionMax = (r: RubricCriterion) => Math.max(0, ...r.levels.map((l) => l.points));
+
+/** The grid as rubric text ("Focus: 3 pts" per row), so everything that reads the rubric text still works. */
+export const gridToText = (g: RubricGrid) => g.rows.map((r) => `${r.title}: ${criterionMax(r)} pts`).join("\n");
+
 export interface ProjectSettings {
   instructions: string;
   rubric: string;
+  /** The rubric as a grid of boxes (when the teacher made one). Its text version is `rubric`. */
+  rubricGrid?: RubricGrid;
   dueAt?: number;
   ai: AiSetting;
   /** Block pasting text that wasn't copied inside Cairn (AI off / tutor projects). */
@@ -171,6 +220,11 @@ export function cleanProject(patch: unknown, prev?: ProjectSettings): ProjectSet
   const next: ProjectSettings = { ...base };
   if (typeof p.instructions === "string") next.instructions = p.instructions.slice(0, PROJECT_LIMITS.instructions);
   if (typeof p.rubric === "string") next.rubric = p.rubric.slice(0, PROJECT_LIMITS.rubric);
+  if ("rubricGrid" in p) {
+    const grid = cleanRubricGrid(p.rubricGrid);
+    if (grid) (next.rubricGrid = grid), (next.rubric = gridToText(grid));
+    else delete next.rubricGrid;
+  }
   if (p.dueAt === null || p.dueAt === undefined) {
     if ("dueAt" in p) delete next.dueAt;
   } else if (typeof p.dueAt === "number" && Number.isFinite(p.dueAt) && p.dueAt > 0) next.dueAt = Math.round(p.dueAt);
