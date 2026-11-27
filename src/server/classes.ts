@@ -720,6 +720,53 @@ classes.put("/:id/assignments/:aid", async (c) => {
   return c.json({ ok: true });
 });
 
+/**
+ * Copy an assignment to the teacher's other classes (same lesson, another period): its rules,
+ * solo or groups, and its worksheet and answer key. Each class gets its own link and rooms.
+ */
+classes.post("/:id/assignments/:aid/copy", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  const src = await c.env.DB!.prepare(`SELECT * FROM assignments WHERE id = ? AND class_id = ?`).bind(c.req.param("aid"), t.cls.id).first<AssignmentRow>();
+  if (!src) return c.json({ error: "Assignment not found." }, 404);
+  const body = await c.req.json<{ classIds?: unknown }>().catch(() => ({}) as { classIds?: unknown });
+  const ids = (Array.isArray(body.classIds) ? body.classIds : []).map(String).filter((x) => x && x !== t.cls.id).slice(0, 20);
+  if (!ids.length) return c.json({ error: "Pick at least one class." }, 400);
+  const copied: string[] = [];
+  for (const classId of ids) {
+    const target = await c.env.DB!.prepare(`SELECT * FROM classes WHERE id = ? AND teacher_id = ?`).bind(classId, t.user.id).first<ClassRow>();
+    if (!target) continue;
+    const id = newId();
+    const mode: AssignmentMode = src.mode === "groups" ? "groups" : "solo";
+    const size = src.group_size ?? 3;
+    const stmts = [
+      c.env.DB!.prepare(
+        `INSERT INTO assignments (id, class_id, title, project, template, created_at, mode, group_size, teacher_uid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(id, target.id, src.title, src.project, src.template, Date.now(), mode, size, t.user.uid),
+    ];
+    if (mode === "groups") {
+      const { results: roster } = await c.env.DB!.prepare(`SELECT uid FROM class_students WHERE class_id = ?`).bind(target.id).all<{ uid: string }>();
+      let planned = makeGroups(roster.map((r) => r.uid), size).filter((g, i) => g.length || i === 0);
+      if (!planned.length) planned = [[]];
+      planned.forEach((members, i) =>
+        stmts.push(c.env.DB!.prepare(`INSERT INTO class_groups (assignment_id, room_code, name, members) VALUES (?, ?, ?, ?)`).bind(id, `${PENDING}${newId()}`, `Group ${i + 1}`, JSON.stringify(members))),
+      );
+    }
+    await c.env.DB!.batch(stmts);
+    // Its own worksheet: a copy of every starter file, and of the answer key.
+    if (src.worksheet) {
+      const made = await makeWorksheet(c, t.user.uid, { classId: target.id, assignmentId: id }, src.title, { starter: null, key: false });
+      if (made) {
+        const ws = await getServerByName(c.env.Room, made.room);
+        await ws.copyStarter(src.worksheet).catch(() => null);
+        await ws.copyAnswerKeyFrom(src.worksheet).catch(() => null);
+      }
+    }
+    copied.push(target.name);
+  }
+  return c.json({ copied });
+});
+
 /** Give one student or group extra time: open it now for a while, extend their due date, or set it. */
 classes.post("/:id/assignments/:aid/groups/:room/time", async (c) => {
   const g = await gradingContext(c);

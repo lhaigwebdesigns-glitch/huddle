@@ -1,7 +1,7 @@
 import { alertDialog, confirmDialog, promptDialog } from "../components/Dialogs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Ban, BookOpen, CalendarClock, Check, ChevronDown, CircleCheck, ClipboardList, Clock, Copy, Download, File, FileText, Flag, FlaskConical, GraduationCap, KeyRound, MessagesSquare, Plus, Presentation, Upload, Users, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Ban, BookOpen, CalendarClock, Check, ChevronDown, CircleCheck, ClipboardList, Clock, Copy, CopyPlus, Download, Eye, File, FileText, Flag, FlaskConical, GraduationCap, KeyRound, MessagesSquare, Plus, Presentation, Upload, Users, X } from "lucide-react";
 import { OFFICE_ACCEPT, officeKind } from "../lib/officeFiles";
 import { getIdentity } from "../lib/identity";
 import type { Report } from "../../shared/protocol";
@@ -13,6 +13,7 @@ import { pickFromDrive, useDrive } from "../lib/googleDrive";
 import { DriveMark } from "../components/DriveMark";
 import { EmailPills } from "../components/EmailPills";
 import { FilePanel } from "../components/FilePanel";
+import { StudentPreview } from "../components/StudentPreview";
 import type { RoomFile } from "../../shared/protocol";
 import { exampleTitle, orderTemplates, type Teach } from "../../shared/onboarding";
 import { Button, Input, Logo, ThemeToggle } from "../components/ui";
@@ -256,7 +257,7 @@ function GroupCard({ g, names, gradeUrl, timeUrl, onChanged }: { g: GroupInfo; n
 }
 
 /** The assignment's less-used actions, in one small menu. */
-function AssignmentMore({ csv, onEditTimes, onMove }: { csv: string; onEditTimes: () => void; onMove?: () => void }) {
+function AssignmentMore({ csv, onEditTimes, onMove, onCopy, onPreview }: { csv: string; onEditTimes: () => void; onMove?: () => void; onCopy: () => void; onPreview: () => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -278,6 +279,12 @@ function AssignmentMore({ csv, onEditTimes, onMove }: { csv: string; onEditTimes
       </button>
       {open && (
         <span className="pop absolute left-0 top-full z-20 mt-1 block w-64 rounded-xl border border-line bg-surface p-1 shadow-lg" role="menu" style={{ ["--origin" as string]: "top left" }}>
+          <button role="menuitem" className={item} onClick={() => (setOpen(false), onPreview())} data-testid="preview-student">
+            <Eye className="h-4 w-4 text-fg-muted" /> Preview as a student
+          </button>
+          <button role="menuitem" className={item} onClick={() => (setOpen(false), onCopy())} data-testid="copy-to-class">
+            <CopyPlus className="h-4 w-4 text-fg-muted" /> Copy to another class
+          </button>
           <button role="menuitem" className={item} onClick={() => (setOpen(false), onEditTimes())} data-testid="edit-times">
             <CalendarClock className="h-4 w-4 text-fg-muted" /> Change due date and times
           </button>
@@ -303,6 +310,8 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
   const [manage, setManage] = useState(false);
   const [copied, setCopied] = useState(false);
   const [editTimes, setEditTimes] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [preview, setPreview] = useState(false);
   const solo = a.mode === "solo";
   const timeUrl = (room: string) => `/api/classes/${view.class.id}/assignments/${a.id}/groups/${room}/time`;
   const link = `${location.origin}${assignmentPath(view.class.code, a.id)}`;
@@ -363,6 +372,8 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
             csv={`/api/classes/${view.class.id}/assignments/${a.id}/grades.csv`}
             onEditTimes={() => setEditTimes(true)}
             onMove={solo ? undefined : () => setManage(true)}
+            onCopy={() => setCopying(true)}
+            onPreview={() => setPreview(true)}
           />
         )}
       </div>
@@ -434,6 +445,20 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
             })}
           </ul>
         </div>
+      )}
+      {copying && <CopyToClassesDialog classId={view.class.id} a={a} onClose={() => setCopying(false)} />}
+      {preview && (
+        <StudentPreview
+          title={a.title}
+          dueAt={a.project.dueAt}
+          mode={a.mode}
+          ai={a.project.ai}
+          instructions={a.project.instructions}
+          rubric={a.project.rubric}
+          worksheetRoom={a.worksheet?.room}
+          files={(a.worksheet?.files ?? []).filter((x) => x.id).map((x) => ({ id: x.id!, title: x.title, kind: x.kind as RoomFile["kind"], createdAt: 0, createdBy: "" }))}
+          onClose={() => setPreview(false)}
+        />
       )}
       {editTimes && (
         <EditTimesDialog
@@ -550,6 +575,7 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
   // The worksheet and answer key, written right here once the assignment is made.
   const [wsFiles, setWsFiles] = useState<{ starter?: RoomFile; key?: RoomFile }>({});
   const [wsTab, setWsTab] = useState<"starter" | "key">("starter");
+  const [previewing, setPreviewing] = useState(false);
   const hasWs = starter !== "none" || withKey;
   const stepList = hasWs ? [0, 1, 2, 3] : [0, 1, 3];
   const [importNote, setImportNote] = useState("");
@@ -682,6 +708,20 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
       )}
     </>
   );
+  if (previewing)
+    return (
+      <StudentPreview
+        title={title.trim()}
+        dueAt={project.dueAt}
+        mode={mode}
+        ai={project.ai}
+        instructions={project.instructions}
+        rubric={project.rubric}
+        worksheetRoom={worksheetRoom}
+        files={wsFiles.starter ? [wsFiles.starter] : []}
+        onClose={() => setPreviewing(false)}
+      />
+    );
   return (
     <Modal
       title={step === 3 ? "Your assignment is ready" : step === 2 ? `Write the worksheet for ${title.trim()}` : "New assignment"}
@@ -898,7 +938,10 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
             <ClassroomMark className="h-5 w-5" /> Post to Google Classroom
           </a>
           <p className="mt-2 text-center text-sm text-fg-subtle">In Classroom, pick Assignment, then set the points and due date there.</p>
-          <div className="mt-6 flex items-center gap-2 rounded-2xl border border-line bg-bg py-2 pl-4 pr-2">
+          <button type="button" onClick={() => setPreviewing(true)} className="press mx-auto mt-4 flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-sm font-semibold text-fg-muted hover:bg-surface-2 hover:text-fg" data-testid="wizard-preview">
+            <Eye className="h-4 w-4" /> Preview as a student first
+          </button>
+          <div className="mt-4 flex items-center gap-2 rounded-2xl border border-line bg-bg py-2 pl-4 pr-2">
             <span className="min-w-0 flex-1 truncate font-mono text-sm text-fg-muted" data-testid="wizard-link">
               {link}
             </span>
@@ -955,6 +998,89 @@ function MoreTime({ url, onDone }: { url: string; onDone: () => void }) {
         </span>
       )}
     </span>
+  );
+}
+
+/** Copy an assignment (and its worksheet and answer key) to the teacher's other classes. */
+function CopyToClassesDialog({ classId, a, onClose }: { classId: string; a: Assignment; onClose: () => void }) {
+  const [classes, setClasses] = useState<ClassInfo[] | null>(null);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<string[] | null>(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    api<{ classes: ClassInfo[] }>("/api/classes").then((d) => setClasses((d.classes ?? []).filter((c) => c.id !== classId)));
+  }, [classId]);
+  const copy = async () => {
+    setBusy(true);
+    setErr("");
+    const d = await api<{ copied: string[] }>(`/api/classes/${classId}/assignments/${a.id}/copy`, { method: "POST", body: JSON.stringify({ classIds: picked }) });
+    setBusy(false);
+    if (d.error) return setErr(d.error);
+    setDone(d.copied ?? []);
+  };
+  return (
+    <Modal
+      size="md"
+      title={done ? "Copied" : `Copy "${a.title}" to another class`}
+      subtitle={done ? undefined : "Same instructions, AI setting and due date, and its own copy of the worksheet and answer key. Each class gets its own link."}
+      onClose={onClose}
+      testId="copy-dialog"
+      footer={
+        done ? (
+          <>
+            <span className="flex-1" />
+            <button type="button" onClick={onClose} className="ledge-btn min-w-[140px]" data-testid="copy-close">
+              Done
+            </button>
+          </>
+        ) : (
+          <>
+            {err && <p className="w-full text-sm font-semibold text-red-600 dark:text-red-400" role="alert">{err}</p>}
+            <Button type="button" variant="ghost" onClick={onClose}>
+              Cancel
+            </Button>
+            <span className="flex-1" />
+            <button type="button" disabled={!picked.length || busy} onClick={() => void copy()} className="ledge-btn min-w-[200px]" data-testid="copy-confirm">
+              <CopyPlus className="h-4 w-4" /> {busy ? "Copying…" : picked.length > 1 ? `Copy to ${picked.length} classes` : "Copy"}
+            </button>
+          </>
+        )
+      }
+    >
+      {done ? (
+        <p className="text-[15px]" data-testid="copy-done">
+          It's now in <b>{done.join(", ")}</b>, with its own link. Post that class's link in its Google Classroom.
+        </p>
+      ) : classes === null ? (
+        <p className="text-sm text-fg-subtle">Loading your classes…</p>
+      ) : !classes.length ? (
+        <p className="text-[15px] text-fg-muted">This is your only class. Make another one first, then copy assignments into it.</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2" role="group" aria-label="Classes">
+          {classes.map((c) => {
+            const on = picked.includes(c.id);
+            return (
+              <button
+                key={c.id}
+                type="button"
+                role="checkbox"
+                aria-checked={on}
+                onClick={() => setPicked((p) => (on ? p.filter((x) => x !== c.id) : [...p, c.id]))}
+                className="choice-card flex items-center gap-3 bg-bg px-4 py-3 text-left"
+                data-testid="copy-class-option"
+              >
+                <span className={`grid h-5 w-5 shrink-0 place-items-center rounded-md border-2 ${on ? "border-fg bg-fg text-bg" : "border-line-strong"}`}>{on && <Check className="h-3.5 w-3.5" />}</span>
+                <span className="min-w-0">
+                  <span className="block truncate font-semibold">{c.name}</span>
+                  <span className="text-xs text-fg-subtle">{plural(c.students ?? 0, "student")}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </Modal>
   );
 }
 

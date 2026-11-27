@@ -754,7 +754,7 @@ try {
   await park.getByTestId("welcome-next").click();
   await park.getByTestId("subject-social-studies").click();
   await park.getByTestId("welcome-next").click();
-  await park.getByTestId("welcome-title").getByText("One link per assignment.").waitFor();
+  await park.getByTestId("welcome-title").getByText("AI that helps them think.").waitFor();
   await park.getByTestId("welcome-next").click();
   await park.getByTestId("welcome-next").click();
   await park.getByTestId("welcome-next").getByText("Make my first class").click();
@@ -1006,7 +1006,7 @@ try {
     "a student who joined through a link gets the welcome later, without being asked teacher or student again",
   );
   await eve.getByTestId("welcome-next").click();
-  await eve.getByTestId("welcome-title").getByText("A tutor, not a ghostwriter.").waitFor();
+  await eve.getByTestId("welcome-title").getByText("Show your work.").waitFor();
   await eve.getByTestId("welcome-next").click();
   await eve.getByTestId("welcome-next").getByText("Let's go").click();
   await eve.waitForURL(/\/dashboard$/);
@@ -1098,6 +1098,11 @@ try {
   ok(true, "the wizard can go back to change the title after the assignment is made, and comes back to the worksheet");
   await park.getByTestId("wizard-to-share").click();
   await park.getByTestId("wizard-ready").waitFor();
+  await park.getByTestId("wizard-preview").click();
+  await park.getByTestId("student-preview").getByTestId("doc-editor").locator("h1", { hasText: "Cell Worksheet" }).waitFor({ timeout: 15000 });
+  await park.keyboard.press("Escape");
+  await park.getByTestId("wizard-ready").waitFor();
+  ok(true, "the wizard's last step can preview what students see, then come back");
   await park.getByTestId("wizard-done").click();
   await park.getByTestId("assignment").filter({ hasText: "Cell worksheet (cells and organelles)" }).waitFor();
   ok((await park.getByTestId("assignment").filter({ hasText: "Cell worksheet" }).count()) === 1, "going back and forward saves to the same assignment, not a second one");
@@ -1126,6 +1131,28 @@ try {
     async ([cid, aid]) => (await fetch(`/api/classes/${cid}/assignments/${aid}/worksheet`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ key: true }) })).json(),
     [wsClass, wsAid],
   );
+  // Preview as a student: the AI rule in student words and the worksheet, read-only, without the key.
+  await park.goto(classUrl);
+  await wsSection.getByTestId("assignment-more").click();
+  await park.getByTestId("preview-student").click();
+  await park.getByTestId("student-preview").getByTestId("doc-editor").locator("h1", { hasText: "Cell Worksheet" }).waitFor({ timeout: 15000 });
+  ok(
+    (await park.getByTestId("preview-ai").innerText()).includes("Tutor only") && !(await park.getByTestId("student-preview").innerText()).includes("Write the answers here"),
+    "Preview as a student shows the AI rule and the worksheet, not the answer key",
+  );
+  await park.keyboard.press("Escape");
+  // Copy it to another class: its own assignment, worksheet and answer key.
+  const other = await park.evaluate(async () => (await fetch("/api/classes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Period 6 Biology" }) })).json());
+  await wsSection.getByTestId("assignment-more").click();
+  await park.getByTestId("copy-to-class").click();
+  await park.getByTestId("copy-class-option").filter({ hasText: "Period 6 Biology" }).click();
+  await park.getByTestId("copy-confirm").click();
+  await park.getByTestId("copy-done").getByText("Period 6 Biology").waitFor({ timeout: 30000 });
+  await park.getByTestId("copy-close").click();
+  const otherView = await park.evaluate(async (id) => (await fetch(`/api/classes/${id}`)).json(), other.id);
+  const copiedA = (otherView.assignments ?? []).find((x) => x.title.startsWith("Cell worksheet"));
+  ok(!!copiedA && copiedA.worksheet?.hasKey && (copiedA.worksheet.files ?? []).some((f) => f.title.includes("Cell worksheet")), "an assignment can be copied to another class, with its worksheet and answer key");
+
   // A student opens the assignment: their own copy of the worksheet, without the answer key.
   const cara = kids[2];
   await cara.goto(wsLink);

@@ -163,6 +163,14 @@ const STEP_ICON: Record<string, typeof Search> = { search: Globe, fetch: BookOpe
 /** Messages from the same person within this window are grouped under one header. */
 const GROUP_MS = 5 * 60_000;
 
+/** In a teacher's worksheet room: help writing the worksheet itself. */
+const WORKSHEET_SUGGESTIONS = [
+  { label: "Write questions", Icon: FileText, text: "Write 5 questions for this worksheet, from easy to harder, and put them in the worksheet doc." },
+  { label: "Write the answer key", Icon: Brain, text: "Write an answer key for the questions in the worksheet, with a short explanation for each, in the answer key doc." },
+  { label: "Make an easier version", Icon: Lightbulb, text: "Rewrite the worksheet's questions in simpler words for students who need extra support, as a new doc." },
+  { label: "Check it for mistakes", Icon: BookOpen, text: "Read the worksheet and point out anything unclear, too hard, or that could be misread. Don't change it yet." },
+];
+
 const SUGGESTIONS = [
   { label: "Search the news", Icon: Globe, text: "Search the web for this week's top science news and summarize 3 stories with sources." },
   { label: "Write a plan doc", Icon: FileText, text: "Write a project plan doc for our group project with goals, tasks and a timeline." },
@@ -603,7 +611,7 @@ export function Chat({
             </p>
             {(!settings.project || settings.project.ai === "full") && (<>
             <div className="mt-8 grid gap-2 text-left sm:grid-cols-2" data-testid="suggestions">
-              {SUGGESTIONS.map((s) => (
+              {(settings.worksheet ? WORKSHEET_SUGGESTIONS : SUGGESTIONS).map((s) => (
                 <button
                   key={s.label}
                   onClick={() => submit(s.text)}
@@ -737,7 +745,9 @@ export function Chat({
               placeholder={
                 aiOff
                   ? "Chat with your group (AI is off for this project)"
-                  : `Message the room${settings.aiMode === "mention" ? " (use @ai for the AI)" : " and the AI"}… (type / for shortcuts)`
+                  : settings.worksheet
+                    ? "Ask the AI to help write the worksheet…"
+                    : `Message the room${settings.aiMode === "mention" ? " (use @ai for the AI)" : " and the AI"}… (type / for shortcuts)`
               }
               className="block max-h-48 min-h-[2.75rem] w-full resize-none bg-transparent px-2.5 py-2 text-[15px] leading-relaxed outline-none focus-visible:outline-none"
               onChange={(e) => {

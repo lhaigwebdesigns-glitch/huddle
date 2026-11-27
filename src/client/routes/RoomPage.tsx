@@ -273,7 +273,11 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
       </div>
       {/* A clear way back: to your class for class rooms, otherwise to your rooms. */}
       <div className="px-3 pb-2">
-        {state.settings.classLink?.classCode ? (
+        {state.settings.worksheet ? (
+          <Link to={`/classes/${state.settings.worksheet.classId}`} className="press flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-semibold text-fg-muted hover:bg-accent-soft hover:text-fg" data-testid="room-back">
+            <ArrowLeft className="h-4 w-4" /> Your class
+          </Link>
+        ) : state.settings.classLink?.classCode ? (
           <Link to={`/c/${state.settings.classLink.classCode}`} className="press flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-semibold text-fg-muted hover:bg-accent-soft hover:text-fg" data-testid="room-back">
             <ArrowLeft className="h-4 w-4" /> Your class
           </Link>
@@ -332,7 +336,7 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
         <button onClick={() => setShowSettings(true)} className={ROW}>
           <Settings className="h-4 w-4" /> Room settings
         </button>
-        {isHost && (
+        {isHost && !state.settings.worksheet && (
           <button
             onClick={async () => {
               if (
@@ -365,9 +369,13 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
           <MessageSquare className="h-4 w-4" /> Send feedback
         </button>
         <div className="flex items-center gap-2 pt-1">
-          <Link to="/" className={`${ROW} flex-1`}>
-            <ArrowLeft className="h-4 w-4" /> Leave room
-          </Link>
+          {state.settings.worksheet ? (
+            <span className="flex-1" />
+          ) : (
+            <Link to="/" className={`${ROW} flex-1`}>
+              <ArrowLeft className="h-4 w-4" /> Leave room
+            </Link>
+          )}
           <ThemeToggle />
         </div>
       </div>
@@ -409,9 +417,11 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
             </div>
             {state.status !== "open" && <span className="text-xs text-amber-600 dark:text-amber-400">reconnecting…</span>}
           </div>
-          <button onClick={copyInvite} className="press rounded-lg px-2 py-1 font-mono text-sm font-medium tracking-[0.12em] text-fg hover:bg-surface-2 md:hidden" aria-label="Copy invite link">
-            {formatCode(code)}
-          </button>
+          {!state.settings.worksheet && (
+            <button onClick={copyInvite} className="press rounded-lg px-2 py-1 font-mono text-sm font-medium tracking-[0.12em] text-fg hover:bg-surface-2 md:hidden" aria-label="Copy invite link">
+              {formatCode(code)}
+            </button>
+          )}
         </header>
         {state.notice && state.settings.engine !== "local" && (
           <div

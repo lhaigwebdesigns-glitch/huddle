@@ -114,7 +114,7 @@ export interface Assignment {
 export interface WorksheetInfo {
   /** The teacher-only room that holds the starter files and the answer key. */
   room: string;
-  files?: { title: string; kind: string }[];
+  files?: { id?: string; title: string; kind: string }[];
   hasKey?: boolean;
 }
 
