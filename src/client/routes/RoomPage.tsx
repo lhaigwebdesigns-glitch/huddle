@@ -268,6 +268,10 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
     setTimeout(() => setCopied(false), 1500);
   };
 
+  // Class rooms: who's in them is set by the class, so no party code, members list (solo) or "Leave room".
+  const classLink = state.settings.classLink;
+  const solo = !!classLink && (!!classLink.solo || classLink.group === state.you.name);
+  const roomTitle = classLink && solo ? state.settings.title.replace(` · ${classLink.group}`, "") : state.settings.title;
   const sidebar = (
     <aside className="flex h-full w-[264px] shrink-0 flex-col bg-sidebar" data-tour="room-files">
       <div className="flex h-12 items-center gap-2 px-3">
@@ -304,6 +308,7 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
         myUid={me.uid}
         send={send}
         onImport={state.settings.project?.turnedInAt ? undefined : startImport}
+        aiFiles={!state.settings.project || state.settings.project.ai === "full"}
         onOpen={(id) => {
           setOpenFile(id);
           setShowSidebar(false);
@@ -311,7 +316,8 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
       />
 
       <div className="mt-5 min-h-0 flex-1 overflow-y-auto px-3">
-        <div className="px-2.5 text-xs font-medium text-fg-subtle">In the room · {state.members.length}</div>
+        {!solo && (<>
+        <div className="px-2.5 text-xs font-medium text-fg-subtle">{classLink ? "Your group" : "In the room"} · {state.members.length}</div>
         <ul className="mt-1.5 space-y-0.5" data-testid="members">
           {state.members.map((m) => (
             <li key={m.uid} className="flex items-center gap-2.5 rounded-lg px-2.5 py-1 text-[13.5px] text-fg">
@@ -325,10 +331,11 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
             </li>
           ))}
         </ul>
+        </>)}
       </div>
 
       <div className="space-y-0.5 p-3">
-        {!state.settings.worksheet && (
+        {!state.settings.worksheet && !classLink && (
         <button
           onClick={copyInvite}
           className="press group mb-2 flex w-full items-center justify-between rounded-xl border border-line bg-bg px-3 py-2 hover:border-line-strong"
@@ -378,7 +385,7 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
           <MessageSquare className="h-4 w-4" /> Send feedback
         </button>
         <div className="flex items-center gap-2 pt-1">
-          {state.settings.worksheet ? (
+          {state.settings.worksheet || classLink ? (
             <span className="flex-1" />
           ) : (
             <Link to="/" className={`${ROW} flex-1`}>
@@ -410,8 +417,8 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
           </button>
           {sidebarHidden && <ShowSidebarButton className="mr-1" />}
           <div className="flex min-w-0 flex-1 items-baseline gap-3">
-            <div className="truncate text-[15px] font-semibold tracking-tight">{state.settings.title}</div>
-            <div className="hidden min-w-0 items-center gap-1.5 truncate text-xs text-fg-subtle sm:flex">
+            <h1 className="truncate text-[15px] font-semibold tracking-tight" data-testid="room-title">{roomTitle}</h1>
+            <div className={`hidden min-w-0 items-center gap-1.5 truncate text-xs text-fg-subtle ${classLink ? "" : "sm:flex"}`}>
               {state.settings.engine === "local" ? <Cpu className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />}
               {state.settings.engine === "local" ? "Local mode" : "Free open models"}
               <span aria-hidden="true">·</span>
@@ -426,7 +433,7 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
             </div>
             {state.status !== "open" && <span className="text-xs text-amber-600 dark:text-amber-400">reconnecting…</span>}
           </div>
-          {!state.settings.worksheet && (
+          {!state.settings.worksheet && !classLink && (
             <button onClick={copyInvite} className="press rounded-lg px-2 py-1 font-mono text-sm font-medium tracking-[0.12em] text-fg hover:bg-surface-2 md:hidden" aria-label="Copy invite link">
               {formatCode(code)}
             </button>
@@ -457,7 +464,7 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
         )}
         {state.settings.worksheet && <WorksheetBanner ws={state.settings.worksheet} />}
         {state.settings.project && (
-          <ProjectBar project={state.settings.project} title={state.settings.title} isHost={isHost} send={send} onReceipt={setReceiptMode} onDetails={() => setBriefOpen(true)} board={state.board} meUid={state.you.uid} />
+          <ProjectBar project={state.settings.project} title={state.settings.title} isHost={isHost} send={send} onReceipt={setReceiptMode} onDetails={() => setBriefOpen(true)} solo={solo} board={state.board} meUid={state.you.uid} />
         )}
         {briefOpen && state.settings.project && (
           <AssignmentBrief

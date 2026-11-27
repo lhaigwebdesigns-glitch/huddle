@@ -121,7 +121,7 @@ function Reactions({ m, me, members, send }: { m: ChatMessage; me: Member; membe
   const entries = Object.entries(m.meta?.reactions ?? {}).filter(([, u]) => u.length);
   const nameOf = (uid: string) => members.find((x) => x.uid === uid)?.name ?? "someone";
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-1">
+    <div className="contents">
       {entries.map(([emoji, uids]) => (
         <button
           key={emoji}
@@ -215,7 +215,7 @@ function Feedback({ msg, room, me, canRegenerate, onRegenerate }: { msg: ChatMes
   const btn = "press flex h-7 items-center gap-1 rounded-lg px-1.5 text-fg-subtle hover:bg-surface-2 hover:text-fg";
   const ic = "h-3.5 w-3.5";
   return (
-    <div className="-ml-1.5 mt-1.5 flex flex-wrap items-center gap-0.5 text-xs text-fg-subtle">
+    <div className="-ml-1.5 flex flex-wrap items-center gap-0.5 text-xs text-fg-subtle">
       <button className={`${btn} ${sent === 1 ? "text-fg" : ""}`} title="Good response" aria-label="Good response" onClick={() => (setSent(1), submit(1))}>
         <ThumbsUp className={ic} fill={sent === 1 ? "currentColor" : "none"} />
       </button>
@@ -331,6 +331,27 @@ function MessageView({
   const isAi = m.role === "assistant";
   const author = members.find((x) => x.uid === m.authorId);
   const color = author?.color ?? "#71717a";
+  // A student's message with no reactions keeps its controls beside the bubble (no empty row under it).
+  const quiet = !isAi && !Object.values(m.meta?.reactions ?? {}).some((u) => u.length);
+  const reportBtn =
+    canReport && m.authorId !== me.uid ? (
+      <button
+        onClick={async () => {
+          const reason = await promptDialog({
+            title: "Report this message?",
+            message: "Only this message goes to your teacher, not the rest of the chat.",
+            label: "What's wrong? (optional)",
+            placeholder: "e.g. It's mean to me",
+            confirmLabel: "Report",
+          });
+          if (reason !== null) send({ t: "report", id: m.id, reason });
+        }}
+        className="press flex h-6 shrink-0 items-center gap-1 rounded-lg px-1.5 text-xs text-fg-subtle opacity-0 hover:bg-surface-2 hover:text-fg focus:opacity-100 group-hover:opacity-100"
+        data-testid="report-message"
+      >
+        <Flag className="h-3 w-3" /> Report to teacher
+      </button>
+    ) : null;
   return (
     <div
       className={`group flex gap-3 px-4 sm:px-6 ${grouped ? "py-0.5" : "pt-5 pb-0.5"}`}
@@ -400,6 +421,13 @@ function MessageView({
                 <Pencil className="h-3 w-3" /> Edit
               </button>
             )}
+            {/* No reactions yet: react and report sit beside the bubble, not in a row of their own. */}
+            {quiet && !m.meta?.streaming && (
+              <span className="mt-0.5 flex shrink-0 items-center gap-1">
+                <Reactions m={m} me={me} members={members} send={send} />
+                {reportBtn}
+              </span>
+            )}
           </div>
         )}
         {isAi && !!m.meta?.sources?.length && (
@@ -420,27 +448,12 @@ function MessageView({
         )}
         <Attachments items={[...(m.meta?.attachments ?? []), ...(m.meta?.images ?? [])]} send={send} />
         {m.meta?.poll && <PollCard id={m.id} poll={m.meta.poll} me={me} members={members} send={send} />}
-        {!m.meta?.streaming && <Reactions m={m} me={me} members={members} send={send} />}
-        {canReport && !m.meta?.streaming && m.authorId !== me.uid && (
-          <button
-            onClick={async () => {
-              const reason = await promptDialog({
-                title: "Report this message?",
-                message: "Only this message goes to your teacher, not the rest of the chat.",
-                label: "What's wrong? (optional)",
-                placeholder: "e.g. It's mean to me",
-                confirmLabel: "Report",
-              });
-              if (reason !== null) send({ t: "report", id: m.id, reason });
-            }}
-            className="press mt-1 flex items-center gap-1 rounded-lg px-1.5 py-0.5 text-xs text-fg-subtle opacity-0 hover:bg-surface-2 hover:text-fg focus:opacity-100 group-hover:opacity-100"
-            data-testid="report-message"
-          >
-            <Flag className="h-3 w-3" /> Report to teacher
-          </button>
-        )}
-        {isAi && !m.meta?.streaming && (
-          <Feedback msg={m} room={room} me={me} canRegenerate={canRegenerate} onRegenerate={() => send({ t: "regenerate" })} />
+        {!m.meta?.streaming && !quiet && (
+        <div className="mt-1 flex flex-wrap items-center gap-1">
+        {isAi && <Feedback msg={m} room={room} me={me} canRegenerate={canRegenerate} onRegenerate={() => send({ t: "regenerate" })} />}
+        <Reactions m={m} me={me} members={members} send={send} />
+        {reportBtn}
+        </div>
         )}
       </div>
     </div>
@@ -524,6 +537,8 @@ export function Chat({
   const last = messages[messages.length - 1];
   const lastUserIdx = messages.map((m) => m.role).lastIndexOf("user");
   const aiOff = settings.project?.ai === "off";
+  // A student's own class room (just them): talk to the tutor, not "the room".
+  const solo = !!settings.classLink && (!!settings.classLink.solo || settings.classLink.group === me.name);
 
   useLayoutEffect(() => {
     const el = listRef.current;
@@ -597,9 +612,13 @@ export function Chat({
               <RockArt className="h-20 w-20" body={GREEN} pose="cheer" />
               <RockArt className="h-14 w-14" body={TEAL} pose="hold" prop="laptop" />
             </div>
-            <h2 className="text-[28px] font-extrabold tracking-[-0.025em]">{settings.project ? "Let's get this project started" : settings.worksheet ? "Set up the worksheet" : "What are we working on?"}</h2>
+            <h2 className="text-[28px] font-extrabold tracking-[-0.025em]">{solo ? "This room is all yours" : settings.project ? "Let's get this project started" : settings.worksheet ? "Set up the worksheet" : "What are we working on?"}</h2>
             <p className="mx-auto mt-2 max-w-md text-[15px] text-fg-muted">
-              {settings.project
+              {solo
+                ? `Make your files with New file on the left. ${aiOff ? "The AI is off for this one." : settings.project?.ai === "tutor" ? "Stuck? Ask the tutor here. It gives hints and asks questions, but it won't do the work for you." : "Ask the AI here when you want help planning or writing."}`
+                : settings.classLink && settings.project
+                  ? `Split up the work with Tasks, make files with New file, and talk it over here. ${aiOff ? "The AI is off for this one." : settings.project.ai === "tutor" ? "Stuck? Ask the tutor for a hint; it won't do the work for you." : "Use @ai when you want the AI's help."}`
+                  : settings.project
                 ? aiOff
                   ? "Share the code with your group, split up the work, and make your files on the right."
                   : settings.project.ai === "tutor"
@@ -743,11 +762,19 @@ export function Chat({
               value={text}
               aria-label="Message"
               placeholder={
-                aiOff
+                solo
+                  ? aiOff
+                    ? "Notes to yourself…"
+                    : settings.project?.ai === "tutor"
+                      ? "Ask the tutor…"
+                      : "Ask the AI…"
+                  : aiOff
                   ? "Chat with your group (AI is off for this project)"
                   : settings.worksheet
                     ? "Ask the AI to help write the worksheet…"
-                    : `Message the room${settings.aiMode === "mention" ? " (use @ai for the AI)" : " and the AI"}… (type / for shortcuts)`
+                    : settings.classLink
+                      ? `Message your group${settings.aiMode === "mention" ? " (@ai for the AI)" : " and the AI"}…`
+                      : `Message the room${settings.aiMode === "mention" ? " (use @ai for the AI)" : " and the AI"}… (type / for shortcuts)`
               }
               className="block max-h-48 min-h-[2.75rem] w-full resize-none bg-transparent px-2.5 py-2 text-[15px] leading-relaxed outline-none focus-visible:outline-none"
               onChange={(e) => {
