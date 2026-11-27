@@ -841,17 +841,23 @@ classes.get("/join/:code", async (c) => {
       const group = a.groups.find((g) => g.members.includes(uid));
       const ready = group && !isPending(group.roomCode) ? group : undefined;
       let turnedIn = false;
+      let dueAt = a.project.dueAt;
+      let grade: StudentClassView["assignments"][number]["grade"];
       if (ready) {
         const status = (await (await getServerByName(c.env.Room, ready.roomCode)).groupStatus([]).catch(() => null)) as GroupStatus | null;
         turnedIn = !!status?.turnedInAt;
+        if (status?.dueAt) dueAt = status.dueAt;
+        const g = await loadGrade(c.env.DB!, a.id, ready.roomCode);
+        if (g) grade = { score: g.students[uid] ?? gradeTotal(g), max: rubricMax(g.rows), comment: g.comment };
       }
       view.assignments.push({
         id: a.id,
         title: a.title,
         mode: a.mode,
-        ...(a.project.dueAt ? { dueAt: a.project.dueAt } : {}),
+        ...(dueAt ? { dueAt } : {}),
         ...(group && a.mode === "groups" ? { groupName: group.name } : {}),
         ...(ready ? { roomCode: ready.roomCode, turnedIn } : {}),
+        ...(grade ? { grade } : {}),
       });
     }
   }

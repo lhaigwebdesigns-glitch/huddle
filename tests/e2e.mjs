@@ -828,6 +828,13 @@ try {
   const studentMakesClass = await kids[0].evaluate(async () => (await fetch("/api/classes", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Sneaky class" }) })).status);
   const studentPicksTeacher = await kids[0].evaluate(async () => (await fetch("/api/auth/role", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ role: "teacher" }) })).status);
   ok(studentMakesClass === 403 && studentPicksTeacher === 409, "a student account can't make classes or switch itself to a teacher account");
+  // A wrong code isn't a dead end: the student can type the right one.
+  await kids[0].goto(`${BASE}/c/ZZZZZZ`);
+  await kids[0].getByTestId("class-not-found").getByText("No class with that code").waitFor();
+  await kids[0].getByTestId("retry-code").fill(classLink.split("/c/")[1]);
+  await kids[0].getByTestId("retry-join").click();
+  await kids[0].getByText("You're in this class").waitFor();
+  ok(true, "a wrong class code says so and lets the student type the right one");
   await kids[0].goto(classLink);
   await kids[0].getByText("You're in this class").waitFor();
   await park.reload();
@@ -928,6 +935,12 @@ try {
   await park.getByRole("status").getByText("Saved").waitFor();
   await first.getByTestId("unsubmit").waitFor({ state: "detached", timeout: 10000 });
   ok((await first.getByTestId("turned-in").count()) === 1, "once it's graded, the student can't unsubmit it any more");
+  // The student sees the grade and the teacher's comment on their class page, under Done.
+  const firstClass = await first.context().newPage();
+  await firstClass.goto(classLink);
+  await firstClass.getByTestId("student-done").getByTestId("assignment-comment").getByText("Great sources.").waitFor({ timeout: 15000 });
+  ok(/\/ 100/.test(await firstClass.getByTestId("student-done").getByTestId("assignment-grade").first().innerText()), "the student sees their grade and the teacher's comment on the class page");
+  await firstClass.close();
   await park.goto(classUrl);
   await park.getByTestId("assignment-more").first().click();
   const href = await park.getByTestId("export-csv").getAttribute("href");

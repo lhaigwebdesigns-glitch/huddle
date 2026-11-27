@@ -182,7 +182,18 @@ export interface StudentClassView {
   joined: boolean;
   /** joined; waiting = asked to join and the teacher hasn't answered; denied = the teacher said no. */
   status?: "joined" | "waiting" | "denied" | "new";
-  assignments: { id: string; title: string; dueAt?: number; mode: AssignmentMode; roomCode?: string; groupName?: string; turnedIn?: boolean }[];
+  assignments: {
+    id: string;
+    title: string;
+    /** This student's due date: an extension if the teacher gave one, otherwise the assignment's. */
+    dueAt?: number;
+    mode: AssignmentMode;
+    roomCode?: string;
+    groupName?: string;
+    turnedIn?: boolean;
+    /** Once the teacher grades it: this student's score and the teacher's comment. */
+    grade?: { score: number | null; max: number; comment: string };
+  }[];
 }
 
 export const CLASS_LIMITS = { name: 80, students: 200, groupSize: 10 } as const;

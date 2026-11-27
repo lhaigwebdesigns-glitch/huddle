@@ -128,7 +128,7 @@ function Sidebar({ account, isAdmin, onNavigate }: { account: Account; isAdmin?:
       </nav>
 
       <div className="mt-6 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
-        <h2 className="px-2.5 text-xs font-bold uppercase tracking-[0.08em] text-fg-subtle">{teacher ? "Your classes" : "Enrolled"}</h2>
+        <h2 className="px-2.5 text-xs font-bold uppercase tracking-[0.08em] text-fg-subtle">Your classes</h2>
         <div className="mt-2 space-y-0.5" data-testid="sidebar-classes">
           {mine?.classes.map((c) => <ClassItem key={c.code} c={c} active={pathname === c.href || pathname.startsWith(`${c.href}/`)} />)}
           {mine && !mine.classes.length && (
