@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Download, Eye, Lock, MessageCircleQuestion, Send, X } from "lucide-react";
+import { CalendarDays, ChevronDown, Download, Eye, ListChecks, Lock, MessageCircleQuestion, PenLine, Send, Sparkles, X } from "lucide-react";
 import type { ClientMsg, Receipt, ReceiptPerson } from "../../shared/protocol";
 import { FILE_INFO, type FileKind } from "../../shared/files";
 import { UNIT_LABEL } from "../../shared/contrib";
@@ -24,68 +24,73 @@ export function workLine(p: Pick<ReceiptPerson, "words" | "units">) {
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
+/** One plain line on the student's card: an icon and a sentence. */
+function Glance({ icon, children, testId }: { icon: React.ReactNode; children: React.ReactNode; testId?: string }) {
+  return (
+    <li className="flex gap-2.5 py-1" data-testid={testId}>
+      <span className="mt-0.5 shrink-0 text-fg-muted" aria-hidden>
+        {icon}
+      </span>
+      <div className="min-w-0 flex-1 text-[15px]">{children}</div>
+    </li>
+  );
+}
+
 /**
- * What this person asked the AI tutor about, spelled out so nobody has to guess what it is:
- * where it comes from (their questions, summarized), what it isn't (the chat), and that the
- * student sees the same thing. Every case gets a line, so the feature is never invisible.
+ * What this person asked the AI tutor about, as one plain line: "Didn't use the AI tutor", or
+ * how many questions and the topics (Cairn's summary of the questions, never the chat itself).
  */
-function TutorBox({ p, you, final, done }: { p: ReceiptPerson; you: boolean; final: boolean; done: boolean }) {
+function TutorLine({ p, you, final, done }: { p: ReceiptPerson; you: boolean; final: boolean; done: boolean }) {
   const n = p.tutorQuestions ?? 0;
-  const who = you ? "you" : p.name.split(" ")[0];
-  const Who = you ? "You" : who;
-  let body: React.ReactNode;
+  const Who = you ? "You" : p.name.split(" ")[0];
+  const icon = <MessageCircleQuestion className="h-[18px] w-[18px]" />;
+  if (n === 0)
+    return (
+      <Glance icon={icon} testId="receipt-tutor">
+        <span data-testid="receipt-stuck-none">{you ? "You haven't used the AI tutor" : "Didn't use the AI tutor"}</span>
+      </Glance>
+    );
   if (p.stuck?.length)
-    body = (
-      <>
-        <ul className="mt-2 space-y-1.5 text-sm text-fg" data-testid="receipt-stuck">
+    return (
+      <Glance icon={icon} testId="receipt-tutor">
+        Asked the AI tutor {plural(n, "question", "questions")}, mostly about:
+        <ul className="mt-1 space-y-1" data-testid="receipt-stuck">
           {p.stuck.map((x, i) => (
-            <li key={i} className="flex gap-2">
-              <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-peri" aria-hidden />
+            <li key={i} className="flex gap-2 text-fg-muted">
+              <span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-peri" aria-hidden />
               <span>{x}</span>
             </li>
           ))}
         </ul>
-        <p className="mt-2 text-xs leading-relaxed text-fg-muted">
-          Cairn wrote these points from the {plural(n, "question", "questions")} {who} asked the AI tutor while working. It's a summary of the topics, not the chat itself.{" "}
-          {you ? "Your teacher sees exactly this." : `${who} sees exactly this on their own receipt.`}
-        </p>
-      </>
-    );
-  else if (n === 0) body = <p className="mt-1 text-sm text-fg-muted" data-testid="receipt-stuck-none">{Who} didn't ask the AI tutor anything on this assignment.</p>;
-  else if (!final)
-    body = (
-      <p className="mt-1 text-sm text-fg-muted">
-        {Who} asked the tutor {plural(n, "question", "questions")} so far. When this is turned in, Cairn writes a few short points about the topics, so {you ? "your teacher knows" : "you know"} where {you ? "you" : "they"} needed help.
-      </p>
-    );
-  else if (!done) body = <p className="mt-1 text-sm text-fg-muted" data-testid="receipt-stuck-pending">{Who} asked the tutor {plural(n, "question", "questions")}. Cairn is writing the summary now; it shows up here in a few seconds.</p>;
-  else
-    body = (
-      <p className="mt-1 text-sm text-fg-muted">
-        {Who} asked the tutor {plural(n, "question", "questions")}, but Cairn couldn't write the summary this time (usually because the day's free AI allowance ran out).
-      </p>
+        <p className="mt-1 text-xs text-fg-subtle">Cairn summed up the questions. The chat itself isn't shown{you ? ", and your teacher sees exactly this" : ""}.</p>
+      </Glance>
     );
   return (
-    <div className="mt-3 rounded-xl border border-peri/50 bg-peri/10 px-3.5 py-3" data-testid="receipt-tutor">
-      <div className="flex items-center gap-2 text-[13px] font-semibold text-fg">
-        <MessageCircleQuestion className="h-4 w-4 shrink-0 text-fg-muted" aria-hidden />
-        {you ? "What you asked the AI tutor about" : `What ${who} asked the AI tutor about`}
-      </div>
-      {body}
-    </div>
+    <Glance icon={icon} testId="receipt-tutor">
+      Asked the AI tutor {plural(n, "question", "questions")}
+      <span className="block text-sm text-fg-muted" data-testid={final && !done ? "receipt-stuck-pending" : undefined}>
+        {!final
+          ? `When it's turned in, Cairn sums up what ${you ? "you" : "they"} asked about.`
+          : !done
+            ? "Cairn is summing up what they asked about. It shows here in a few seconds."
+            : "Cairn couldn't sum up the questions this time."}
+      </span>
+    </Glance>
   );
 }
 
-/** A short, foldable guide to every part of the receipt (open by default the first time). */
+/** "Wrote 17 words and made 3 slides": what this person has in the files, as a sentence. */
+function wroteLine(p: Parameters<typeof workLine>[0], you: boolean) {
+  const line = workLine(p);
+  if (line === "Nothing in the files yet") return you ? "You haven't written anything in the files yet" : "Hasn't written anything in the files yet";
+  return `Wrote ${line.replace(/ · /g, ", ")}`;
+}
+
+/** A short, foldable guide to every part of the receipt (folded until opened). */
 function HowToRead() {
   const KEY = "cairn.receiptGuide";
-  const [open, setOpen] = useState(() => {
-    try {
-      return localStorage.getItem(KEY) !== "seen";
-    } catch {
-      return true;
-    }
-  });
+  // Folded by default: each card says what it means in plain words now.
+  const [open, setOpen] = useState(false);
   const toggle = () => {
     setOpen((o) => !o);
     try {
@@ -222,6 +227,7 @@ export function ReceiptDialog({
   }, [r]);
   const nameOf = (uid: string) => (uid === "ai" ? "Cairn AI" : (r?.people.find((p) => p.uid === uid)?.name ?? "Someone"));
   const editable = !!r && !r.final && !isHost && !preview;
+  const totalWords = r?.people.reduce((t, p) => t + p.words, 0) ?? 0;
   const saveNote = () => {
     send({ t: "receipt_note", text: note });
     setNoteSaved(true);
@@ -327,27 +333,49 @@ export function ReceiptDialog({
                     <li key={p.uid} className="rounded-2xl border border-line px-4 py-3" data-testid="receipt-person">
                       <div className="flex items-center gap-2">
                         <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: colorOf(p.uid) }} aria-hidden />
-                        <span className="font-medium">{p.name}</span>
+                        <span className="text-[17px] font-semibold">{p.name}</span>
                         {p.uid === meUid && <span className="text-xs text-fg-subtle">(you)</span>}
                         {p.role && <span className="rounded-full border border-line px-2 py-0.5 text-xs text-fg-muted">{p.role}</span>}
                       </div>
-                      <p className="mt-1 text-sm tabular" data-testid="receipt-work">
-                        {workLine(p)}
-                      </p>
-                      <p className="mt-0.5 text-xs text-fg-subtle tabular">
-                        {plural(p.filesCreated, "file", "files")} created · {plural(p.messages, "chat message", "chat messages")} · active {plural(p.daysActive, "day", "days")}
-                        {p.aiAsks > 0 && <> · asked the AI to make or change files {plural(p.aiAsks, "time", "times")}</>}
-                      </p>
-                      <TutorBox p={p} you={p.uid === meUid} final={!!r.final} done={!!r.tutorSummaryDone} />
-                      {p.tasks && p.tasks.length > 0 && (
-                        <p className="mt-1 text-xs text-fg-muted" data-testid="receipt-tasks">
-                          Tasks: {p.tasks.filter((t) => t.done).length} of {p.tasks.length} done ({p.tasks.map((t) => `${t.done ? "✓ " : ""}${t.title}`).join(", ")})
-                        </p>
-                      )}
+                      <ul className="mt-2" aria-label={`${p.name} at a glance`}>
+                        <Glance icon={<PenLine className="h-[18px] w-[18px]" />}>
+                          <span className="tabular" data-testid="receipt-work">
+                            {wroteLine(p, p.uid === meUid)}
+                          </span>
+                          {totalWords > 0 && p.words > 0 && r.people.length > 1 && (
+                            <span className="text-fg-muted"> ({Math.round((p.words / totalWords) * 100)}% of the group's words)</span>
+                          )}
+                        </Glance>
+                        <TutorLine p={p} you={p.uid === meUid} final={!!r.final} done={!!r.tutorSummaryDone} />
+                        {p.aiAsks > 0 && (
+                          <Glance icon={<Sparkles className="h-[18px] w-[18px]" />}>Asked the AI to write or change files {plural(p.aiAsks, "time", "times")}</Glance>
+                        )}
+                        <Glance icon={<CalendarDays className="h-[18px] w-[18px]" />}>
+                          {p.daysActive ? <>Worked on {plural(p.daysActive, "day", "days")}</> : "No work in the room yet"}
+                          <span className="text-fg-muted">
+                            {" "}
+                            · {plural(p.messages, "chat message", "chat messages")}
+                            {p.filesCreated > 0 && <> · made {plural(p.filesCreated, "file", "files")}</>}
+                          </span>
+                        </Glance>
+                        {p.tasks && p.tasks.length > 0 && (
+                          <Glance icon={<ListChecks className="h-[18px] w-[18px]" />} testId="receipt-tasks">
+                            Did {p.tasks.filter((t) => t.done).length} of {plural(p.tasks.length, "task", "tasks")}
+                            <span className="block text-sm text-fg-muted">{p.tasks.map((t) => `${t.done ? "✓ " : ""}${t.title}`).join(", ")}</span>
+                          </Glance>
+                        )}
+                      </ul>
                       {p.uid === meUid && editable ? (
                         noteBox
                       ) : (
-                        p.note && <blockquote className="mt-2 border-l-2 border-line-strong pl-3 text-sm text-fg-muted">{p.note}</blockquote>
+                        p.note && (
+                          <div className="mt-3 rounded-xl bg-surface-2 px-3.5 py-2.5" data-testid="receipt-person-note">
+                            <div className="text-xs font-semibold text-fg-subtle">
+                              {reflection ? reflection : p.uid === meUid ? "Your note when turning in" : `${p.name.split(" ")[0]}'s note when turning in`}
+                            </div>
+                            <p className="mt-0.5 whitespace-pre-wrap text-[15px]">{p.note}</p>
+                          </div>
+                        )
                       )}
                     </li>
                   ))}

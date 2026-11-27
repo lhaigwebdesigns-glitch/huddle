@@ -55,7 +55,7 @@ export const TOURS: Record<TourId, TourStep[]> = {
     {
       target: "class-list",
       title: "Only your students",
-      body: "Add your class list and only those emails get in. Anyone else waits for you to let them in.",
+      body: "Your class list lives in the Students tab. Only those emails get in; anyone else waits for you to let them in. Its badge tells you when someone is waiting.",
       scene: { kind: "group" },
     },
   ],
