@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, ClipboardList, FileText, ListChecks, ShieldCheck } from "lucide-react";
 import { useAccount } from "../lib/account";
 import { ageConfirmed, confirmAge } from "../lib/identity";
 import { Input, Logo } from "../components/ui";
@@ -16,12 +16,14 @@ import { formatCode, isValidCode, normalizeCode } from "../../shared/code";
  */
 
 type Role = "teacher" | "student";
-type StepId = "role" | "name" | "teach" | "t1" | "t2" | "t3" | "age" | "s1" | "s2" | "s3" | "code";
+type StepId = "role" | "name" | "teach" | "t1" | "t2" | "t3" | "age" | "s1" | "sAi" | "s2" | "s3" | "code";
 
 interface Copy {
   title: string;
   body?: string;
   scene: (v: { name: string; code: string }) => SceneSpec;
+  /** A short list instead of (or under) the body: why this beats the alternative. */
+  perks?: { Icon: typeof FileText; title: string; text: string }[];
 }
 
 const COPY: Record<Exclude<StepId, "role">, Copy> = {
@@ -59,6 +61,17 @@ const COPY: Record<Exclude<StepId, "role">, Copy> = {
     title: "AI that helps you think.",
     body: "Stuck? Ask the tutor. It explains and asks you questions instead of doing the work for you, so you actually learn it. Your teacher decides how much it can help.",
     scene: () => ({ kind: "tutor" }),
+  },
+  sAi: {
+    title: "Skip the other tabs.",
+    body: "Another AI starts from zero every time. Cairn's is already in the room with you:",
+    scene: () => ({ kind: "tasks" }),
+    perks: [
+      { Icon: ClipboardList, title: "It knows the assignment", text: "The instructions, rubric and due date. Nothing to copy over." },
+      { Icon: FileText, title: "It sees your work", text: "It reads your docs, slides and files, so its help fits what you wrote." },
+      { Icon: ListChecks, title: "It checks you against the rubric", text: "Ask “how am I doing?” before you turn it in." },
+      { Icon: ShieldCheck, title: "It counts in your favor", text: "Your teacher sees a short summary of what you asked: proof you worked it out. Text pasted from another tab just shows up as a paste." },
+    ],
   },
   s2: {
     title: "Show your work.",
@@ -119,7 +132,7 @@ export default function Welcome() {
     const pre: StepId[] = had ? [] : ["role"];
     if (!role) return ["role"];
     if (role === "teacher") return [...pre, "name", "teach", "t1", "t2", "t3"];
-    return had ? ["s1", "s2", "s3"] : [...pre, "name", "age", "s1", "s2", "s3", "code"];
+    return had ? ["s1", "sAi", "s2", "s3"] : [...pre, "name", "age", "s1", "sAi", "s2", "s3", "code"];
   }, [role, had]);
   const idx = Math.min(i, steps.length - 1);
   const cur = steps[idx];
@@ -214,6 +227,21 @@ export default function Welcome() {
                   {copy.title}
                 </h1>
                 {copy.body && <p className="mt-3 max-w-[52ch] text-[1.0625rem] leading-relaxed text-fg-muted [text-wrap:pretty]">{copy.body}</p>}
+                {copy.perks && (
+                  <ul className="mt-5 space-y-3" data-testid="welcome-perks">
+                    {copy.perks.map(({ Icon, title, text }) => (
+                      <li key={title} className="flex gap-3">
+                        <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-mint text-ink dark:bg-mint/15 dark:text-mint">
+                          <Icon className="h-[18px] w-[18px]" aria-hidden />
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block font-semibold">{title}</span>
+                          <span className="block text-[15px] leading-snug text-fg-muted">{text}</span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {cur === "name" && (
                   <Input
                     autoFocus

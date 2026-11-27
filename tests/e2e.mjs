@@ -1064,6 +1064,9 @@ try {
     "a student who joined through a link gets the welcome later, without being asked teacher or student again",
   );
   await eve.getByTestId("welcome-next").click();
+  await eve.getByTestId("welcome-title").getByText("Skip the other tabs.").waitFor();
+  ok((await eve.getByTestId("welcome-perks").locator("li").count()) === 4, "the student welcome says why to use Cairn's AI instead of another tab");
+  await eve.getByTestId("welcome-next").click();
   await eve.getByTestId("welcome-title").getByText("Show your work.").waitFor();
   await eve.getByTestId("welcome-next").click();
   await eve.getByTestId("welcome-next").getByText("Let's go").click();
