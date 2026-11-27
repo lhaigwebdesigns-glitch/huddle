@@ -1,6 +1,6 @@
 import { confirmDialog } from "./Dialogs";
 import { Modal } from "./Modal";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { CalendarClock, Clock, Info, ListChecks, Lock, ReceiptText, RotateCcw, Send, Sparkles } from "lucide-react";
 import { dueFor } from "../../shared/schedule";
 import type { ClientMsg, ProjectSettings, TaskBoard } from "../../shared/protocol";
@@ -52,6 +52,35 @@ export function ProjectBar({
   const due = dueFor(project.dueAt, project.access);
   const overdue = !!due && due < Date.now() && !project.turnedInAt;
   const [asking, setAsking] = useState(false);
+  // Remember (on this device) that this room asked, until the teacher answers (the room's access changes).
+  const askedKey = `cairn.askedTime.${location.pathname}`;
+  const accessNow = JSON.stringify(project.access ?? null);
+  const [asked, setAsked] = useState(() => {
+    try {
+      const [was, at] = (localStorage.getItem(askedKey) ?? "").split("|");
+      // Until the teacher answers, or a day goes by (a "no" doesn't change anything here, so they can ask again).
+      return was === accessNow && Date.now() - Number(at) < 86_400_000;
+    } catch {
+      return false;
+    }
+  });
+  const markAsked = () => {
+    try {
+      localStorage.setItem(askedKey, `${accessNow}|${Date.now()}`);
+    } catch {
+      /* private mode */
+    }
+    setAsked(true);
+  };
+  useEffect(() => {
+    // The teacher answered (more time, or a new due date): the ask is done.
+    try {
+      const was = localStorage.getItem(askedKey)?.split("|")[0];
+      if (was !== undefined && was !== accessNow) (localStorage.removeItem(askedKey), setAsked(false));
+    } catch {
+      /* private mode */
+    }
+  }, [accessNow, askedKey]);
   const status = project.status;
   // Students can ask for more time on a timed assignment or once it's nearly (or already) due.
   const canAsk = !isHost && !project.turnedInAt && (!!project.schedule || (!!due && due - Date.now() < 2 * 86_400_000));
@@ -108,7 +137,12 @@ export function ProjectBar({
         >
           <Info className="h-3.5 w-3.5" aria-hidden /> Instructions & rubric
         </button>
-        {canAsk && (
+        {canAsk && asked && (
+          <span className="flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-medium text-fg-muted" data-testid="asked-time">
+            <Clock className="h-3.5 w-3.5" aria-hidden /> Asked for more time
+          </span>
+        )}
+        {canAsk && !asked && (
           <button
             onClick={() => setAsking(true)}
             className="press flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-fg-muted hover:bg-surface-2 hover:text-fg"
@@ -176,7 +210,16 @@ export function ProjectBar({
           <TaskPanel board={board} meUid={meUid} locked={!!project.turnedInAt || status?.open === false} send={send} solo={solo} />
         </div>
       )}
-      {asking && <TimeRequestDialog closed={status?.open === false && status.reason === "schedule"} send={send} onClose={() => setAsking(false)} />}
+      {asking && (
+        <TimeRequestDialog
+          closed={status?.open === false && status.reason === "schedule"}
+          send={(m) => {
+            send(m);
+            markAsked();
+          }}
+          onClose={() => setAsking(false)}
+        />
+      )}
     </div>
   );
 }

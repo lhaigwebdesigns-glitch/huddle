@@ -1297,6 +1297,7 @@ try {
   await cam.getByTestId("time-reason").fill("I was at the dentist during class.");
   await cam.getByTestId("send-time-request").click();
   await cam.getByTestId("toast").getByText(/Sent to your teacher/).waitFor();
+  ok((await cam.getByTestId("asked-time").count()) === 1 && (await cam.getByTestId("ask-more-time").count()) === 0, "after asking for more time, the room says it's waiting instead of offering to ask again");
   await park.reload();
   const req = park.getByTestId("time-request").filter({ hasText: "Cam" });
   await req.getByText("I was at the dentist during class.").waitFor();
