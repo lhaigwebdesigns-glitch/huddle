@@ -1,11 +1,10 @@
 import { confirmDialog } from "./Dialogs";
 import { Modal } from "./Modal";
 import { useState } from "react";
-import { BookOpen, CalendarClock, ChevronDown, Clock, ListChecks, Lock, ReceiptText, RotateCcw, Send, Sparkles } from "lucide-react";
+import { BookOpen, CalendarClock, Clock, Info, ListChecks, Lock, ReceiptText, RotateCcw, Send, Sparkles } from "lucide-react";
 import { dueFor } from "../../shared/schedule";
 import type { ClientMsg, ProjectSettings, TaskBoard } from "../../shared/protocol";
 import { TaskPanel } from "./TaskPanel";
-import { Markdown } from "./Markdown";
 
 const AI_LABEL: Record<ProjectSettings["ai"], string> = { off: "AI off", tutor: "Tutor only", full: "AI: full help" };
 const AI_HINT: Record<ProjectSettings["ai"], string> = {
@@ -29,6 +28,7 @@ export function ProjectBar({
   isHost,
   send,
   onReceipt,
+  onDetails,
   board,
   meUid,
 }: {
@@ -40,8 +40,9 @@ export function ProjectBar({
   meUid: string;
   /** Open the contribution receipt: to look at it, or as the last step before turning in. */
   onReceipt: (mode: "view" | "turnin") => void;
+  /** Open the assignment details (instructions, rubric and rules) in the big modal. */
+  onDetails: () => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [tasksOpen, setTasksOpen] = useState(false);
   const tasks = board?.tasks ?? [];
   const mineLeft = tasks.filter((t) => t.ownerUid === meUid && !t.done).length;
@@ -51,7 +52,6 @@ export function ProjectBar({
   const status = project.status;
   // Students can ask for more time on a timed assignment or once it's nearly (or already) due.
   const canAsk = !isHost && !project.turnedInAt && (!!project.schedule || (!!due && due - Date.now() < 2 * 86_400_000));
-  const hasDetails = !!(project.instructions.trim() || project.rubric.trim());
   return (
     <div className="mx-auto mt-2 w-[calc(100%-1.5rem)] max-w-3xl rounded-2xl border border-line bg-surface" data-testid="project-bar">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-4 py-2.5">
@@ -99,16 +99,14 @@ export function ProjectBar({
             {mineLeft > 0 && <span className="rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-fg">{mineLeft} yours</span>}
           </button>
         )}
-        {hasDetails && (
-          <button
-            onClick={() => setOpen((o) => !o)}
-            aria-expanded={open}
-            className="press flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-fg-muted hover:bg-surface-2 hover:text-fg"
-            data-testid="project-details-toggle"
-          >
-            Instructions & rubric <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
-          </button>
-        )}
+        <button
+          onClick={onDetails}
+          aria-haspopup="dialog"
+          className="press flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-fg-muted hover:bg-surface-2 hover:text-fg"
+          data-testid="project-details-toggle"
+        >
+          <Info className="h-3.5 w-3.5" aria-hidden /> Instructions & rubric
+        </button>
         {canAsk && (
           <button
             onClick={() => setAsking(true)}
@@ -178,27 +176,6 @@ export function ProjectBar({
         </div>
       )}
       {asking && <TimeRequestDialog closed={status?.open === false && status.reason === "schedule"} send={send} onClose={() => setAsking(false)} />}
-      {open && hasDetails && (
-        <div className="max-h-[40vh] space-y-3 overflow-y-auto border-t border-line px-4 py-3 text-sm" data-testid="project-details">
-          <p className="text-xs text-fg-subtle">{AI_HINT[project.ai]}</p>
-          {project.instructions.trim() && (
-            <section>
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">Instructions</h3>
-              <div className="mt-1">
-                <Markdown text={project.instructions} />
-              </div>
-            </section>
-          )}
-          {project.rubric.trim() && (
-            <section>
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">Rubric</h3>
-              <div className="mt-1">
-                <Markdown text={project.rubric} />
-              </div>
-            </section>
-          )}
-        </div>
-      )}
     </div>
   );
 }

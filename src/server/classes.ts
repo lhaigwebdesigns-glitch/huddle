@@ -177,7 +177,7 @@ async function createRoom(
   title: string,
   project: ProjectSettings,
   template: string | undefined,
-  link: { classId: string; assignmentId: string; group: string; classCode?: string },
+  link: { classId: string; assignmentId: string; group: string; classCode?: string; solo?: boolean },
   worksheet?: string | null,
 ) {
   for (let tries = 0; tries < 5; tries++) {
@@ -988,7 +988,7 @@ classes.post("/join/:code/a/:aid/open", async (c) => {
     const mine = await db.prepare(`SELECT room_code FROM class_groups WHERE assignment_id = ? AND members LIKE ?`).bind(a.id, memberLike).first<{ room_code: string }>();
     if (mine) return give(mine.room_code);
     if (!host) return c.json({ error: "This assignment can't make rooms. Ask your teacher to create it again." }, 500);
-    const code = await createRoom(c, host, `${a.title} · ${student.name}`, project, template, { classId: cls.id, assignmentId: a.id, group: student.name, classCode: cls.code }, a.worksheet);
+    const code = await createRoom(c, host, `${a.title} · ${student.name}`, project, template, { classId: cls.id, assignmentId: a.id, group: student.name, classCode: cls.code, solo: true }, a.worksheet);
     if (!code) return c.json({ error: "Couldn't open your room. Try again." }, 500);
     // One room per student, even if they click twice at once: only the first insert wins.
     const ins = await db
