@@ -372,6 +372,23 @@ classes.delete("/:id/students/:uid", async (c) => {
   return c.json({ ok: true });
 });
 
+/** Delete one assignment for good: its rooms (chat, files, uploads), its worksheet, and its grades. */
+classes.delete("/:id/assignments/:aid", async (c) => {
+  const t = await teacherClass(c);
+  if (t instanceof Response) return t;
+  const a = (await loadAssignments(c, t.cls.id, false)).find((x) => x.id === c.req.param("aid"));
+  if (!a) return c.json({ error: "Assignment not found." }, 404);
+  const rooms = [...a.groups.filter((g) => !isPending(g.roomCode)).map((g) => g.roomCode), ...(a.worksheet?.room ? [a.worksheet.room] : [])];
+  for (const room of rooms) await (await getServerByName(c.env.Room, room)).destroy(t.user.uid).catch(() => false);
+  const db = c.env.DB!;
+  await db.batch([
+    db.prepare(`DELETE FROM class_groups WHERE assignment_id = ?`).bind(a.id),
+    db.prepare(`DELETE FROM grades WHERE assignment_id = ?`).bind(a.id),
+    db.prepare(`DELETE FROM assignments WHERE id = ? AND class_id = ?`).bind(a.id, t.cls.id),
+  ]);
+  return c.json({ ok: true });
+});
+
 /** Erase a class for good: every group room (chat, files, uploads) and every record of it. */
 classes.delete("/:id", async (c) => {
   const t = await teacherClass(c);

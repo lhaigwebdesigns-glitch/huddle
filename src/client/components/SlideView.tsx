@@ -1,15 +1,61 @@
 import { useEffect, useRef, useState } from "react";
 import { bullets, THEMES, type ElementData, type Layout, type SlideData, type TextField, type ThemeName } from "../../shared/slides-model";
 
+/** A box's own font, with the theme's as the fallback (a PowerPoint font may not be on this computer). */
+const fontStack = (font: string | undefined, themeFont: string) => (font ? `"${font}", ${themeFont}` : undefined);
+
+/** How a text box's words look: size, color, weight, slant, underline, alignment and font. */
+export function textStyle(e: ElementData, fg: string, themeFont: string): React.CSSProperties {
+  return {
+    fontSize: e.size ?? 28,
+    lineHeight: 1.25,
+    color: e.color ?? fg,
+    fontWeight: e.bold ? 700 : undefined,
+    fontStyle: e.italic ? "italic" : undefined,
+    textDecoration: e.underline ? "underline" : undefined,
+    textAlign: e.align ?? "left",
+    fontFamily: fontStack(e.font, themeFont),
+  };
+}
+
+/** A shape's fill, corners and outline. */
+export function shapeStyle(e: ElementData): React.CSSProperties {
+  return {
+    background: e.fill === "none" ? "transparent" : e.fill,
+    borderRadius: e.type === "ellipse" ? "50%" : (e.radius ?? 8),
+    ...(e.stroke ? { border: `${e.strokeW ?? 2}px solid ${e.stroke}`, boxSizing: "border-box" } : {}),
+  };
+}
+
+/** Where a box sits (and its turn). */
+export const boxStyle = (e: ElementData): React.CSSProperties => ({
+  position: "absolute",
+  left: e.x,
+  top: e.y,
+  width: e.w,
+  height: e.h,
+  ...(e.rot ? { transform: `rotate(${e.rot}deg)` } : {}),
+});
+
 /** One box on a free-layout slide, drawn without editing (thumbnails, presenting, exports). */
-export function StaticElement({ e, fg }: { e: ElementData; fg: string }) {
-  const box: React.CSSProperties = { position: "absolute", left: e.x, top: e.y, width: e.w, height: e.h };
+export function StaticElement({ e, fg, font = "inherit" }: { e: ElementData; fg: string; font?: string }) {
+  const box = boxStyle(e);
   if (e.type === "image")
-    return e.src ? <img src={e.src} alt="" referrerPolicy="no-referrer" style={{ ...box, objectFit: "cover" }} /> : <div style={{ ...box, border: "2px dashed " + fg + "55" }} />;
-  if (e.type === "rect" || e.type === "ellipse") return <div style={{ ...box, background: e.fill, borderRadius: e.type === "ellipse" ? "50%" : 8 }} />;
+    return e.src ? <img src={e.src} alt="" referrerPolicy="no-referrer" style={{ ...box, objectFit: e.fit ?? "cover" }} /> : <div style={{ ...box, border: "2px dashed " + fg + "55" }} />;
+  if (e.type === "rect" || e.type === "ellipse") return <div style={{ ...box, ...shapeStyle(e) }} />;
   return (
-    <div style={{ ...box, fontSize: e.size ?? 28, lineHeight: 1.3, color: e.color ?? fg, fontWeight: e.bold ? 700 : undefined, whiteSpace: "pre-wrap", overflow: "hidden" }}>
-      {e.text}
+    <div
+      style={{
+        ...box,
+        ...textStyle(e, fg, font),
+        whiteSpace: "pre-wrap",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: e.valign === "middle" ? "center" : e.valign === "bottom" ? "flex-end" : "flex-start",
+      }}
+    >
+      <div>{e.text}</div>
     </div>
   );
 }
@@ -106,7 +152,7 @@ export function SlideView({
       content = (
         <div className="relative h-full w-full">
           {(slide.elements ?? []).map((e) => (
-            <StaticElement key={e.id} e={e} fg={t.fg} />
+            <StaticElement key={e.id} e={e} fg={t.fg} font={t.font} />
           ))}
         </div>
       );

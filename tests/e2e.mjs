@@ -1425,6 +1425,18 @@ try {
   }, classLink);
   ok(noAge === 400, "joining a class without confirming 13+ is refused");
 
+  // Deleting one assignment (from its More menu).
+  await park.evaluate(async (cid) => {
+    await fetch(`/api/classes/${cid}/assignments`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ title: "Throwaway quiz", mode: "solo", project: { instructions: "x", ai: "off" } }) });
+  }, classId);
+  await park.goto(classUrl);
+  const throwaway = await openAssignment("Throwaway quiz");
+  await throwaway.getByTestId("assignment-more").click();
+  await park.getByTestId("delete-assignment").click();
+  await park.getByTestId("dialog-confirm").click();
+  await park.getByTestId("assignment-pick").filter({ hasText: "Throwaway quiz" }).waitFor({ state: "detached", timeout: 15000 });
+  ok(true, "a teacher can delete an assignment");
+
   // Erasing a class deletes its rooms and records (from the Settings tab).
   await park.getByTestId("tab-settings").click();
   await park.getByTestId("erase-class").click();

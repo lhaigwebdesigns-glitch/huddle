@@ -1,7 +1,7 @@
 import { alertDialog, confirmDialog, promptDialog } from "../components/Dialogs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ArrowLeft, ArrowRight, Ban, BookOpen, CalendarClock, Check, ChevronDown, CircleCheck, ClipboardList, Clock, Copy, CopyPlus, Download, Eye, File, FileText, Flag, FlaskConical, GraduationCap, KeyRound, MessagesSquare, Plus, Presentation, Upload, UserPlus, Users, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Ban, BookOpen, CalendarClock, Check, ChevronDown, CircleCheck, ClipboardList, Clock, Copy, CopyPlus, Download, Eye, File, FileText, Flag, FlaskConical, GraduationCap, KeyRound, MessagesSquare, Plus, Presentation, Trash2, Upload, UserPlus, Users, X } from "lucide-react";
 import { OFFICE_ACCEPT, officeKind } from "../lib/officeFiles";
 import { getIdentity } from "../lib/identity";
 import type { Report } from "../../shared/protocol";
@@ -258,7 +258,7 @@ function GroupCard({ g, names, gradeUrl, timeUrl, onChanged }: { g: GroupInfo; n
 }
 
 /** The assignment's less-used actions, in one small menu. */
-function AssignmentMore({ csv, onEditTimes, onMove, onCopy, onPreview }: { csv: string; onEditTimes: () => void; onMove?: () => void; onCopy: () => void; onPreview: () => void }) {
+function AssignmentMore({ csv, onEditTimes, onMove, onCopy, onPreview, onDelete }: { csv: string; onEditTimes: () => void; onMove?: () => void; onCopy: () => void; onPreview: () => void; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLSpanElement>(null);
   useEffect(() => {
@@ -297,6 +297,9 @@ function AssignmentMore({ csv, onEditTimes, onMove, onCopy, onPreview }: { csv: 
               <Users className="h-4 w-4 text-fg-muted" /> Move students between groups
             </button>
           )}
+          <button role="menuitem" className={`${item} mt-1 border-t border-line text-red-700 dark:text-red-300`} onClick={() => (setOpen(false), onDelete())} data-testid="delete-assignment">
+            <Trash2 className="h-4 w-4" /> Delete assignment
+          </button>
         </span>
       )}
     </span>
@@ -353,6 +356,20 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
   };
   const gradeUrl = (room: string) => `/classes/${view.class.id}/a/${a.id}/${room}`;
   const total = solo ? view.students.length : a.groups.length;
+  /** Delete it for good. Once students have work in it, the teacher types its name to be sure. */
+  const deleteAssignment = async () => {
+    const started = a.groups.filter((g) => !isPending(g.roomCode)).length;
+    const message = started
+      ? `This deletes ${started === 1 ? "the 1 room" : `all ${started} rooms`} students worked in (chats, files and uploads), their grades${a.worksheet ? ", and the worksheet" : ""}. It can't be undone. Download the grades first if you need them.`
+      : `Nobody has opened it yet. This deletes it${a.worksheet ? " and its worksheet" : ""} for good.`;
+    const yes = started
+      ? (await promptDialog({ title: `Delete "${a.title}"?`, message, label: "Type the assignment's name to confirm", placeholder: a.title, mustMatch: a.title, confirmLabel: "Delete assignment", danger: true }))?.trim() === a.title
+      : await confirmDialog({ title: `Delete "${a.title}"?`, message, confirmLabel: "Delete assignment", danger: true });
+    if (!yes) return;
+    const d = await api(`/api/classes/${view.class.id}/assignments/${a.id}`, { method: "DELETE" });
+    if (d.error) return void alertDialog({ title: "Couldn't delete it", message: d.error });
+    reload();
+  };
   // Where everyone is: each student (solo) or group, counted once.
   const units = solo ? view.students.map((s) => a.groups.find((x) => x.members.includes(s.uid))) : a.groups;
   const counts: Record<StatKey, number> = { idle: 0, working: 0, turned: 0, graded: 0 };
@@ -422,6 +439,7 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
               onMove={solo ? undefined : () => setManage(true)}
               onCopy={() => setCopying(true)}
               onPreview={() => setPreview(true)}
+              onDelete={() => void deleteAssignment()}
             />
           )}
         </div>
@@ -893,7 +911,7 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
       setImportNote("Bringing in your file…");
       try {
         const { importOffice } = await import("../lib/officeImport");
-        const r = await importOffice(d.worksheet.room, d.worksheet.starterId, upload, getIdentity());
+        const r = await importOffice(d.worksheet.room, d.worksheet.starterId, upload, getIdentity(), (note) => setImportNote(note));
         setImportNote(r.skipped.length ? `Your file is in. Some things didn't come through: ${r.skipped.join(", ")}.` : "Your file is in.");
       } catch (e) {
         setImportNote(`The assignment is made, but your file didn't come in (${(e as Error).message}). Open the worksheet to try again or start it by hand.`);
@@ -948,7 +966,7 @@ function NewAssignmentDialog({ classId, classCode, students, teach, onDone, onCl
       )}
       {step === 1 && (
         <button type="submit" disabled={busy} className="ledge-btn min-w-[220px]" data-testid="create-assignment">
-          {busy ? (importNote ? "Bringing in your file…" : made ? "Saving…" : "Making it…") : made ? "Save and continue" : hasWs ? "Make it, then write the worksheet" : "Make the assignment"}
+          {busy ? (importNote ? importNote : made ? "Saving…" : "Making it…") : made ? "Save and continue" : hasWs ? "Make it, then write the worksheet" : "Make the assignment"}
         </button>
       )}
       {step === 2 && (

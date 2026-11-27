@@ -36,6 +36,21 @@ export interface ElementData {
   /** Text boxes: their own color (otherwise the theme's) and bold. */
   color?: string;
   bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  /** Text boxes: alignment, across and up-and-down. */
+  align?: "left" | "center" | "right";
+  valign?: "top" | "middle" | "bottom";
+  /** Text boxes: a font family (falls back to the theme's when it isn't on this computer). */
+  font?: string;
+  /** Turned this many degrees (clockwise). */
+  rot?: number;
+  /** Shapes: rounded corners (0 = square) and an outline. */
+  radius?: number;
+  stroke?: string;
+  strokeW?: number;
+  /** Pictures: "cover" fills the box (cropping), "fill" stretches to it (as PowerPoint does). */
+  fit?: "cover" | "fill" | "contain";
 }
 export const CANVAS = { w: 960, h: 540 } as const;
 
@@ -46,7 +61,7 @@ const clamp = (n: unknown, lo: number, hi: number, d: number) => {
 /** Images on slides: https links, or files uploaded to this room. */
 const safeSrc = (u: unknown) =>
   typeof u === "string" && (/^https:\/\/[^\s"'<>]+$/i.test(u) || /^\/api\/rooms\/[A-Z0-9]{6}\/blobs\/[a-z0-9]{16}$/.test(u)) ? u : "";
-const safeFill = (c: unknown) => (typeof c === "string" && /^#[0-9a-f]{6}$/i.test(c) ? c : "#4f46e5");
+const safeFill = (c: unknown) => (typeof c === "string" && /^#[0-9a-f]{6}([0-9a-f]{2})?$/i.test(c) ? c : "#4f46e5");
 
 export function makeElement(e: ElementData): Y.Map<any> {
   const m = new Y.Map<any>();
@@ -59,16 +74,30 @@ export function makeElement(e: ElementData): Y.Map<any> {
   m.set("h", clamp(e.h, 20, CANVAS.h * 2, 80));
   if (type === "text") {
     m.set("text", new Y.Text(String(e.text ?? "").slice(0, 2000)));
-    m.set("size", clamp(e.size, 10, 120, 28));
+    m.set("size", clamp(e.size, 6, 160, 28));
     if (e.color && /^#[0-9a-f]{6}$/i.test(e.color)) m.set("color", e.color);
     if (e.bold) m.set("bold", true);
+    if (e.italic) m.set("italic", true);
+    if (e.underline) m.set("underline", true);
+    if (e.align === "center" || e.align === "right") m.set("align", e.align);
+    if (e.valign === "middle" || e.valign === "bottom") m.set("valign", e.valign);
+    if (typeof e.font === "string" && /^[\w .'-]{1,60}$/.test(e.font)) m.set("font", e.font);
   }
-  if (type === "image") m.set("src", safeSrc(e.src));
-  if (type === "rect" || type === "ellipse") m.set("fill", safeFill(e.fill));
+  if (type === "image") {
+    m.set("src", safeSrc(e.src));
+    if (e.fit === "fill" || e.fit === "contain") m.set("fit", e.fit);
+  }
+  if (type === "rect" || type === "ellipse") {
+    m.set("fill", e.fill === "none" ? "none" : safeFill(e.fill));
+    if (e.radius !== undefined) m.set("radius", clamp(e.radius, 0, 270, 8));
+    if (e.stroke && /^#[0-9a-f]{6}$/i.test(e.stroke)) (m.set("stroke", e.stroke), m.set("strokeW", clamp(e.strokeW, 1, 20, 2)));
+  }
+  if (e.rot) m.set("rot", clamp(e.rot, -360, 360, 0));
   return m;
 }
 
-export function readElement(m: Y.Map<any>): Required<Omit<ElementData, "text" | "src" | "fill" | "size" | "color" | "bold">> & Pick<ElementData, "text" | "src" | "fill" | "size" | "color" | "bold"> {
+type Optional = "text" | "src" | "fill" | "size" | "color" | "bold" | "italic" | "underline" | "align" | "valign" | "font" | "rot" | "radius" | "stroke" | "strokeW" | "fit";
+export function readElement(m: Y.Map<any>): Required<Omit<ElementData, Optional>> & Pick<ElementData, Optional> {
   const t = m.get("text");
   return {
     id: m.get("id"),
@@ -83,6 +112,9 @@ export function readElement(m: Y.Map<any>): Required<Omit<ElementData, "text" | 
     ...(m.get("size") !== undefined ? { size: m.get("size") } : {}),
     ...(m.get("color") !== undefined ? { color: m.get("color") } : {}),
     ...(m.get("bold") ? { bold: true } : {}),
+    ...(m.get("italic") ? { italic: true } : {}),
+    ...(m.get("underline") ? { underline: true } : {}),
+    ...Object.fromEntries((["align", "valign", "font", "rot", "radius", "stroke", "strokeW", "fit"] as const).filter((k) => m.get(k) !== undefined).map((k) => [k, m.get(k)])),
   };
 }
 
