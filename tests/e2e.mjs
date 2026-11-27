@@ -935,9 +935,14 @@ try {
   await park.getByRole("status").getByText("Saved").waitFor();
   await first.getByTestId("unsubmit").waitFor({ state: "detached", timeout: 10000 });
   ok((await first.getByTestId("turned-in").count()) === 1, "once it's graded, the student can't unsubmit it any more");
-  // The student sees the grade and the teacher's comment on their class page, under Done.
+  // A saved grade is private until the teacher returns it; then the student sees it and the comment.
   const firstClass = await first.context().newPage();
   await firstClass.goto(classLink);
+  await firstClass.getByTestId("student-done").waitFor();
+  ok((await firstClass.getByTestId("assignment-comment").count()) === 0 && (await firstClass.getByTestId("assignment-grade").count()) === 0, "students don't see a grade until the teacher returns it");
+  await park.getByTestId("return-one").click();
+  await park.getByTestId("grade-returned").waitFor();
+  await firstClass.reload();
   await firstClass.getByTestId("student-done").getByTestId("assignment-comment").getByText("Great sources.").waitFor({ timeout: 15000 });
   ok(/\/ 100/.test(await firstClass.getByTestId("student-done").getByTestId("assignment-grade").first().innerText()), "the student sees their grade and the teacher's comment on the class page");
   await firstClass.close();
@@ -948,8 +953,8 @@ try {
   const text = await park.evaluate(async (u) => (await fetch(u)).text(), href);
   const lines = text.trim().split(/\r\n/);
   ok(lines.length === 5 && lines.some((l) => /,90,100,Great sources\.$/.test(l)) && lines.some((l) => /,100,100,100,Great sources\.$/.test(l)), "the grades CSV has every student, with per-student grades");
-  await park.getByTestId("group-status").getByText("Graded").waitFor();
-  ok(true, "graded groups show as Graded");
+  await park.getByTestId("group-status").getByText("Returned").waitFor();
+  ok(true, "returned groups show as Returned");
   await park.goto(`${BASE}/classes`);
   await park.getByTestId("all-caught-up").waitFor({ timeout: 20000 });
   ok((await park.getByTestId("getting-started").count()) === 0, "once everything is graded, Today says you are all caught up and the getting-started steps go away");
@@ -1080,6 +1085,12 @@ try {
   await park.getByTestId("save-next").click();
   await park.getByTestId("all-graded").waitFor();
   ok(true, "Start grading → Save & next walks through every turned-in student, then says all are graded");
+  // Return them all at once from the class page.
+  await park.goto(classUrl);
+  await soloSection.getByTestId("return-grades").click();
+  await park.getByTestId("dialog-confirm").click();
+  await soloSection.getByTestId("return-grades").waitFor({ state: "detached" });
+  ok((await soloSection.getByTestId("student-status").getByText("Returned").count()) === 2, "Return grades sends every graded one back to the students at once");
   await eve.close();
 
   // ---------- Worksheets: a starter every student gets a copy of, and an answer key only the teacher sees ----------

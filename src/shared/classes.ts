@@ -86,6 +86,8 @@ export interface GradeData {
   students: Record<string, number>;
   comment: string;
   gradedAt?: number;
+  /** When the teacher returned it: only then do students see the grade and comment. */
+  returnedAt?: number;
 }
 
 export interface GroupInfo {

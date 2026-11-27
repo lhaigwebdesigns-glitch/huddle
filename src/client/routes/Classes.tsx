@@ -212,13 +212,14 @@ export function ClassesPage() {
 }
 
 const STATUS: Record<string, { label: string; cls: string }> = {
-  graded: { label: "Graded", cls: "bg-mint text-ink dark:bg-mint/15 dark:text-mint" },
+  returned: { label: "Returned", cls: "bg-mint text-ink dark:bg-mint/15 dark:text-mint" },
+  graded: { label: "Graded, not returned", cls: "bg-peri/35 text-ink dark:bg-peri/20 dark:text-fg" },
   turned: { label: "Turned in", cls: "bg-primary text-primary-fg" },
   working: { label: "Working", cls: "bg-peri/35 text-ink dark:bg-peri/20 dark:text-fg" },
   idle: { label: "Not started", cls: "bg-surface-2 text-fg-subtle" },
 };
 const statusOf = (g: GroupInfo) =>
-  g.grade ? STATUS.graded : g.status?.turnedInAt ? STATUS.turned : g.status?.lastActivity ? STATUS.working : STATUS.idle;
+  g.grade ? (g.grade.returnedAt ? STATUS.returned : STATUS.graded) : g.status?.turnedInAt ? STATUS.turned : g.status?.lastActivity ? STATUS.working : STATUS.idle;
 
 function GroupCard({ g, names, gradeUrl, timeUrl, onChanged }: { g: GroupInfo; names: Record<string, string>; gradeUrl: string; timeUrl?: string; onChanged: () => void }) {
   const st = statusOf(g);
@@ -322,6 +323,20 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
   };
   const turned = a.groups.filter((g) => g.status?.turnedInAt).length;
   const waiting = a.groups.filter((g) => g.status?.turnedInAt && !g.grade);
+  const toReturn = a.groups.filter((g) => g.grade && !g.grade.returnedAt);
+  const returnGrades = async () => {
+    const who = solo ? (toReturn.length === 1 ? "That student" : "Those students") : toReturn.length === 1 ? "That group" : "Those groups";
+    if (
+      !(await confirmDialog({
+        title: `Return ${toReturn.length === 1 ? "1 grade" : `${toReturn.length} grades`}?`,
+        message: `${who} will see the grade and your comment on their class page. You can still change a grade after.`,
+        confirmLabel: "Return",
+      }))
+    )
+      return;
+    await api(`/api/classes/${view.class.id}/assignments/${a.id}/return`, { method: "POST", body: "{}" });
+    reload();
+  };
   const gradeUrl = (room: string) => `/classes/${view.class.id}/a/${a.id}/${room}`;
   const total = solo ? view.students.length : a.groups.length;
   return (
@@ -338,6 +353,11 @@ function AssignmentSection({ a, view, reload }: { a: Assignment; view: ClassView
         {waiting.length > 0 && (
           <Button size="sm" onClick={() => nav(gradeUrl(waiting[0].roomCode))} data-testid="start-grading">
             Start grading ({waiting.length})
+          </Button>
+        )}
+        {toReturn.length > 0 && (
+          <Button size="sm" variant={waiting.length ? "secondary" : "primary"} onClick={() => void returnGrades()} data-testid="return-grades">
+            Return grades ({toReturn.length})
           </Button>
         )}
       </div>
