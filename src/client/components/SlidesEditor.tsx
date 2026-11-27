@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
+import { createPortal } from "react-dom";
 import type { EditorProps } from "./FilePanel";
 import { usePeers, useYObserve } from "../lib/useYDoc";
 import {
@@ -48,28 +49,64 @@ function Present({
   const [size, setSize] = useState({ w: window.innerWidth, h: window.innerHeight });
   const index = Math.max(0, Math.min(slides.length - 1, follow ?? i));
   useEffect(() => onIndex?.(index), [index, onIndex]);
+  const following = follow !== undefined;
+  const count = useRef(slides.length);
+  count.current = slides.length;
+  const exit = useRef(onExit);
+  exit.current = onExit;
+  const go = (d: number) => setI((x) => Math.max(0, Math.min(count.current - 1, x + d)));
+  // Fullscreen once, for as long as it's presenting (not again on every slide change),
+  // and the page underneath can't scroll while it's up.
   useEffect(() => {
     const onResize = () => setSize({ w: window.innerWidth, h: window.innerHeight });
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onExit();
-      if (follow !== undefined) return;
-      if (["ArrowRight", "ArrowDown", "PageDown", " ", "Enter"].includes(e.key)) setI((x) => Math.min(slides.length - 1, x + 1));
-      if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(e.key)) setI((x) => Math.max(0, x - 1));
-      if (e.key.toLowerCase() === "n") setNotes((n) => !n);
-    };
     window.addEventListener("resize", onResize);
-    window.addEventListener("keydown", onKey);
-    document.documentElement.requestFullscreen?.().catch(() => {});
+    const prevOverflow = document.documentElement.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    const onFs = () => {
+      // Leaving fullscreen (Esc in the browser) ends the presentation too.
+      if (!document.fullscreenElement && entered.current) exit.current();
+    };
+    const entered = { current: false };
+    document.addEventListener("fullscreenchange", onFs);
+    document.documentElement
+      .requestFullscreen?.()
+      .then(() => (entered.current = true))
+      .catch(() => {});
     return () => {
       window.removeEventListener("resize", onResize);
-      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("fullscreenchange", onFs);
+      document.documentElement.style.overflow = prevOverflow;
       if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
     };
-  }, [follow, slides.length, onExit]);
+  }, []);
+  // Keys move between slides (and never scroll the page behind).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") return exit.current();
+      if (following) return;
+      if (["ArrowRight", "ArrowDown", "PageDown", " ", "Enter"].includes(e.key)) (e.preventDefault(), go(1));
+      else if (["ArrowLeft", "ArrowUp", "PageUp", "Backspace"].includes(e.key)) (e.preventDefault(), go(-1));
+      else if (e.key === "Home") (e.preventDefault(), setI(0));
+      else if (e.key === "End") (e.preventDefault(), setI(count.current - 1));
+      else if (e.key.toLowerCase() === "n") setNotes((n) => !n);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [following]);
   const w = Math.min(size.w, (size.h * SLIDE_W) / SLIDE_H);
   const slide = slides[index];
   return (
-    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black" role="dialog" aria-label="Presentation" data-testid="present">
+    <div
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden bg-black"
+      role="dialog"
+      aria-label="Presentation"
+      data-testid="present"
+      onClick={(e) => {
+        // Click the slide: next (the left fifth goes back).
+        if (following || (e.target as HTMLElement).closest("button")) return;
+        go(e.clientX < window.innerWidth / 5 ? -1 : 1);
+      }}
+    >
       {slide && <SlideView slide={slide} theme={theme} width={w} />}
       <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-full bg-zinc-900/80 px-4 py-1.5 text-sm text-white opacity-60 hover:opacity-100">
         {follow === undefined ? (
@@ -102,9 +139,12 @@ function exportHtml(slides: Full[], theme: ThemeName, title: string) {
       const free = (s.elements ?? [])
         .map((e) => {
           const pos = `position:absolute;left:${pct(e.x, CANVAS.w)};top:${pct(e.y, CANVAS.h)};width:${pct(e.w, CANVAS.w)};height:${pct(e.h, CANVAS.h)}`;
-          if (e.type === "image") return e.src ? `<img class="free" style="${pos};object-fit:cover" src="${esc(new URL(e.src, location.href).href)}">` : "";
-          if (e.type === "rect" || e.type === "ellipse") return `<div style="${pos};background:${e.fill};border-radius:${e.type === "ellipse" ? "50%" : "8px"}"></div>`;
-          return `<div style="${pos};font-size:${((e.size ?? 28) * 0.75).toFixed(1)}pt;${e.color ? `color:${e.color};` : ""}${e.bold ? "font-weight:700;" : ""}white-space:pre-wrap;overflow:hidden">${esc(e.text ?? "")}</div>`;
+          const turn = e.rot ? `;transform:rotate(${e.rot}deg)` : "";
+          if (e.type === "image") return e.src ? `<img class="free" style="${pos}${turn};object-fit:${e.fit ?? "cover"}" src="${esc(new URL(e.src, location.href).href)}">` : "";
+          if (e.type === "rect" || e.type === "ellipse")
+            return `<div style="${pos}${turn};box-sizing:border-box;background:${e.fill === "none" ? "transparent" : e.fill};border-radius:${e.type === "ellipse" ? "50%" : `${e.radius ?? 8}px`}${e.stroke ? `;border:${e.strokeW ?? 2}px solid ${e.stroke}` : ""}"></div>`;
+          const v = e.valign === "middle" ? "center" : e.valign === "bottom" ? "flex-end" : "flex-start";
+          return `<div style="${pos}${turn};display:flex;flex-direction:column;justify-content:${v};font-size:${((e.size ?? 28) * 0.75).toFixed(1)}pt;${e.color ? `color:${e.color};` : ""}${e.bold ? "font-weight:700;" : ""}${e.italic ? "font-style:italic;" : ""}${e.underline ? "text-decoration:underline;" : ""}text-align:${e.align ?? "left"};${e.font ? `font-family:'${esc(e.font)}',inherit;` : ""}white-space:pre-wrap;overflow:hidden"><div>${esc(e.text ?? "")}</div></div>`;
         })
         .join("");
       if (s.layout === "free") return `<section class="free">${free}</section>`;
@@ -152,15 +192,37 @@ async function exportPptx(slides: Full[], theme: ThemeName, title: string) {
     if (s.layout === "free") {
       for (const e of s.elements ?? []) {
         const box = { x: inch(e.x), y: inch(e.y), w: inch(e.w), h: inch(e.h) };
-        if (e.type === "text") slide.addText(e.text ?? "", { ...box, fontSize: Math.round((e.size ?? 28) * 0.75), color: e.color ? hex(e.color) : fg, bold: !!e.bold, fontFace: font, valign: "top" });
+        const rotate = e.rot ? { rotate: e.rot } : {};
+        if (e.type === "text")
+          slide.addText(e.text ?? "", {
+            ...box,
+            ...rotate,
+            fontSize: Math.round((e.size ?? 28) * 0.75),
+            color: e.color ? hex(e.color) : fg,
+            bold: !!e.bold,
+            italic: !!e.italic,
+            ...(e.underline ? { underline: { style: "sng" as const } } : {}),
+            align: e.align ?? "left",
+            valign: e.valign === "middle" ? "middle" : e.valign === "bottom" ? "bottom" : "top",
+            fontFace: e.font ?? font,
+          });
         else if (e.type === "image" && e.src) {
           try {
-            slide.addImage({ path: new URL(e.src, location.href).href, ...box, sizing: { type: "cover", w: box.w, h: box.h } });
+            slide.addImage({ path: new URL(e.src, location.href).href, ...box, ...rotate, ...(e.fit === "fill" ? {} : { sizing: { type: e.fit === "contain" ? "contain" : "cover", w: box.w, h: box.h } }) });
           } catch {
             /* unreachable image: leave the space empty */
           }
         } else if (e.type === "rect" || e.type === "ellipse")
-          slide.addShape(e.type === "ellipse" ? pptx.ShapeType.ellipse : pptx.ShapeType.roundRect, { ...box, fill: { color: hex(e.fill ?? "#4f46e5") }, line: { color: hex(e.fill ?? "#4f46e5") } });
+        {
+          const fill = e.fill ?? "#4f46e5";
+          const see = fill.length === 9 ? Math.round((1 - parseInt(fill.slice(7), 16) / 255) * 100) : 0;
+          slide.addShape(e.type === "ellipse" ? pptx.ShapeType.ellipse : e.radius === 0 ? pptx.ShapeType.rect : pptx.ShapeType.roundRect, {
+            ...box,
+            ...rotate,
+            ...(fill === "none" ? {} : { fill: { color: hex(fill), ...(see ? { transparency: see } : {}) } }),
+            line: e.stroke ? { color: hex(e.stroke), width: Math.max(0.5, (e.strokeW ?? 2) * 0.75) } : { type: "none" as const },
+          });
+        }
       }
     } else if (s.layout === "title") {
       slide.addText(s.title, { x: 1, y: 2.4, w: 11.3, h: 1.4, fontSize: 48, bold: true, color: fg, fontFace: font });
@@ -419,7 +481,9 @@ export default function SlidesEditor({ ydoc, provider, file, me, synced, room }:
           )}
         </div>
       </div>
-      {presenting && (
+      {/* On top of the whole page (not inside the file panel, whose animation would trap it). */}
+      {presenting &&
+        createPortal(
         <Present
           slides={slides}
           theme={theme}
@@ -428,7 +492,8 @@ export default function SlidesEditor({ ydoc, provider, file, me, synced, room }:
           presenterName={presenting.who}
           onIndex={presenting.follow === undefined ? setPresentIndex : undefined}
           onExit={stopPresenting}
-        />
+        />,
+        document.body,
       )}
       <span className="sr-only">{me.name}</span>
     </div>

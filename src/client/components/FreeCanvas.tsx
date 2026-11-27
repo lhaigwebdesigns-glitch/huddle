@@ -5,6 +5,7 @@ import { Circle, Image as ImageIcon, Minus, Plus, Square, Trash2, Type } from "l
 import { CANVAS, elementsOf, makeElement, readElement, setText, THEMES, type ElementData, type ThemeName } from "../../shared/slides-model";
 import { uploadFile } from "../lib/uploads";
 import { snapBox } from "../../shared/snap";
+import { shapeStyle, textStyle } from "./SlideView";
 
 const COLORS = ["#4f46e5", "#0ea5e9", "#16a34a", "#f59e0b", "#dc2626", "#db2777", "#18181b", "#ffffff"];
 
@@ -192,6 +193,8 @@ export function FreeCanvas({ slide, theme, width, room }: { slide: Y.Map<any>; t
                   top: e.y,
                   width: e.w,
                   height: e.h,
+                  ...(e.rot ? { transform: `rotate(${e.rot}deg)` } : {}),
+                  ...(e.type === "text" && e.valign && e.valign !== "top" ? { display: "flex", flexDirection: "column", justifyContent: e.valign === "middle" ? "center" : "flex-end" } : {}),
                   outline: isSel ? `2px solid ${t.accent}` : undefined,
                   outlineOffset: 2,
                   cursor: e.type === "text" ? "text" : "move",
@@ -208,18 +211,18 @@ export function FreeCanvas({ slide, theme, width, room }: { slide: Y.Map<any>; t
                     }}
                     onPointerDown={(ev) => ev.stopPropagation()}
                     onFocus={() => setSelected(e.id)}
-                    className="h-full w-full resize-none bg-transparent outline-none placeholder:opacity-40"
-                    style={{ fontSize: e.size ?? 28, lineHeight: 1.3, color: e.color ?? t.fg, fontWeight: e.bold ? 700 : undefined, fontFamily: t.font }}
+                    className={`w-full resize-none bg-transparent outline-none placeholder:opacity-40 ${e.valign && e.valign !== "top" ? "max-h-full" : "h-full"}`}
+                    style={{ ...textStyle(e, t.fg, t.font), fontFamily: textStyle(e, t.fg, t.font).fontFamily ?? t.font, ...(e.valign && e.valign !== "top" ? ({ fieldSizing: "content" } as React.CSSProperties) : {}) }}
                   />
                 )}
                 {e.type === "image" &&
                   (e.src ? (
-                    <img src={e.src} alt="" draggable={false} referrerPolicy="no-referrer" className="pointer-events-none h-full w-full object-cover" />
+                    <img src={e.src} alt="" draggable={false} referrerPolicy="no-referrer" className="pointer-events-none h-full w-full" style={{ objectFit: e.fit ?? "cover" }} />
                   ) : (
                     <div className="h-full w-full border-2 border-dashed" style={{ borderColor: t.muted }} />
                   ))}
                 {(e.type === "rect" || e.type === "ellipse") && (
-                  <div className="h-full w-full" style={{ background: e.fill, borderRadius: e.type === "ellipse" ? "50%" : 8 }} />
+                  <div className="h-full w-full" style={shapeStyle(e)} />
                 )}
                 {isSel && (
                   <>

@@ -186,7 +186,7 @@ function Room({ code, me, user }: { code: string; me: Identity; user: Account | 
     const p = pendingImport.current;
     if (!p || !state.openFileId || state.openFileRef !== p.ref) return;
     pendingImport.current = null;
-    importOffice(code, state.openFileId, p.file, me)
+    importOffice(code, state.openFileId, p.file, me, (note) => showToast(`${p.file.name}: ${note}`))
       .then((r) => showToast(r.skipped.length ? `${p.file.name} is in. Some things didn't come through: ${r.skipped.join(", ")}.` : `${p.file.name} is in.`))
       .catch((e: Error) => showToast(`Couldn't bring in ${p.file.name}: ${e.message}`));
   }, [state.openFileId, state.openFileNonce, state.openFileRef, code, me, showToast]);
