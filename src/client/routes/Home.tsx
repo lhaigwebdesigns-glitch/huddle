@@ -126,11 +126,18 @@ export default function Home() {
               Have a class code?
             </a>
           )}
-          <a className="btn btn-go" href="#pilot" data-testid="nav-pilot">
-            <span>
-              Try it<span className="long"> with your class</span>
-            </span>
-          </a>
+          {account.user ? (
+            // Signed in: the way back into the app, not the pilot sign-up.
+            <Link className="btn btn-go" to={account.user.role === "teacher" ? "/classes" : "/dashboard"} data-testid="nav-open">
+              Open Cairn
+            </Link>
+          ) : (
+            <a className="btn btn-go" href="#pilot" data-testid="nav-pilot">
+              <span>
+                Try it<span className="long"> with your class</span>
+              </span>
+            </a>
+          )}
         </div>
       </header>
 
@@ -469,7 +476,8 @@ function Research() {
         <div className="findings">
           <article className="finding wide">
             <h3>Teens using ChatGPT for schoolwork doubled in a year</h3>
-            <svg className="chart" viewBox="0 0 540 250" role="img" aria-label="Bar chart: 13 percent of US teens used ChatGPT for schoolwork in 2023 and 26 percent in 2024. Separately, a broader 2025 question found 54 percent had used any AI chatbot for schoolwork.">
+            <div>
+            <svg className="chart" viewBox="0 0 540 226" role="img" aria-label="Bar chart: 13 percent of US teens used ChatGPT for schoolwork in 2023 and 26 percent in 2024. Separately, a broader 2025 question found 54 percent had used any AI chatbot for schoolwork.">
               <line x1="0" y1="210" x2="330" y2="210" stroke="#2d3c33" strokeWidth="2" />
               <line x1="380" y1="210" x2="540" y2="210" stroke="#2d3c33" strokeWidth="2" />
               <line x1="352" y1="40" x2="352" y2="226" stroke="#3b4d43" strokeWidth="2" strokeDasharray="4 6" />
@@ -479,10 +487,13 @@ function Research() {
               <text x="85" y="172" textAnchor="middle" fill="#fff" fontSize="26" fontWeight="800">13%</text>
               <text x="255" y="146" textAnchor="middle" fill="#fff" fontSize="26" fontWeight="800">26%</text>
               <text x="445" y="90" textAnchor="middle" fill="#fff" fontSize="26" fontWeight="800">54%</text>
-              <text x="85" y="236" textAnchor="middle" fill="#b9c8bf" fontSize="16">2023 · ChatGPT</text>
-              <text x="255" y="236" textAnchor="middle" fill="#b9c8bf" fontSize="16">2024 · ChatGPT</text>
-              <text x="445" y="236" textAnchor="middle" fill="#b9c8bf" fontSize="16">2025 · any AI chatbot</text>
             </svg>
+            <div className="chart-x" aria-hidden>
+              <span style={{ left: "15.7%" }}>2023 · ChatGPT</span>
+              <span style={{ left: "47.2%" }}>2024 · ChatGPT</span>
+              <span style={{ left: "82.4%" }}>2025 · any AI chatbot</span>
+            </div>
+            </div>
             <p className="src">
               Share of US teens 13–17, from Pew Research Center surveys. The dashed bar asks a broader question (any AI chatbot, surveyed fall 2025), so it isn't part of the doubling.{" "}
               <a href="https://www.pewresearch.org/short-reads/2025/01/15/about-a-quarter-of-us-teens-have-used-chatgpt-for-schoolwork-double-the-share-in-2023/" {...ext}>
@@ -526,10 +537,13 @@ function Research() {
                 </a>
               </p>
             </div>
-            <svg className="chart" viewBox="0 0 560 326" role="img" aria-label="Compared with students who had no AI, plain ChatGPT users scored 48 percent higher in practice and 17 percent lower on the exam. Students with a guided AI tutor scored 127 percent higher in practice and about the same as no AI on the exam.">
-              <text x="0" y="22" fill="#b9c8bf" fontSize="15" fontWeight="700">IN PRACTICE, WITH AI</text>
-              <text x="300" y="22" fill="#b9c8bf" fontSize="15" fontWeight="700">ON THE TEST, AI TAKEN AWAY</text>
-              <g transform="translate(0 26)">
+            <div>
+            <div className="chart-heads" aria-hidden>
+              <span>In practice, with AI</span>
+              <span>On the test, AI taken away</span>
+            </div>
+            <svg className="chart" viewBox="0 0 560 256" role="img" aria-label="Compared with students who had no AI, plain ChatGPT users scored 48 percent higher in practice and 17 percent lower on the exam. Students with a guided AI tutor scored 127 percent higher in practice and about the same as no AI on the exam.">
+              <g>
               <line x1="0" y1="200" x2="250" y2="200" stroke="#2d3c33" strokeWidth="2" />
               <line x1="300" y1="200" x2="560" y2="200" stroke="#2d3c33" strokeWidth="2" />
               <rect x="20" y="142" width="90" height="58" rx="8" fill={PERI} />
@@ -540,12 +554,13 @@ function Research() {
               <rect x="440" y="197" width="90" height="6" rx="3" fill={GREEN} />
               <text x="365" y="246" textAnchor="middle" fill="#fff" fontSize="24" fontWeight="800">−17%</text>
               <text x="485" y="186" textAnchor="middle" fill="#fff" fontSize="22" fontWeight="800">no drop</text>
-              <circle cx="20" cy="282" r="7" fill={PERI} />
-              <text x="34" y="288" fill="#cfdbd3" fontSize="16">Plain ChatGPT</text>
-              <circle cx="170" cy="282" r="7" fill={GREEN} />
-              <text x="184" y="288" fill="#cfdbd3" fontSize="16">AI tutor with guardrails</text>
               </g>
             </svg>
+            <div className="chart-legend" aria-hidden>
+              <span><i style={{ background: PERI }} />Plain ChatGPT</span>
+              <span><i style={{ background: GREEN }} />AI tutor with guardrails</span>
+            </div>
+            </div>
           </article>
           <article className="finding wide">
             <span className="big">17–25</span>
@@ -1441,7 +1456,7 @@ const FAQ = [
   { q: "Can students still use AI?", a: "Yes, as much as the teacher allows on each assignment: off, tutor only, or full help. Most classes start with tutor only." },
   {
     q: "Can't students just use ChatGPT in another tab?",
-    a: "They can. That's why Cairn's AI is built to be the better choice: it already knows the assignment and the rubric, and it works inside their files. For assignments where AI is off, a teacher can also block pasting from outside Cairn.",
+    a: "They can. That's why Cairn's AI is built to be the better choice: it already knows the assignment, the rubric and the due date, it reads their files, and asking it counts as showing their work. Text pasted in from another tab shows up as a paste. When the writing should happen in the room, a teacher can also block pasting from outside Cairn.",
   },
   { q: "Does my teacher read our chat?", a: "No. Teachers see progress and turned-in work. The only chat a teacher ever sees is a message a student chooses to report." },
   { q: "Does it work for solo work, or only group projects?", a: "Both. One link works for either. Solo gives every student their own copy, groups share one, and each person's part still shows." },
